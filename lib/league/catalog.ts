@@ -53,9 +53,9 @@ export type PublicCategoryId = (typeof PUBLIC_CATEGORY_IDS)[number]
 
 /**
  * Search → resolve → generate. These stay `coming_soon` in the catalog
- * (empty chip list + "준비 중") and never render a static instrument grid.
- * Sports may later surface live fixtures as chips; real_estate does not —
- * regions are typed ("강남 오를까"), not listed.
+ * (empty static chip list; the hub shows a user-facing freeform panel)
+ * and never render a fixed instrument grid. Sports may later surface live
+ * fixtures as chips; real_estate does not — regions are typed, not listed.
  */
 export const FREEFORM_SEARCH_CATEGORY_IDS = [
   'sports',

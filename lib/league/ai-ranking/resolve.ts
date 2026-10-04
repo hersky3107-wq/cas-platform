@@ -11,7 +11,13 @@ import {
   type AiVendorBrand,
 } from './brands'
 import {
+  AIRANK_LEDGER_CATEGORY,
+  airankPropositionText,
+  airankResolutionRule,
+  airankSubjectLabel,
+  decodeAirankInstrument,
   encodeAirankInstrument,
+  isAirankHorizon,
   type AirankArena,
   type AirankHorizon,
   type AirankKind,
@@ -473,4 +479,36 @@ function koreanBrandLabel(brand: string): string {
 
 export function isAirankCampSubject(value: string): value is AirankCamp {
   return isAirankCamp(value)
+}
+
+/** Reconstruct the ranked-round seed from an AIRANK instrument (generate / card). */
+export function buildAirankRankedRoundInput(
+  instrument: string,
+  uiHorizon?: string | null,
+  now: Date = new Date(),
+  locale: 'ko' | 'en' = 'en',
+) {
+  const parts = decodeAirankInstrument(instrument)
+  if (!parts) return null
+  const fromDeadline = airankHorizonFromDeadline(parts.deadlineYmd, now)
+  const horizon =
+    uiHorizon && isAirankHorizon(uiHorizon)
+      ? uiHorizon
+      : fromDeadline.ok
+        ? fromDeadline.horizon
+        : '1m'
+  const loc = locale === 'ko' ? 'ko' : 'en'
+  return {
+    proposition_text: airankPropositionText(parts, loc),
+    category: AIRANK_LEDGER_CATEGORY,
+    instrument,
+    horizon,
+    resolution_rule: airankResolutionRule(parts, loc),
+    resolves_at: `${parts.deadlineYmd}T23:59:59.999Z`,
+    item_type: 'ranked' as const,
+    cache_key: `airank|${instrument}|${horizon}`,
+    proposition_kind: 'binary_subject_outcome' as const,
+    subject_label: airankSubjectLabel(parts, loc),
+    observation_shape: 'occurrence' as const,
+  }
 }

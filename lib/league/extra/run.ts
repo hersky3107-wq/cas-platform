@@ -84,6 +84,7 @@ import {
 } from '../generation/launch-gate'
 import { rosterProviderRoute, type ProviderCallGate } from '../generation/provider-gate'
 import { visibleLeagueText } from '../visible-disclosure'
+import { selfVendorFlags } from '../ai-ranking/self-vendor'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isRealEstateLedgerCategory } from './real-estate-category'
 import { isPoliticsLedgerCategory } from './politics-category'
@@ -202,6 +203,20 @@ async function loadRound(roundId: string): Promise<ExtraRoundRow> {
   return data as ExtraRoundRow
 }
 
+async function extraSelfVendorColumns(
+  roundId: string,
+  category: string | null | undefined,
+  modelId: string,
+  brand: string,
+): Promise<{ self_vendor_subject: boolean | null; self_vendor_param: boolean | null }> {
+  if (category !== 'ai_models') return { self_vendor_subject: null, self_vendor_param: null }
+  const { data } = await supabaseAdmin.from('prediction_rounds').select('instrument').eq('id', roundId).maybeSingle()
+  const instrument = typeof (data as { instrument?: string } | null)?.instrument === 'string' ? data!.instrument : ''
+  if (!instrument) return { self_vendor_subject: null, self_vendor_param: null }
+  const flags = selfVendorFlags({ model_id: modelId, brand }, instrument)
+  return { self_vendor_subject: flags.isSubjectVendor, self_vendor_param: flags.isParamVendor }
+}
+
 async function upsertExtraPrediction(row: {
   roundId: string
   category?: string | null
@@ -232,6 +247,7 @@ async function upsertExtraPrediction(row: {
       predicted_qualifier_text: row.qualifier_text,
       reasoning_snippet: visibleLeagueText(row.category, row.reasoning_snippet),
       reasoning_text: null,
+      ...(await extraSelfVendorColumns(row.roundId, row.category, row.model_id, row.brand)),
       prompt_tokens: row.prompt_tokens ?? null,
       completion_tokens: row.completion_tokens ?? null,
       reasoning_tokens: null,

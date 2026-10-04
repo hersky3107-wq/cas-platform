@@ -6,6 +6,7 @@ import { nextClarifySubmission } from '@/lib/league/gateway/clarify-answer'
 import type { PublicCategoryId } from '@/lib/league/catalog'
 import type { UiHorizon } from '@/lib/league/horizon'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { generateErrorMessage, tryAgainSoonMessage } from '@/lib/league/generate-error-copy'
 
 type ClarifyOption = { id: string; label: string }
 type ClarifyQuestion = {
@@ -36,10 +37,12 @@ type GatewayResponse =
 
 export function FreeformPromptBox({
   categoryId,
+  seedPrompt,
   onRoundOpened,
   onPickInstrument,
 }: {
   categoryId: PublicCategoryId
+  seedPrompt?: string
   onRoundOpened: (instrument: string, horizon: UiHorizon) => void
   onPickInstrument?: (instrument: string) => void
 }) {
@@ -65,6 +68,10 @@ export function FreeformPromptBox({
     setFreeDraft('')
     setPreview(null)
   }, [categoryId])
+
+  useEffect(() => {
+    if (seedPrompt && seedPrompt.trim()) setDraft(seedPrompt.trim())
+  }, [seedPrompt])
 
   async function submit(nextAnswered: Record<string, string>, nextRound: number) {
     if (busy) return
@@ -96,7 +103,8 @@ export function FreeformPromptBox({
         return
       }
       if (!res.ok || !('status' in body)) {
-        setRefusal(t.hub.genericError)
+        const code = 'code' in body && typeof body.code === 'string' ? body.code : undefined
+        setRefusal(generateErrorMessage(code, locale, res.status))
         return
       }
       if (body.status === 'refused') {
@@ -120,7 +128,7 @@ export function FreeformPromptBox({
       setPreview(null)
       await startGenerate(body)
     } catch {
-      setRefusal(t.hub.genericError)
+      setRefusal(tryAgainSoonMessage(locale))
     } finally {
       setBusy(false)
     }
@@ -159,7 +167,8 @@ export function FreeformPromptBox({
       return
     }
     if (!res.ok) {
-      setRefusal(t.hub.genericError)
+      const detail = (await res.json().catch(() => null)) as { code?: string } | null
+      setRefusal(generateErrorMessage(detail?.code, locale, res.status))
       return
     }
     onRoundOpened(ready.instrument, horizon)

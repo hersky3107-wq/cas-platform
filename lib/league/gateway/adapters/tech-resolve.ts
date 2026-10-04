@@ -364,6 +364,29 @@ export function openTechResolutionRule(claim: OpenTechClaim): string {
   )
 }
 
+export function buildOpenTechRankedRoundInput(
+  instrument: string,
+  now: Date = new Date(),
+  locale: 'ko' | 'en' = 'en',
+) {
+  const claim = claimFromOpenInstrument(instrument, '', now)
+  if (!claim) return null
+  const localized = { ...claim, korean: locale === 'ko' }
+  return {
+    proposition_text: formatOpenTechProposition(localized),
+    category: 'tech' as const,
+    instrument: localized.instrument,
+    horizon: localized.horizon,
+    resolution_rule: openTechResolutionRule(localized),
+    resolves_at: `${localized.deadline}T23:59:59.999Z`,
+    item_type: 'ranked' as const,
+    cache_key: `tech|${localized.instrument}|${localized.deadline}`,
+    proposition_kind: 'binary_subject_outcome' as const,
+    subject_label: localized.subjectLabel,
+    observation_shape: 'occurrence' as const,
+  }
+}
+
 export function claimFromOpenInstrument(
   instrument: string,
   label: string,

@@ -2,14 +2,12 @@ import { NextResponse } from 'next/server'
 import { creditsForLeagueGenerate } from '@/lib/credits'
 import { CardNotFoundError, fetchCardData, type CardLookup } from '@/lib/league/card'
 import type { CardData, CardGenerationState, LockedCardPayload } from '@/lib/league/card-types'
-import { buildStockRankedRoundInput, decodeStockInstrument } from '@/lib/league/gateway/adapters/stock-catalog'
 import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
 import { buildKrStockRankedRoundInput } from '@/lib/league/korea-stock-round'
-import { buildCatalogRankedRoundInput, findCatalogInstrument } from '@/lib/league/catalog'
+import { findCatalogInstrument } from '@/lib/league/catalog'
 import { decodeSportsInstrument } from '@/lib/league/gateway/adapters/sports-catalog'
-import { buildSportsRankedRoundInput } from '@/lib/league/gateway/adapters/sports-compose'
-import { decodePropertyInstrument } from '@/lib/league/gateway/adapters/real-estate-catalog'
-import { buildRealEstateRankedRoundInput } from '@/lib/league/gateway/adapters/real-estate-compose'
+import { decodeAirankInstrument } from '@/lib/league/ai-ranking/instrument'
+import { buildPublicRankedRoundInput } from '@/lib/league/public-round-input'
 import { droppedRosterModelIds, rosterGenerationProgress } from '@/lib/league/generation-progress'
 import {
   findActiveJobForRound,
@@ -230,32 +228,26 @@ async function catalogLockedPreview(
           : NextResponse.json({ error: 'Unknown instrument', code: gate.code }, { status: 400 }),
     }
   }
-  const sportsParts = decodeSportsInstrument(gate.instrument)
-  const propertyParts = decodePropertyInstrument(gate.instrument)
-  const stockParts = decodeStockInstrument(gate.instrument)
   const krStockParts = decodeKrStockInstrument(gate.instrument)
-  const wouldOpen = sportsParts
-    ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
-    : propertyParts
-      ? buildRealEstateRankedRoundInput(gate.instrument, gate.horizon)
-      : stockParts
-        ? buildStockRankedRoundInput(gate.instrument, gate.horizon)
-        : krStockParts
-          ? await (async () => {
-              const built = await buildKrStockRankedRoundInput(gate.instrument, gate.horizon)
-              return built.ok ? built.input : null
-            })()
-          : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+  const wouldOpen = krStockParts
+    ? await (async () => {
+        const built = await buildKrStockRankedRoundInput(gate.instrument, gate.horizon)
+        return built.ok ? built.input : null
+      })()
+    : buildPublicRankedRoundInput(gate.instrument, gate.horizon)
   if (!wouldOpen) {
+    console.warn('[league-card]', JSON.stringify({ code: 'no_round', instrument: gate.instrument, horizon: gate.horizon }))
     return {
       response: NextResponse.json({ error: 'No ranked round available yet', code: 'no_round' }, { status: 404 }),
     }
   }
-  const catalogTone = sportsParts
+  const catalogTone = decodeSportsInstrument(gate.instrument)
     ? 'red'
     : krStockParts
       ? 'green'
-      : (findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow')
+      : decodeAirankInstrument(gate.instrument)
+        ? 'yellow'
+        : (findCatalogInstrument(gate.instrument)?.category.tone ?? 'yellow')
   return {
     payload: {
       locked: true,

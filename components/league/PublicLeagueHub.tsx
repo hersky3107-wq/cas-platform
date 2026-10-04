@@ -32,6 +32,7 @@ import { KR_DISCLOSURE, resolveKrLaneBanner, resolveKrLaneFooter } from '@/lib/l
 import { KrUsageNoticeList } from '@/components/league/KrLaneDisclosureBlocks'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
 import { KrUniverseChipBrowser, krStockRefusalMessage } from '@/components/league/KrUniverseChipBrowser'
+import { generateErrorMessage, tryAgainSoonMessage } from '@/lib/league/generate-error-copy'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -131,7 +132,7 @@ type CardView =
   | { kind: 'blocked' }
   | { kind: 'electionClosed' }
   | { kind: 'none' }
-  | { kind: 'error' }
+  | { kind: 'error'; text?: string }
   | { kind: 'krNotice'; text: string }
 
 function koreaLaneShowsInstrumentPanel(
@@ -161,6 +162,7 @@ function CardsPanel() {
   const [adminLane, setAdminLane] = useState<'global' | 'korea' | null>(null)
   const [krAdvisoryRegNo, setKrAdvisoryRegNo] = useState<string | undefined>()
   const [krBizNo, setKrBizNo] = useState<string | undefined>()
+  const [promptSeed, setPromptSeed] = useState('')
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
@@ -203,7 +205,10 @@ function CardsPanel() {
           } else if (res.status === 404 || ('code' in body && body.code === 'no_round')) {
             setView({ kind: 'none' })
           } else {
-            setView({ kind: 'error' })
+            setView({
+              kind: 'error',
+              text: generateErrorMessage(errBody.code, locale, res.status),
+            })
           }
           return
         }
@@ -213,12 +218,14 @@ function CardsPanel() {
         }
         setView({ kind: 'card', card: body as CardData })
       } catch {
-        if (requestId === requestIdRef.current && !opts?.quiet) setView({ kind: 'error' })
+        if (requestId === requestIdRef.current && !opts?.quiet) {
+          setView({ kind: 'error', text: tryAgainSoonMessage(locale) })
+        }
       } finally {
         if (quiet) quietInFlightRef.current = false
       }
     },
-    []
+    [locale]
   )
 
   useEffect(() => {
@@ -396,6 +403,7 @@ function CardsPanel() {
       {selectedCategory && showPrompt ? (
         <FreeformPromptBox
           categoryId={selectedCategory}
+          seedPrompt={promptSeed}
           onPickInstrument={(instrument) => {
             setSelectedInstrument(instrument)
             void loadCard(instrument, horizon)
@@ -437,7 +445,7 @@ function CardsPanel() {
       ) : null}
 
       {active?.kind === 'coming_soon' && view.kind !== 'card' && view.kind !== 'locked' ? (
-        <ComingSoonPanel categoryId={active.id} />
+        <ComingSoonPanel categoryId={active.id} onExample={(text) => setPromptSeed(text)} />
       ) : null}
 
       {showInstrumentChips && active ? (
@@ -495,7 +503,7 @@ function CardsPanel() {
         <PanelMessage text={t.catalog.noCardYet} />
       ) : null}
       {view.kind === 'error' ? (
-        <PanelMessage text={t.hub.genericError} tone="error" />
+        <PanelMessage text={view.text ?? tryAgainSoonMessage(locale)} tone="error" />
       ) : null}
       {view.kind === 'krNotice' ? (
         <p
@@ -603,16 +611,16 @@ function LockedRoundPanel({
           if (refusal) {
             setNotice(refusal)
           } else if (res.status === 403) {
-            setNotice(t.gating.unavailable)
+            setNotice(generateErrorMessage(detail?.code ?? 'not_public', locale, res.status))
           } else {
-            setNotice(t.hub.genericError)
+            setNotice(generateErrorMessage(detail?.code, locale, res.status))
           }
         }
         return
       }
       onOpened()
     } catch {
-      setNotice(t.hub.genericError)
+      setNotice(tryAgainSoonMessage(locale))
     } finally {
       setBusy(false)
     }
@@ -684,13 +692,13 @@ function GenerationBanner({
             ? t.hub.generationBusy
             : res.status === 503 && detail?.code === 'market_data_unavailable'
               ? t.hub.marketDataUnavailable
-              : t.hub.genericError
+              : generateErrorMessage(detail?.code, locale, res.status)
         )
         return
       }
       onRetried()
     } catch {
-      setNotice(t.hub.genericError)
+      setNotice(tryAgainSoonMessage(locale))
     } finally {
       setBusy(false)
     }
@@ -824,22 +832,46 @@ export function KoreaStockLane({
   )
 }
 
-function ComingSoonPanel({ categoryId }: { categoryId: PublicCategoryId }) {
+function ComingSoonPanel({
+  categoryId,
+  onExample,
+}: {
+  categoryId: PublicCategoryId
+  onExample?: (text: string) => void
+}) {
   const { t } = useLeagueLocale()
+  const panel =
+    categoryId === 'sports' ||
+    categoryId === 'politics_election' ||
+    categoryId === 'entertainment' ||
+    categoryId === 'real_estate' ||
+    categoryId === 'tech'
+      ? t.catalog.freeformPanel[categoryId]
+      : null
+  if (!panel) {
+    return (
+      <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
+        <p className="text-sm font-semibold text-slate-800">{t.catalog.comingSoon}</p>
+        <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.catalog.comingSoonHint}</p>
+      </div>
+    )
+  }
   return (
     <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-4 py-6 text-center">
-      <p className="text-sm font-semibold text-slate-800">{t.catalog.comingSoon}</p>
-      <p className="mt-1 text-xs leading-relaxed text-slate-500">{t.catalog.comingSoonHint}</p>
-      {categoryId === 'tech' ? (
-        <>
-          <p className="mt-2 text-xs leading-relaxed text-slate-600">{t.catalog.techHint}</p>
-          {t.catalog.techSamples.map((sample) => (
-            <p key={sample} className="mt-1 text-xs leading-relaxed text-slate-500">
-              {sample}
-            </p>
-          ))}
-        </>
-      ) : null}
+      <p className="text-sm font-semibold text-slate-800">{panel.title}</p>
+      <p className="mt-1 text-xs leading-relaxed text-slate-600">{panel.body}</p>
+      <div className="mt-3 flex flex-col items-center gap-1.5">
+        {panel.examples.map((sample) => (
+          <button
+            key={sample}
+            type="button"
+            onClick={() => onExample?.(sample)}
+            className="rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-800 hover:bg-slate-200"
+          >
+            {sample}
+          </button>
+        ))}
+      </div>
     </div>
   )
 }

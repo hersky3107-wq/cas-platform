@@ -176,6 +176,7 @@ describe('dictionary completeness', () => {
         hub.marketDataUnavailable,
         hub.rateLimited,
         hub.genericError,
+        hub.tryAgainSoon,
         hub.openRound(30),
         hub.insufficientCredits(30, 0),
         hub.balance(120),

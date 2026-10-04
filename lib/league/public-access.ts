@@ -8,7 +8,6 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 import { checkRateLimit, type RateLimitRule } from '@/lib/rate-limit'
 import { isCategoryAllowed, type JurisdictionInput } from './jurisdiction/resolve'
 import {
-  buildCatalogRankedRoundInput,
   CATALOG_INSTRUMENT_IDS,
   PUBLIC_CATALOG,
   isCatalogInstrumentAllowed,
@@ -20,21 +19,19 @@ import { gatePublicGenerateInstrument, isCuratedInstrument, visibleCategoriesFor
 import { isUiHorizon, type UiHorizon } from './horizon'
 import type { PredictionCategory } from '@/lib/prediction/categories'
 import { decodeEntertainmentInstrument } from './gateway/adapters/entertainment-catalog'
-import { buildEntertainmentRankedRoundInput } from './gateway/adapters/entertainment-compose'
 import { decodePoliticsInstrument } from './gateway/adapters/politics-catalog'
-import { buildPoliticsRankedRoundInput } from './gateway/adapters/politics-compose'
 import { decodeSportsInstrument } from './gateway/adapters/sports-catalog'
-import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
-import { buildStockRankedRoundInput, decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { decodeAirankInstrument } from './ai-ranking/instrument'
+import { decodeOpenTechInstrument } from './gateway/adapters/tech-resolve'
+import { buildPublicRankedRoundInput, publicRoundLocale } from './public-round-input'
 import { buildKrStockRankedRoundInput } from './korea-stock-round'
 import { admissionStockLane, isGlobalStockInstrument } from './stock-lane'
 import { isUniverseCodeVisible } from './korea-universe-store'
 import { krElectionAccessDenied, type KrManualCloseFlag } from './politics/kr-manual-close'
 import { loadKrManualCloseFlag } from './politics/kr-election-store'
-import { buildRealEstateRankedRoundInput } from './gateway/adapters/real-estate-compose'
 import type { ComposedRound } from './gateway/types'
 
 /**
@@ -90,7 +87,8 @@ export function isPublicRankedInstrument(instrument: string): boolean {
     decodePropertyInstrument(instrument) !== null ||
     decodeStockInstrument(instrument) !== null ||
     decodeKrStockInstrument(instrument) !== null ||
-    decodeAirankInstrument(instrument) !== null
+    decodeAirankInstrument(instrument) !== null ||
+    decodeOpenTechInstrument(instrument) !== null
   )
 }
 
@@ -389,7 +387,8 @@ export type PublicInstrumentGenerateTarget =
 export async function resolvePublicInstrumentGenerateTarget(
   viewer: LeagueViewer,
   instrumentRaw: string,
-  horizonRaw: unknown = '1d'
+  horizonRaw: unknown = '1d',
+  localeRaw: string = 'en',
 ): Promise<PublicInstrumentGenerateTarget> {
   const closeFlag = await loadKrManualCloseFlag()
   const gate = await gatePublicGenerateInstrumentForViewer(instrumentRaw, viewer, horizonRaw, closeFlag)
@@ -416,13 +415,7 @@ export async function resolvePublicInstrumentGenerateTarget(
   if (existing.ok) return { ok: true, round: { roundId: existing.roundId } }
   if (existing.response.status !== 404) return existing
 
-  const sportsParts = decodeSportsInstrument(gate.instrument)
-  const electionParts = decodePoliticsInstrument(gate.instrument)
-  const showParts = decodeEntertainmentInstrument(gate.instrument)
-  const propertyParts = decodePropertyInstrument(gate.instrument)
-  const stockParts = decodeStockInstrument(gate.instrument)
   const krStockParts = decodeKrStockInstrument(gate.instrument)
-
   if (krStockParts) {
     const built = await buildKrStockRankedRoundInput(gate.instrument, gate.horizon)
     if (!built.ok) {
@@ -431,18 +424,14 @@ export async function resolvePublicInstrumentGenerateTarget(
     return { ok: true, round: built.input }
   }
 
-  const created = sportsParts
-    ? buildSportsRankedRoundInput(gate.instrument, gate.horizon)
-    : electionParts
-      ? buildPoliticsRankedRoundInput(gate.instrument, gate.horizon)
-      : showParts
-        ? buildEntertainmentRankedRoundInput(gate.instrument, gate.horizon)
-        : propertyParts
-          ? buildRealEstateRankedRoundInput(gate.instrument, gate.horizon)
-          : stockParts
-            ? buildStockRankedRoundInput(gate.instrument, gate.horizon)
-            : buildCatalogRankedRoundInput(gate.instrument, gate.horizon)
+  const created = buildPublicRankedRoundInput(
+    gate.instrument,
+    gate.horizon,
+    new Date(),
+    publicRoundLocale(localeRaw),
+  )
   if (!created) {
+    console.warn('[league-generate]', JSON.stringify({ code: 'no_round', instrument: gate.instrument, horizon: gate.horizon }))
     return { ok: false, response: jsonError(404, 'No ranked round available yet', 'no_round') }
   }
   return { ok: true, round: created }

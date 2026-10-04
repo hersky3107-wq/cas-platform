@@ -103,8 +103,15 @@ export async function POST(req: Request) {
     if (!access.ok) return access.response
     roundId = access.roundId
   } else if (instrument) {
-    const target = await resolvePublicInstrumentGenerateTarget(viewer, instrument, horizon)
-    if (!target.ok) return target.response
+    const target = await resolvePublicInstrumentGenerateTarget(viewer, instrument, horizon, locale)
+    if (!target.ok) {
+      const detail = (await target.response.clone().json().catch(() => null)) as { code?: string } | null
+      console.warn(
+        '[league-generate]',
+        JSON.stringify({ code: detail?.code ?? 'generate_target_failed', status: target.response.status, instrument, horizon }),
+      )
+      return target.response
+    }
     if ('roundId' in target.round) {
       roundId = target.round.roundId
     } else {
@@ -136,10 +143,14 @@ export async function POST(req: Request) {
             .select('id')
             .eq('cache_key', target.round.cache_key)
             .maybeSingle()
-          if (!data) return NextResponse.json({ error: 'Round creation raced and lookup failed' }, { status: 500 })
+          if (!data) {
+            console.warn('[league-generate]', JSON.stringify({ code: 'open_failed', instrument, horizon }))
+            return NextResponse.json({ error: 'Round creation raced and lookup failed', code: 'open_failed' }, { status: 500 })
+          }
           roundId = (data as { id: string }).id
         } else {
-          return NextResponse.json({ error: 'Could not open the round' }, { status: 500 })
+          console.warn('[league-generate]', JSON.stringify({ code: 'open_failed', instrument, horizon }))
+          return NextResponse.json({ error: 'Could not open the round', code: 'open_failed' }, { status: 500 })
         }
       }
     }

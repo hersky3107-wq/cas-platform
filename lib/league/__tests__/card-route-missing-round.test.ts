@@ -66,7 +66,7 @@ describe('chip+horizon generate persistence', () => {
   })
 
   it('POST /api/league/generate still opens via resolvePublicInstrumentGenerateTarget + ensureLeagueRound', () => {
-    expect(GENERATE_ROUTE).toContain('resolvePublicInstrumentGenerateTarget(viewer, instrument, horizon)')
+    expect(GENERATE_ROUTE).toContain('resolvePublicInstrumentGenerateTarget(viewer, instrument, horizon, locale)')
     expect(GENERATE_ROUTE).toContain('ensureLeagueRound(target.round)')
     expect(GENERATE_ROUTE).not.toContain("item_type: 'on_demand'")
   })

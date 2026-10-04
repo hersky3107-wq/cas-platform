@@ -27,10 +27,12 @@ export async function GET(req: Request) {
   })
   const stockLane = admissionStockLane(viewer.jurisdiction)
 
-  // Load recent ranked sports rounds so existing fixtures show as discoverable chips
+  // Load recent ranked sports / tech / AI-ranking rounds so opened questions
+  // stay discoverable chips on those hub tabs.
   let sportsInstruments: { instrument: string }[] = []
+  let techHubInstruments: { instrument: string }[] = []
   try {
-    const { data } = await supabaseAdmin
+    const { data: sportsData } = await supabaseAdmin
       .from('prediction_rounds')
       .select('instrument')
       .eq('category', 'sports')
@@ -38,9 +40,9 @@ export async function GET(req: Request) {
       .order('created_at', { ascending: false })
       .limit(10)
 
-    if (data && data.length > 0) {
+    if (sportsData && sportsData.length > 0) {
       const seen = new Set<string>()
-      for (const row of data as { instrument: string }[]) {
+      for (const row of sportsData as { instrument: string }[]) {
         if (row.instrument && !seen.has(row.instrument)) {
           seen.add(row.instrument)
           sportsInstruments.push({ instrument: row.instrument })
@@ -49,6 +51,27 @@ export async function GET(req: Request) {
     }
   } catch (err) {
     console.warn('[league/instruments] failed loading sports fixtures:', err)
+  }
+  try {
+    const { data: techData } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('instrument')
+      .in('category', ['tech', 'ai_models'])
+      .eq('item_type', 'ranked')
+      .order('created_at', { ascending: false })
+      .limit(12)
+
+    if (techData && techData.length > 0) {
+      const seen = new Set<string>()
+      for (const row of techData as { instrument: string }[]) {
+        if (row.instrument && !seen.has(row.instrument)) {
+          seen.add(row.instrument)
+          techHubInstruments.push({ instrument: row.instrument })
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[league/instruments] failed loading tech / AIRANK rounds:', err)
   }
 
   const categories = viewerCatalog(viewer).map((c) => {
@@ -60,6 +83,17 @@ export async function GET(req: Request) {
         kind: 'instruments' as const,
         promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
         instruments: sportsInstruments,
+        mixedResolutionClocks: false,
+      }
+    }
+    if (c.id === 'tech' && techHubInstruments.length > 0) {
+      return {
+        id: c.id,
+        ledgerCategory: c.ledgerCategory,
+        tone: c.tone,
+        kind: 'instruments' as const,
+        promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
+        instruments: techHubInstruments,
         mixedResolutionClocks: false,
       }
     }

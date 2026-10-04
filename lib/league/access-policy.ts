@@ -9,6 +9,7 @@ import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog
 import { decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { decodeAirankInstrument } from './ai-ranking/instrument'
+import { decodeOpenTechInstrument } from './gateway/adapters/tech-resolve'
 import { envKrManualCloseFlag, krElectionAccessDenied, type KrManualCloseFlag } from './politics/kr-manual-close'
 import { admissionStockLane, isKrLanePublicReady } from './stock-lane'
 import { isCategoryAllowed, isInstrumentAllowed, type JurisdictionInput } from './jurisdiction/resolve'
@@ -192,6 +193,14 @@ export function gatePublicGenerateInstrument(
       return { ok: false, status: 403, code: 'jurisdiction_blocked' }
     }
     return { ok: true, instrument, category: 'ai_models', horizon }
+  }
+
+  const openTech = decodeOpenTechInstrument(instrument)
+  if (openTech) {
+    if (!viewer.isAdmin && !isCategoryAllowed('tech', viewer.jurisdiction)) {
+      return { ok: false, status: 403, code: 'jurisdiction_blocked' }
+    }
+    return { ok: true, instrument, category: 'tech', horizon }
   }
 
   const stockParts = decodeStockInstrument(instrument)

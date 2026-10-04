@@ -261,9 +261,14 @@ export type LeagueUiPack = {
     koreaStocksHint: string
     stockLaneAdminGlobal: string
     stockLaneAdminKorea: string
-    /** Free-prompt tech panel: one hint and two sample questions. No chips. */
+    /** Free-prompt tech panel: one hint and sample questions. No chips. */
     techHint: string
-    techSamples: readonly [string, string]
+    techSamples: readonly string[]
+    /** User-facing freeform hub panel (replaces the old coming-soon placeholder). */
+    freeformPanel: Record<
+      'sports' | 'politics_election' | 'entertainment' | 'real_estate' | 'tech',
+      { title: string; body: string; examples: readonly string[] }
+    >
     noCardYet: string
     /** Horizon selector chips shown next to the instrument chips. Default '1d'. */
     horizons: { '1d': string; '1w': string; '1m': string; '3m': string }
@@ -708,6 +713,8 @@ export type LeagueUiPack = {
     insufficientCredits: (required: number, balance: number) => string
     rateLimited: string
     genericError: string
+    /** Genuine server / network failure — never used when a reason code exists. */
+    tryAgainSoon: string
     /** Paid CTA — MUST carry its price. Open-ended deep analysis of the current round. */
     deepOpen: (credits: number) => string
     /** Paid CTA — MUST carry its price. Pro/con debate of the current round. */
@@ -1015,8 +1022,45 @@ const en: LeagueUiPack = {
     koreaStocksHint: 'Korean listings are not open yet. This lane has no search box.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Korea',
-    techHint: 'Yes or no on a company, product, or event. Type a question — there are no chips.',
-    techSamples: ['Will Apple announce a new iPad in October?', 'Will Samsung ship a tri-fold phone by year-end?'],
+    techHint: 'Ask a yes/no question about a company, a product, or an AI ranking. 40 AIs predict; the real result grades them.',
+    techSamples: [
+      'Will Apple announce a new iPad in October?',
+      'Will Samsung ship a tri-fold phone by year-end?',
+      'Will Claude rank above GPT in coding by the end of this month?',
+      'Will a Chinese AI company rank in the top 3 overall this month?',
+    ],
+    freeformPanel: {
+      tech: {
+        title: 'Tech · AI rankings',
+        body: 'Ask a yes/no question about a company, a product, or an AI ranking. 40 AIs predict; the real result grades them.',
+        examples: [
+          'Will Apple announce a new iPad in October?',
+          'Will Samsung ship a tri-fold phone by year-end?',
+          'Will Claude rank above GPT in coding by the end of this month?',
+          'Will a Chinese AI company rank in the top 3 overall this month?',
+        ],
+      },
+      sports: {
+        title: 'Sports',
+        body: 'Ask which side wins a public match. 40 AIs predict; the official result grades them.',
+        examples: ['Will Tottenham beat Arsenal?', 'Will the Yankees beat the Red Sox?'],
+      },
+      politics_election: {
+        title: 'Elections',
+        body: 'Ask who wins a public race that resolves soon. 40 AIs predict; the certified result grades them.',
+        examples: ['Will the Democrat win the Georgia governor race?'],
+      },
+      entertainment: {
+        title: 'Entertainment',
+        body: 'Ask about box office, charts, or awards with a public result. 40 AIs predict; the published ranking grades them.',
+        examples: ['Will Chiikawa open at #1 this weekend?', 'Will NewJeans hit #1 on Melon?'],
+      },
+      real_estate: {
+        title: 'Housing indexes',
+        body: 'Ask whether a published housing index rises or falls. 40 AIs predict; the official print grades them.',
+        examples: ['Will the Seoul apartment price index rise this month?'],
+      },
+    },
     noCardYet: 'No prediction card for this instrument yet.',
     horizons: { '1d': '1 day', '1w': '1 week', '1m': '1 month', '3m': '3 months' },
     spotVsEtfNote:
@@ -1292,6 +1336,7 @@ const en: LeagueUiPack = {
     insufficientCredits: (required, balance) => `Opening a round needs ${required} credits \u2014 you have ${balance}.`,
     rateLimited: 'Too many requests. Please wait a moment and try again.',
     genericError: 'Something went wrong. Please try again.',
+    tryAgainSoon: 'Please try again in a moment.',
     balance: (credits) => `${credits} credits`,
     deepOpen: (credits) => `Open analysis \u00b7 ${credits} credits`,
     deepDebate: (credits) => `Pro/con debate \u00b7 ${credits} credits`,
@@ -1595,8 +1640,45 @@ const ko: LeagueUiPack = {
     koreaStocksHint: '한국 상장 종목 칩은 준비 중입니다. 이 화면에는 검색창이 없습니다.',
     stockLaneAdminGlobal: '글로벌',
     stockLaneAdminKorea: '한국',
-    techHint: '기업·제품·이벤트의 예 또는 아니오. 칩 없이 질문만 입력합니다.',
-    techSamples: ['애플이 10월 안에 새 아이패드를 발표할까?', '삼성이 연말까지 3단 폴더블을 출시할까?'],
+    techHint: '기업·제품 소식이나 AI 순위를 예/아니오로 물어보세요. 40개 AI가 예측하고, 실제 결과로 채점합니다.',
+    techSamples: [
+      '애플이 10월 안에 새 아이패드를 발표할까?',
+      '삼성이 연말까지 3단 폴더블을 출시할까?',
+      '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
+      '중국 AI가 이번 달 종합 순위 3위 안에 들까?',
+    ],
+    freeformPanel: {
+      tech: {
+        title: '테크 · AI 순위',
+        body: '기업·제품 소식이나 AI 순위를 예/아니오로 물어보세요. 40개 AI가 예측하고, 실제 결과로 채점합니다.',
+        examples: [
+          '애플이 10월 안에 새 아이패드를 발표할까?',
+          '삼성이 연말까지 3단 폴더블을 출시할까?',
+          '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
+          '중국 AI가 이번 달 종합 순위 3위 안에 들까?',
+        ],
+      },
+      sports: {
+        title: '스포츠',
+        body: '공개 경기의 승패를 예/아니오로 물어보세요. 40개 AI가 예측하고, 공식 결과로 채점합니다.',
+        examples: ['토트넘이 아스날을 이길까?', '양키스가 레드삭스를 이길까?'],
+      },
+      politics_election: {
+        title: '선거',
+        body: '곧 결과가 나오는 공개 선거의 승자를 물어보세요. 40개 AI가 예측하고, 확정 결과로 채점합니다.',
+        examples: ['조지아 주지사는 민주당이 이길까?'],
+      },
+      entertainment: {
+        title: '엔터테인먼트',
+        body: '박스오피스·차트·시상식처럼 공개 결과가 있는 질문을 물어보세요. 40개 AI가 예측하고, 발표된 순위로 채점합니다.',
+        examples: ['치이카와 첫 주말 1위 할까?', '뉴진스가 멜론 1위 할까?'],
+      },
+      real_estate: {
+        title: '주택 지수',
+        body: '공표되는 주택 지수가 오르거나 내릴지를 물어보세요. 40개 AI가 예측하고, 공식 수치로 채점합니다.',
+        examples: ['서울 아파트 이번 달 오를까?'],
+      },
+    },
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
     horizons: { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' },
     spotVsEtfNote:
@@ -1870,6 +1952,7 @@ const ko: LeagueUiPack = {
     insufficientCredits: (required, balance) => `라운드 열람에는 ${required} 크레딧이 필요합니다 — 현재 보유 ${balance} 크레딧.`,
     rateLimited: '요청이 너무 잦습니다. 잠시 후 다시 시도해 주세요.',
     genericError: '문제가 발생했습니다. 다시 시도해 주세요.',
+    tryAgainSoon: '잠시 후 다시 시도해 주세요.',
     balance: (credits) => `${credits} 크레딧`,
     deepOpen: (credits) => `개방형 분석 \u00b7 ${credits} 크레딧`,
     deepDebate: (credits) => `찬반 토론 \u00b7 ${credits} 크레딧`,
@@ -2171,8 +2254,45 @@ const ja: LeagueUiPack = {
     koreaStocksHint: '韓国上場銘柄のチップは準備中です。この画面に検索欄はありません。',
     stockLaneAdminGlobal: 'グローバル',
     stockLaneAdminKorea: '韓国',
-    techHint: '企業・製品・イベントのはい/いいえ。チップはなく、質問だけ入力します。',
-    techSamples: ['アップルは10月中に新しいiPadを発表する？', 'サムスンは年末までに3つ折りを発売する？'],
+    techHint: '企業・製品の発表やAI順位をはい/いいえで聞いてください。40のAIが予測し、実際の結果で採点します。',
+    techSamples: [
+      'アップルは10月中に新しいiPadを発表する？',
+      'サムスンは年末までに3つ折りを発売する？',
+      'クロードは今月末のコーディング順位でGPTより上？',
+      '中国AIは今月の総合順位で3位以内？',
+    ],
+    freeformPanel: {
+      tech: {
+        title: 'テック · AI順位',
+        body: '企業・製品の発表やAI順位をはい/いいえで聞いてください。40のAIが予測し、実際の結果で採点します。',
+        examples: [
+          'アップルは10月中に新しいiPadを発表する？',
+          'サムスンは年末までに3つ折りを発売する？',
+          'クロードは今月末のコーディング順位でGPTより上？',
+          '中国AIは今月の総合順位で3位以内？',
+        ],
+      },
+      sports: {
+        title: 'スポーツ',
+        body: '公開試合の勝敗をはい/いいえで聞いてください。40のAIが予測し、公式結果で採点します。',
+        examples: ['トッテナムはアーセナルに勝つ？', 'ヤンキースはレッドソックスに勝つ？'],
+      },
+      politics_election: {
+        title: '選挙',
+        body: 'まもなく結果が出る公開選挙の勝者を聞いてください。40のAIが予測し、確定結果で採点します。',
+        examples: ['ジョージア州知事選は民主党が勝つ？'],
+      },
+      entertainment: {
+        title: 'エンタメ',
+        body: '興行・チャート・賞のように公開結果がある質問をしてください。40のAIが予測し、発表順位で採点します。',
+        examples: ['ちいかわは今週末全米1位？', 'NewJeansはMelonで1位？'],
+      },
+      real_estate: {
+        title: '住宅指数',
+        body: '公表される住宅指数が上がるか下がるかを聞いてください。40のAIが予測し、公式値で採点します。',
+        examples: ['ソウルのマンション指数は今月上がる？'],
+      },
+    },
     noCardYet: 'この銘柄の予測カードはまだありません。',
     horizons: { '1d': '1日', '1w': '1週間', '1m': '1か月', '3m': '3か月' },
     spotVsEtfNote:
@@ -2444,6 +2564,7 @@ const ja: LeagueUiPack = {
     insufficientCredits: (required, balance) => `ラウンドを開くには${required}クレジットが必要です — 現在の残高は${balance}クレジットです。`,
     rateLimited: 'リクエストが多すぎます。少し時間をおいて再度お試しください。',
     genericError: 'エラーが発生しました。もう一度お試しください。',
+    tryAgainSoon: 'しばらくしてからもう一度お試しください。',
     balance: (credits) => `${credits}クレジット`,
     deepOpen: (credits) => `自由分析 \u00b7 ${credits}クレジット`,
     deepDebate: (credits) => `賛否討論 \u00b7 ${credits}クレジット`,
@@ -2744,8 +2865,45 @@ const zhTW: LeagueUiPack = {
     koreaStocksHint: '韓國上市股票籌碼準備中。此畫面沒有搜尋框。',
     stockLaneAdminGlobal: '全球',
     stockLaneAdminKorea: '韓國',
-    techHint: '公司、產品或事件的是／否。沒有固定標的，只輸入問題。',
-    techSamples: ['蘋果會在10月內發表新iPad嗎？', '三星會在年底前推出三摺手機嗎？'],
+    techHint: '用是／否問企業、產品消息或 AI 排名。40 個 AI 預測，實際結果計分。',
+    techSamples: [
+      '蘋果會在10月內發表新iPad嗎？',
+      '三星會在年底前推出三摺手機嗎？',
+      'Claude 這個月底在程式排名會高過 GPT 嗎？',
+      '中國 AI 這個月綜合排名會進前三嗎？',
+    ],
+    freeformPanel: {
+      tech: {
+        title: '科技 · AI 排名',
+        body: '用是／否問企業、產品消息或 AI 排名。40 個 AI 預測，實際結果計分。',
+        examples: [
+          '蘋果會在10月內發表新iPad嗎？',
+          '三星會在年底前推出三摺手機嗎？',
+          'Claude 這個月底在程式排名會高過 GPT 嗎？',
+          '中國 AI 這個月綜合排名會進前三嗎？',
+        ],
+      },
+      sports: {
+        title: '運動',
+        body: '用是／否問公開比賽誰贏。40 個 AI 預測，官方結果計分。',
+        examples: ['熱刺會贏阿森納嗎？', '洋基會贏紅襪嗎？'],
+      },
+      politics_election: {
+        title: '選舉',
+        body: '問即將公布的公開選舉誰贏。40 個 AI 預測，認證結果計分。',
+        examples: ['喬治亞州長會是民主黨贏嗎？'],
+      },
+      entertainment: {
+        title: '娛樂',
+        body: '問票房、排行榜或獎項等有公開結果的問題。40 個 AI 預測，公布排名計分。',
+        examples: ['Chiikawa 這個週末會開出冠軍嗎？', 'NewJeans 會拿下 Melon 冠軍嗎？'],
+      },
+      real_estate: {
+        title: '房價指數',
+        body: '問公布的房價指數會漲還是跌。40 個 AI 預測，官方數字計分。',
+        examples: ['首爾公寓指數這個月會漲嗎？'],
+      },
+    },
     noCardYet: '此標的尚無預測卡。',
     horizons: { '1d': '1天', '1w': '1週', '1m': '1個月', '3m': '3個月' },
     spotVsEtfNote:
@@ -3014,6 +3172,7 @@ const zhTW: LeagueUiPack = {
     insufficientCredits: (required, balance) => `開啟回合需要 ${required} 點數 — 您目前有 ${balance} 點。`,
     rateLimited: '請求過於頻繁，請稍候再試。',
     genericError: '發生錯誤，請再試一次。',
+    tryAgainSoon: '請稍後再試。',
     balance: (credits) => `${credits} 點數`,
     deepOpen: (credits) => `開放分析 \u00b7 ${credits} 點數`,
     deepDebate: (credits) => `正反辯論 \u00b7 ${credits} 點數`,
@@ -3316,8 +3475,45 @@ const fr: LeagueUiPack = {
     koreaStocksHint: 'Les actions coréennes ne sont pas encore ouvertes. Cette voie n’a pas de champ de recherche.',
     stockLaneAdminGlobal: 'Monde',
     stockLaneAdminKorea: 'Corée',
-    techHint: 'Oui ou non sur une entreprise, un produit ou un événement. Une question, pas de puces.',
-    techSamples: ['Apple annoncera-t-il un nouvel iPad en octobre ?', 'Samsung lancera-t-il un tri-fold d’ici la fin de l’année ?'],
+    techHint: 'Posez une question oui/non sur une entreprise, un produit ou un classement IA. 40 IA prédisent ; le résultat réel les note.',
+    techSamples: [
+      'Apple annoncera-t-il un nouvel iPad en octobre ?',
+      'Samsung lancera-t-il un tri-fold d’ici la fin de l’année ?',
+      'Claude sera-t-il au-dessus de GPT en coding d’ici la fin du mois ?',
+      'Une IA chinoise sera-t-elle dans le top 3 ce mois-ci ?',
+    ],
+    freeformPanel: {
+      tech: {
+        title: 'Tech · classements IA',
+        body: 'Posez une question oui/non sur une entreprise, un produit ou un classement IA. 40 IA prédisent ; le résultat réel les note.',
+        examples: [
+          'Apple annoncera-t-il un nouvel iPad en octobre ?',
+          'Samsung lancera-t-il un tri-fold d’ici la fin de l’année ?',
+          'Claude sera-t-il au-dessus de GPT en coding d’ici la fin du mois ?',
+          'Une IA chinoise sera-t-elle dans le top 3 ce mois-ci ?',
+        ],
+      },
+      sports: {
+        title: 'Sports',
+        body: 'Demandez qui gagne un match public. 40 IA prédisent ; le résultat officiel les note.',
+        examples: ['Tottenham battra-t-il Arsenal ?', 'Les Yankees battront-ils les Red Sox ?'],
+      },
+      politics_election: {
+        title: 'Élections',
+        body: 'Demandez qui gagne une course publique bientôt tranchée. 40 IA prédisent ; le résultat certifié les note.',
+        examples: ['Le démocrate gagnera-t-il le poste de gouverneur de Géorgie ?'],
+      },
+      entertainment: {
+        title: 'Divertissement',
+        body: 'Posez une question sur le box-office, les classements ou les prix. 40 IA prédisent ; le classement publié les note.',
+        examples: ['Chiikawa finira-t-il n°1 ce week-end ?', 'NewJeans sera-t-il n°1 sur Melon ?'],
+      },
+      real_estate: {
+        title: 'Indices immobiliers',
+        body: 'Demandez si un indice immobilier publié monte ou baisse. 40 IA prédisent ; le chiffre officiel les note.',
+        examples: ['L’indice des appartements à Séoul montera-t-il ce mois-ci ?'],
+      },
+    },
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
     horizons: { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
     spotVsEtfNote:
@@ -3594,6 +3790,7 @@ const fr: LeagueUiPack = {
     insufficientCredits: (required, balance) => `Ouvrir une manche coûte ${required} crédits \u2014 vous en avez ${balance}.`,
     rateLimited: 'Trop de requêtes. Patientez un instant avant de réessayer.',
     genericError: 'Une erreur est survenue. Veuillez réessayer.',
+    tryAgainSoon: 'Veuillez réessayer dans un instant.',
     balance: (credits) => `${credits} crédits`,
     deepOpen: (credits) => `Analyse ouverte \u00b7 ${credits} cr\u00e9dits`,
     deepDebate: (credits) => `D\u00e9bat pour/contre \u00b7 ${credits} cr\u00e9dits`,
@@ -3904,8 +4101,45 @@ const es: LeagueUiPack = {
     koreaStocksHint: 'Las acciones coreanas aún no están abiertas. Este carril no tiene búsqueda.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Corea',
-    techHint: 'Sí o no sobre una empresa, un producto o un evento. Una pregunta, sin fichas.',
-    techSamples: ['¿Apple anunciará un iPad nuevo en octubre?', '¿Samsung lanzará un plegable triple antes de fin de año?'],
+    techHint: 'Pregunta sí/no sobre una empresa, un producto o un ranking de IA. 40 IA predicen; el resultado real las puntúa.',
+    techSamples: [
+      '¿Apple anunciará un iPad nuevo en octubre?',
+      '¿Samsung lanzará un plegable triple antes de fin de año?',
+      '¿Claude estará por encima de GPT en coding a fin de mes?',
+      '¿Una IA china estará en el top 3 este mes?',
+    ],
+    freeformPanel: {
+      tech: {
+        title: 'Tech · rankings de IA',
+        body: 'Pregunta sí/no sobre una empresa, un producto o un ranking de IA. 40 IA predicen; el resultado real las puntúa.',
+        examples: [
+          '¿Apple anunciará un iPad nuevo en octubre?',
+          '¿Samsung lanzará un plegable triple antes de fin de año?',
+          '¿Claude estará por encima de GPT en coding a fin de mes?',
+          '¿Una IA china estará en el top 3 este mes?',
+        ],
+      },
+      sports: {
+        title: 'Deportes',
+        body: 'Pregunta quién gana un partido público. 40 IA predicen; el resultado oficial las puntúa.',
+        examples: ['¿Ganará el Tottenham al Arsenal?', '¿Ganarán los Yankees a los Red Sox?'],
+      },
+      politics_election: {
+        title: 'Elecciones',
+        body: 'Pregunta quién gana una carrera pública que se resuelve pronto. 40 IA predicen; el resultado certificado las puntúa.',
+        examples: ['¿Ganará el demócrata la gobernación de Georgia?'],
+      },
+      entertainment: {
+        title: 'Entretenimiento',
+        body: 'Pregunta por taquilla, listas o premios con resultado público. 40 IA predicen; el ranking publicado las puntúa.',
+        examples: ['¿Chiikawa abrirá en el #1 este fin de semana?', '¿NewJeans será #1 en Melon?'],
+      },
+      real_estate: {
+        title: 'Índices de vivienda',
+        body: 'Pregunta si un índice de vivienda publicado sube o baja. 40 IA predicen; la cifra oficial las puntúa.',
+        examples: ['¿Subirá este mes el índice de pisos de Seúl?'],
+      },
+    },
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
     horizons: { '1d': '1 día', '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
     spotVsEtfNote:
@@ -4182,6 +4416,7 @@ const es: LeagueUiPack = {
     insufficientCredits: (required, balance) => `Abrir una ronda cuesta ${required} créditos \u2014 tienes ${balance}.`,
     rateLimited: 'Demasiadas solicitudes. Espera un momento e inténtalo de nuevo.',
     genericError: 'Algo salió mal. Inténtalo de nuevo.',
+    tryAgainSoon: 'Inténtalo de nuevo en un momento.',
     balance: (credits) => `${credits} créditos`,
     deepOpen: (credits) => `An\u00e1lisis abierto \u00b7 ${credits} cr\u00e9ditos`,
     deepDebate: (credits) => `Debate a favor/en contra \u00b7 ${credits} cr\u00e9ditos`,
@@ -4491,8 +4726,45 @@ const ar: LeagueUiPack = {
     koreaStocksHint: 'أسهم كوريا غير جاهزة بعد. هذا المسار بلا مربع بحث.',
     stockLaneAdminGlobal: 'عالمي',
     stockLaneAdminKorea: 'كوريا',
-    techHint: 'نعم أو لا عن شركة أو منتج أو حدث. اكتب سؤالاً — لا شرائح ثابتة.',
-    techSamples: ['هل تعلن آبل عن آيباد جديد في أكتوبر؟', 'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟'],
+    techHint: 'اسأل بنعم/لا عن شركة أو منتج أو ترتيب للذكاء الاصطناعي. 40 نموذجًا يتنبأ والنتيجة الفعلية تُقيّمهم.',
+    techSamples: [
+      'هل تعلن آبل عن آيباد جديد في أكتوبر؟',
+      'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟',
+      'هل يتفوق كلود على GPT في الترميز قبل نهاية هذا الشهر؟',
+      'هل تدخل شركة ذكاء اصطناعي صينية قائمة الثلاثة الأوائل هذا الشهر؟',
+    ],
+    freeformPanel: {
+      tech: {
+        title: 'التقنية · ترتيب الذكاء الاصطناعي',
+        body: 'اسأل بنعم/لا عن شركة أو منتج أو ترتيب للذكاء الاصطناعي. 40 نموذجًا يتنبأ والنتيجة الفعلية تُقيّمهم.',
+        examples: [
+          'هل تعلن آبل عن آيباد جديد في أكتوبر؟',
+          'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟',
+          'هل يتفوق كلود على GPT في الترميز قبل نهاية هذا الشهر؟',
+          'هل تدخل شركة ذكاء اصطناعي صينية قائمة الثلاثة الأوائل هذا الشهر؟',
+        ],
+      },
+      sports: {
+        title: 'الرياضة',
+        body: 'اسأل من يفوز في مباراة عامة. 40 نموذجًا يتنبأ والنتيجة الرسمية تُقيّمهم.',
+        examples: ['هل يهزم توتنهام أرسنال؟', 'هل يهزم اليانكيز رد سوكس؟'],
+      },
+      politics_election: {
+        title: 'الانتخابات',
+        body: 'اسأل من يفوز في سباق عام تُعلن نتيجته قريبًا. 40 نموذجًا يتنبأ والنتيجة المعتمدة تُقيّمهم.',
+        examples: ['هل يفوز الديمقراطي بمنصب حاكم جورجيا؟'],
+      },
+      entertainment: {
+        title: 'الترفيه',
+        body: 'اسأل عن شباك التذاكر أو القوائم أو الجوائز ذات النتيجة العلنية. 40 نموذجًا يتنبأ والترتيب المنشور يُقيّمهم.',
+        examples: ['هل يحتل تشييكاوا المركز الأول هذا الأسبوع؟', 'هل تصل نيوجينز إلى المركز الأول على ميلون؟'],
+      },
+      real_estate: {
+        title: 'مؤشرات الإسكان',
+        body: 'اسأل إن كان مؤشر إسكان منشور يرتفع أو ينخفض. 40 نموذجًا يتنبأ والرقم الرسمي يُقيّمهم.',
+        examples: ['هل يرتفع مؤشر شقق سيول هذا الشهر؟'],
+      },
+    },
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
     horizons: { '1d': 'يوم واحد', '1w': 'أسبوع واحد', '1m': 'شهر واحد', '3m': '3 أشهر' },
     spotVsEtfNote:
@@ -4764,6 +5036,7 @@ const ar: LeagueUiPack = {
     insufficientCredits: (required, balance) => `فتح الجولة يتطلب ${required} من الرصيد — لديك ${balance}.`,
     rateLimited: 'طلبات كثيرة جدًا. يرجى الانتظار قليلًا ثم المحاولة مرة أخرى.',
     genericError: 'حدث خطأ ما. يرجى المحاولة مرة أخرى.',
+    tryAgainSoon: 'يرجى المحاولة مرة أخرى بعد قليل.',
     balance: (credits) => `${credits} رصيد`,
     deepOpen: (credits) => `تحليل مفتوح \u00b7 ${credits} رصيد`,
     deepDebate: (credits) => `مناظرة مع/ضد \u00b7 ${credits} رصيد`,
@@ -5073,8 +5346,45 @@ const pt: LeagueUiPack = {
     koreaStocksHint: 'As ações coreanas ainda não estão abertas. Esta faixa não tem busca.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Coreia',
-    techHint: 'Sim ou não sobre uma empresa, um produto ou um evento. Uma pergunta, sem fichas.',
-    techSamples: ['A Apple anuncia um novo iPad em outubro?', 'A Samsung lança um dobrável triplo até o fim do ano?'],
+    techHint: 'Pergunte sim/não sobre uma empresa, um produto ou um ranking de IA. 40 IAs preveem; o resultado real as pontua.',
+    techSamples: [
+      'A Apple anuncia um novo iPad em outubro?',
+      'A Samsung lança um dobrável triplo até o fim do ano?',
+      'A Claude fica acima da GPT em coding até o fim do mês?',
+      'Uma IA chinesa entra no top 3 neste mês?',
+    ],
+    freeformPanel: {
+      tech: {
+        title: 'Tech · rankings de IA',
+        body: 'Pergunte sim/não sobre uma empresa, um produto ou um ranking de IA. 40 IAs preveem; o resultado real as pontua.',
+        examples: [
+          'A Apple anuncia um novo iPad em outubro?',
+          'A Samsung lança um dobrável triplo até o fim do ano?',
+          'A Claude fica acima da GPT em coding até o fim do mês?',
+          'Uma IA chinesa entra no top 3 neste mês?',
+        ],
+      },
+      sports: {
+        title: 'Esportes',
+        body: 'Pergunte quem vence um jogo público. 40 IAs preveem; o resultado oficial as pontua.',
+        examples: ['O Tottenham vence o Arsenal?', 'Os Yankees vencem os Red Sox?'],
+      },
+      politics_election: {
+        title: 'Eleições',
+        body: 'Pergunte quem vence uma disputa pública que se resolve em breve. 40 IAs preveem; o resultado certificado as pontua.',
+        examples: ['O democrata vence o governo da Geórgia?'],
+      },
+      entertainment: {
+        title: 'Entretenimento',
+        body: 'Pergunte sobre bilheteria, paradas ou prêmios com resultado público. 40 IAs preveem; o ranking publicado as pontua.',
+        examples: ['Chiikawa abre em 1º neste fim de semana?', 'NewJeans fica em 1º no Melon?'],
+      },
+      real_estate: {
+        title: 'Índices imobiliários',
+        body: 'Pergunte se um índice imobiliário publicado sobe ou desce. 40 IAs preveem; o número oficial as pontua.',
+        examples: ['O índice de apartamentos de Seul sobe neste mês?'],
+      },
+    },
     noCardYet: 'Ainda não há cartão de previsão para este instrumento.',
     horizons: { '1d': '1 dia', '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
     spotVsEtfNote:
@@ -5350,6 +5660,7 @@ const pt: LeagueUiPack = {
     insufficientCredits: (required, balance) => `Abrir uma rodada exige ${required} créditos \u2014 você tem ${balance}.`,
     rateLimited: 'Muitas solicitações. Aguarde um momento e tente novamente.',
     genericError: 'Algo deu errado. Tente novamente.',
+    tryAgainSoon: 'Tente novamente em instantes.',
     balance: (credits) => `${credits} créditos`,
     deepOpen: (credits) => `Análise aberta \u00b7 ${credits} créditos`,
     deepDebate: (credits) => `Debate prós/contras \u00b7 ${credits} créditos`,
