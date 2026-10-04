@@ -5,6 +5,74 @@ import { categoryHasMixedResolutionClocks, visibleChipEntriesForViewer } from '@
 import { admissionStockLane } from '@/lib/league/stock-lane'
 import { resolveLeagueViewer, viewerCatalog } from '@/lib/league/public-access'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import {
+  FREEFORM_RECENT_LIMIT,
+  publicCategoryForLedger,
+  selectRecentPublicFreeformRounds,
+  type FreeformRecentItem,
+  type FreeformRecentRow,
+} from '@/lib/league/freeform-recent'
+
+const FREEFORM_LEDGER_CATEGORIES = [
+  'sports',
+  'politics_election',
+  'entertainment_awards',
+  'real_estate',
+  'tech',
+  'ai_models',
+] as const
+
+async function loadRecentPublicFreeformRounds(now: Date): Promise<Record<string, FreeformRecentItem[]>> {
+  const empty: Record<string, FreeformRecentItem[]> = {
+    sports: [],
+    politics_election: [],
+    entertainment: [],
+    real_estate: [],
+    tech: [],
+  }
+  try {
+    const { data } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select(
+        'id, instrument, proposition_text, resolves_at, category, created_at, grading_status, actual_outcome, cache_key, horizon',
+      )
+      .in('category', [...FREEFORM_LEDGER_CATEGORIES])
+      .eq('item_type', 'ranked')
+      .gt('resolves_at', now.toISOString())
+      .order('created_at', { ascending: false })
+      .limit(48)
+
+    const rows = (data ?? []) as FreeformRecentRow[]
+    const ids = rows.map((row) => row.id)
+    const jobRoundIds = new Set<string>()
+    if (ids.length > 0) {
+      const { data: jobs } = await supabaseAdmin.from('league_generation_jobs').select('round_id').in('round_id', ids)
+      for (const job of (jobs ?? []) as { round_id: string }[]) {
+        if (job.round_id) jobRoundIds.add(job.round_id)
+      }
+    }
+
+    const grouped: Record<string, FreeformRecentRow[]> = {
+      sports: [],
+      politics_election: [],
+      entertainment: [],
+      real_estate: [],
+      tech: [],
+    }
+    for (const row of rows) {
+      const publicId = publicCategoryForLedger(row.category)
+      if (!publicId) continue
+      grouped[publicId].push(row)
+    }
+    for (const key of Object.keys(empty)) {
+      empty[key] = selectRecentPublicFreeformRounds(grouped[key] ?? [], jobRoundIds, now, FREEFORM_RECENT_LIMIT)
+    }
+    return empty
+  } catch (err) {
+    console.warn('[league/instruments] failed loading recent freeform rounds:', err)
+    return empty
+  }
+}
 
 /**
  * GET /api/league/instruments
@@ -14,6 +82,9 @@ import { supabaseAdmin } from '@/lib/supabase/server'
  * members stay gradeable but are omitted here. `promptAllowed` is the
  * (jurisdiction × category) freeform-box flag from the matrix only —
  * admin does not override it. The gateway is the single source of truth.
+ *
+ * Free-prompt tabs stay `coming_soon` (no auto-selected chip). Open public
+ * gateway rounds are attached as `recentRounds` (proposition + deadline).
  */
 export async function GET(req: Request) {
   const auth = await resolveLeagueViewer(req)
@@ -26,77 +97,9 @@ export async function GET(req: Request) {
     jurisdiction: viewer.jurisdiction,
   })
   const stockLane = admissionStockLane(viewer.jurisdiction)
-
-  // Load recent ranked sports / tech / AI-ranking rounds so opened questions
-  // stay discoverable chips on those hub tabs.
-  let sportsInstruments: { instrument: string }[] = []
-  let techHubInstruments: { instrument: string }[] = []
-  try {
-    const { data: sportsData } = await supabaseAdmin
-      .from('prediction_rounds')
-      .select('instrument')
-      .eq('category', 'sports')
-      .eq('item_type', 'ranked')
-      .order('created_at', { ascending: false })
-      .limit(10)
-
-    if (sportsData && sportsData.length > 0) {
-      const seen = new Set<string>()
-      for (const row of sportsData as { instrument: string }[]) {
-        if (row.instrument && !seen.has(row.instrument)) {
-          seen.add(row.instrument)
-          sportsInstruments.push({ instrument: row.instrument })
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[league/instruments] failed loading sports fixtures:', err)
-  }
-  try {
-    const { data: techData } = await supabaseAdmin
-      .from('prediction_rounds')
-      .select('instrument')
-      .in('category', ['tech', 'ai_models'])
-      .eq('item_type', 'ranked')
-      .order('created_at', { ascending: false })
-      .limit(12)
-
-    if (techData && techData.length > 0) {
-      const seen = new Set<string>()
-      for (const row of techData as { instrument: string }[]) {
-        if (row.instrument && !seen.has(row.instrument)) {
-          seen.add(row.instrument)
-          techHubInstruments.push({ instrument: row.instrument })
-        }
-      }
-    }
-  } catch (err) {
-    console.warn('[league/instruments] failed loading tech / AIRANK rounds:', err)
-  }
+  const recent = await loadRecentPublicFreeformRounds(new Date())
 
   const categories = viewerCatalog(viewer).map((c) => {
-    if (c.id === 'sports' && sportsInstruments.length > 0) {
-      return {
-        id: c.id,
-        ledgerCategory: c.ledgerCategory,
-        tone: c.tone,
-        kind: 'instruments' as const,
-        promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
-        instruments: sportsInstruments,
-        mixedResolutionClocks: false,
-      }
-    }
-    if (c.id === 'tech' && techHubInstruments.length > 0) {
-      return {
-        id: c.id,
-        ledgerCategory: c.ledgerCategory,
-        tone: c.tone,
-        kind: 'instruments' as const,
-        promptAllowed: isPromptAllowed(c.id, viewer.jurisdiction),
-        instruments: techHubInstruments,
-        mixedResolutionClocks: false,
-      }
-    }
     return {
       id: c.id,
       ledgerCategory: c.ledgerCategory,
@@ -109,6 +112,7 @@ export async function GET(req: Request) {
           : visibleChipEntriesForViewer(c, viewer).map((i) => ({
               instrument: i.instrument,
             })),
+      recentRounds: recent[c.id] ?? [],
       mixedResolutionClocks: categoryHasMixedResolutionClocks(c),
     }
   })

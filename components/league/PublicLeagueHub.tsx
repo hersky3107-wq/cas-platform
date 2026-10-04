@@ -14,6 +14,7 @@ import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import {
   defaultCatalogCategoryId,
+  isFreeformSearchCategory,
   usesHorizonChipRow,
   type CatalogKind,
   type PublicCategoryId,
@@ -33,6 +34,9 @@ import { KrUsageNoticeList } from '@/components/league/KrLaneDisclosureBlocks'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
 import { KrUniverseChipBrowser, krStockRefusalMessage } from '@/components/league/KrUniverseChipBrowser'
 import { generateErrorMessage, tryAgainSoonMessage } from '@/lib/league/generate-error-copy'
+import { formatSessionDate } from '@/lib/league/card-header-copy'
+import { publicFacingLabel } from '@/lib/league/public-label'
+import type { FreeformRecentItem } from '@/lib/league/freeform-recent'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -44,6 +48,7 @@ type PublicCatalogCategory = {
   promptAllowed: boolean
   mixedResolutionClocks: boolean
   instruments: { instrument: string }[]
+  recentRounds?: FreeformRecentItem[]
 }
 
 type InstrumentsPayload = {
@@ -151,6 +156,7 @@ function CardsPanel() {
   const [categories, setCategories] = useState<PublicCatalogCategory[] | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<PublicCategoryId | null>(null)
   const [selectedInstrument, setSelectedInstrument] = useState<string | null>(null)
+  const [selectedRoundId, setSelectedRoundId] = useState<string | null>(null)
   // Horizon selector next to the instrument chips. Default '1d' — every
   // instrument opens on the 1-day card first.
   const [horizon, setHorizon] = useState<UiHorizon>('1d')
@@ -175,17 +181,17 @@ function CardsPanel() {
   // full card, jurisdiction, everything. `quiet` polls (while a generation
   // job runs) skip the loading flash but share the same supersede guard.
   const loadCard = useCallback(
-    async (instrument: string, horizonArg: UiHorizon, opts?: { quiet?: boolean }) => {
+    async (instrument: string, horizonArg: UiHorizon, opts?: { quiet?: boolean; roundId?: string }) => {
       const quiet = opts?.quiet === true
       if (quiet && quietInFlightRef.current) return
       const requestId = (requestIdRef.current += 1)
       if (quiet) quietInFlightRef.current = true
       if (!quiet) setView({ kind: 'loading' })
       try {
-        const res = await fetch(
-          `/api/league/card?instrument=${encodeURIComponent(instrument)}&horizon=${encodeURIComponent(horizonArg)}`,
-          { credentials: 'include', cache: 'no-store' }
-        )
+        const url = opts?.roundId
+          ? `/api/league/card?round_id=${encodeURIComponent(opts.roundId)}`
+          : `/api/league/card?instrument=${encodeURIComponent(instrument)}&horizon=${encodeURIComponent(horizonArg)}`
+        const res = await fetch(url, { credentials: 'include', cache: 'no-store' })
         const body = (await res.json()) as
           | CardData
           | LockedCardPayload
@@ -246,12 +252,19 @@ function CardsPanel() {
         const firstId = defaultCatalogCategoryId(list)
         setSelectedCategory(firstId)
         const firstCat = list.find((c) => c.id === firstId)
-        const firstInstrument = firstCat?.instruments[0]?.instrument ?? null
-        setSelectedInstrument(firstInstrument)
-        if (firstInstrument) {
-          void loadCard(firstInstrument, '1d')
-        } else {
+        if (firstCat && isFreeformSearchCategory(firstCat.id)) {
+          setSelectedInstrument(null)
+          setSelectedRoundId(null)
           setView({ kind: 'none' })
+        } else {
+          const firstInstrument = firstCat?.instruments[0]?.instrument ?? null
+          setSelectedInstrument(firstInstrument)
+          setSelectedRoundId(null)
+          if (firstInstrument) {
+            void loadCard(firstInstrument, '1d')
+          } else {
+            setView({ kind: 'none' })
+          }
         }
       } catch {
         if (!cancelled) {
@@ -272,32 +285,37 @@ function CardsPanel() {
   const generationStatus =
     view.kind === 'card' ? view.card.generation?.status ?? null : null
   useEffect(() => {
-    if (!selectedInstrument) return
+    if (!selectedInstrument && !selectedRoundId) return
     if (generationStatus !== 'queued' && generationStatus !== 'running') return
-    const id = window.setInterval(() => {
-      void loadCard(selectedInstrument, horizon, { quiet: true })
-    }, GENERATION_POLL_MS)
+    const poll = () =>
+      void loadCard(selectedInstrument ?? '', horizon, {
+        quiet: true,
+        ...(selectedRoundId ? { roundId: selectedRoundId } : {}),
+      })
+    const id = window.setInterval(poll, GENERATION_POLL_MS)
     const onVisible = () => {
-      if (document.visibilityState === 'visible') void loadCard(selectedInstrument, horizon, { quiet: true })
+      if (document.visibilityState === 'visible') poll()
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => {
       window.clearInterval(id)
       document.removeEventListener('visibilitychange', onVisible)
     }
-  }, [generationStatus, selectedInstrument, horizon, loadCard])
+  }, [generationStatus, selectedInstrument, selectedRoundId, horizon, loadCard])
 
   function selectCategory(id: PublicCategoryId) {
     if (!categories) return
     const next = categories.find((c) => c.id === id)
     setSelectedCategory(id)
-    if (!next || (next.kind === 'coming_soon' && next.instruments.length === 0) || next.instruments.length === 0) {
+    if (!next || isFreeformSearchCategory(id) || next.instruments.length === 0) {
       setSelectedInstrument(null)
+      setSelectedRoundId(null)
       setView({ kind: 'none' })
       return
     }
     const first = next.instruments[0]!.instrument
     setSelectedInstrument(first)
+    setSelectedRoundId(null)
     void loadCard(first, horizon)
   }
 
@@ -305,7 +323,14 @@ function CardsPanel() {
   // ALREADY-selected instrument must still fire a fresh fetch.
   function selectInstrument(instrument: string) {
     setSelectedInstrument(instrument)
+    setSelectedRoundId(null)
     void loadCard(instrument, horizon)
+  }
+
+  function selectRecentRound(row: FreeformRecentItem) {
+    setSelectedRoundId(row.round_id)
+    setSelectedInstrument(row.instrument)
+    void loadCard(row.instrument, horizon, { roundId: row.round_id })
   }
 
   // Switching horizon loads THAT horizon's round for the currently selected
@@ -334,7 +359,7 @@ function CardsPanel() {
   const showInstrumentChips = Boolean(
     active &&
       !koreaStocks &&
-      active.id !== 'real_estate' &&
+      !isFreeformSearchCategory(active.id) &&
       (active.id === 'stocks'
         ? active.instruments.length > 0
         : active.kind === 'instruments' || active.instruments.length > 0),
@@ -342,8 +367,12 @@ function CardsPanel() {
   const showHorizon = Boolean(
     active &&
       !koreaStocks &&
+      !isFreeformSearchCategory(active.id) &&
       (active.kind === 'instruments' || active.instruments.length > 0) &&
       usesHorizonChipRow(active.id),
+  )
+  const showFreeformIntro = Boolean(
+    active && isFreeformSearchCategory(active.id) && view.kind !== 'card' && view.kind !== 'locked',
   )
 
   return (
@@ -386,6 +415,7 @@ function CardsPanel() {
                 setAdminLane(lane)
                 if (lane === 'korea') {
                   setSelectedInstrument(null)
+                  setSelectedRoundId(null)
                   setView({ kind: 'none' })
                 }
               }}
@@ -406,17 +436,18 @@ function CardsPanel() {
           seedPrompt={promptSeed}
           onPickInstrument={(instrument) => {
             setSelectedInstrument(instrument)
+            setSelectedRoundId(null)
             void loadCard(instrument, horizon)
           }}
           onRoundOpened={(instrument, nextHorizon) => {
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
+            setSelectedRoundId(null)
             setCategories((prev) => {
               if (!prev) return prev
               return prev.map((cat) => {
                 if (cat.id !== selectedCategory) return cat
-                // real_estate stays coming_soon: regions are searched, not listed.
-                if (cat.id === 'real_estate') return cat
+                if (isFreeformSearchCategory(cat.id)) return cat
                 const exists = cat.instruments.some((i) => i.instrument === instrument)
                 const nextInsts = exists ? cat.instruments : [{ instrument }, ...cat.instruments]
                 return {
@@ -444,14 +475,46 @@ function CardsPanel() {
         />
       ) : null}
 
-      {active?.kind === 'coming_soon' && view.kind !== 'card' && view.kind !== 'locked' ? (
-        <ComingSoonPanel categoryId={active.id} onExample={(text) => setPromptSeed(text)} />
+      {showFreeformIntro && active ? (
+        <>
+          <ComingSoonPanel categoryId={active.id} onExample={(text) => setPromptSeed(text)} />
+          {(active.recentRounds ?? []).length > 0 ? (
+            <div className="rounded-2xl bg-white px-3 py-3">
+              <p className="mb-2 text-xs font-semibold text-slate-600">{t.catalog.recentQuestions}</p>
+              <div className="flex flex-col gap-1.5">
+                {(active.recentRounds ?? []).map((row) => {
+                  const label = publicFacingLabel(
+                    rankedPropositionDisplay(row.instrument, row.proposition_text, locale),
+                    row.proposition_text,
+                  )
+                  if (!label) return null
+                  const deadline = formatSessionDate(row.resolves_at.slice(0, 10), locale)
+                  return (
+                    <button
+                      key={row.round_id}
+                      type="button"
+                      onClick={() => selectRecentRound(row)}
+                      className="rounded-xl bg-slate-50 px-3 py-2 text-left hover:bg-slate-100"
+                    >
+                      <span className="block text-sm font-semibold text-slate-800">{label}</span>
+                      {deadline ? (
+                        <span className="mt-0.5 block text-[11px] text-slate-500">{deadline}</span>
+                      ) : null}
+                    </button>
+                  )
+                })}
+              </div>
+            </div>
+          ) : null}
+        </>
       ) : null}
 
       {showInstrumentChips && active ? (
         <div className="flex flex-wrap gap-1.5">
           {active.instruments.map((i) => {
             const selected = selectedInstrument === i.instrument
+            const label = instrumentLabel(t, i.instrument, locale)
+            if (!label) return null
             return (
               <button
                 key={i.instrument}
@@ -462,7 +525,7 @@ function CardsPanel() {
                   selected ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 shadow-sm hover:bg-slate-100'
                 }`}
               >
-                <span className="block text-sm">{instrumentLabel(t, i.instrument, locale)}</span>
+                <span className="block text-sm">{label}</span>
               </button>
             )
           })}
@@ -515,8 +578,9 @@ function CardsPanel() {
       ) : null}
 
       {(view.kind === 'locked' || view.kind === 'card') &&
-      selectedInstrument &&
-      koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument) ? (
+      (selectedRoundId ||
+        (selectedInstrument &&
+          koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument))) ? (
         <div data-testid="league-round-card">
           {view.kind === 'locked' ? (
             <LockedRoundPanel
@@ -882,12 +946,12 @@ function instrumentLabel(
   locale: LeagueLocale,
 ): string {
   const sports = sportsVsLabel(instrument, locale)
-  if (sports) return sports
+  if (sports) return publicFacingLabel(sports)
   const stock = stockChipLabel(instrument)
-  if (stock) return stock
+  if (stock) return publicFacingLabel(stock)
   const property = propertyInstrumentDisplay(instrument, locale)
-  if (property) return property
-  return t.catalog.instruments[instrument] ?? instrument
+  if (property) return publicFacingLabel(property)
+  return publicFacingLabel(t.catalog.instruments[instrument], '')
 }
 
 function categoryChipClass(tone: ColorBucket, selected: boolean): string {

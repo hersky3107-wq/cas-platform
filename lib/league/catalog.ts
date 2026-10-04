@@ -69,9 +69,9 @@ export function isFreeformSearchCategory(id: string): boolean {
   return (FREEFORM_SEARCH_CATEGORY_IDS as readonly string[]).includes(id)
 }
 
-/** Trading 1d/1w/1m/3m chips. Publication-date / event-date categories hide them. */
+/** Trading 1d/1w/1m/3m chips. Freeform + stocks hide them — horizon is fixed by the proposition. */
 export function usesHorizonChipRow(id: string): boolean {
-  return id !== 'sports' && id !== 'real_estate' && id !== 'stocks'
+  return !isFreeformSearchCategory(id) && id !== 'stocks'
 }
 
 export type CatalogKind = 'instruments' | 'coming_soon'

@@ -52,8 +52,8 @@ describe('AIRANK generate path from the tech prompt', () => {
     expect(CARD_ROUTE).toContain('buildPublicRankedRoundInput')
     expect(CARD_ROUTE).toContain("decodeAirankInstrument(gate.instrument)")
     expect(GENERATE_ROUTE).toContain('resolvePublicInstrumentGenerateTarget(viewer, instrument, horizon, locale)')
-    expect(INSTRUMENTS).toContain("['tech', 'ai_models']")
-    expect(INSTRUMENTS).toContain("c.id === 'tech'")
+    expect(INSTRUMENTS).toContain("'ai_models'")
+    expect(INSTRUMENTS).toContain('recentRounds')
   })
 
   it('buildAirankRankedRoundInput reconstructs the first-snapshot proposition', () => {

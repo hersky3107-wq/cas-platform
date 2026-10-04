@@ -177,6 +177,7 @@ describe('dictionary completeness', () => {
         hub.rateLimited,
         hub.genericError,
         hub.tryAgainSoon,
+        getLeagueUiPack(locale).catalog.recentQuestions,
         hub.openRound(30),
         hub.insufficientCredits(30, 0),
         hub.balance(120),

@@ -13,6 +13,7 @@ import { stockQuoteSymbol, decodeStockInstrument } from './gateway/adapters/stoc
 import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { krStockPropositionDisplay, parseKrStockProposition } from './korea-stock-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
+import { publicFacingLabel } from './public-label'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
 export function localeTag(locale: LeagueLocale): string {
@@ -125,23 +126,34 @@ function shownPriceInstrument(
 }
 
 function nonPriceInstrumentDisplay(instrument: string, locale: LeagueLocale): string {
-  return (
+  return publicFacingLabel(
     sportsInstrumentDisplay(instrument, locale) ??
-    electionInstrumentDisplay(instrument, locale) ??
-    showInstrumentDisplay(instrument, locale) ??
-    propertyInstrumentDisplay(instrument, locale) ??
-    instrument
+      electionInstrumentDisplay(instrument, locale) ??
+      showInstrumentDisplay(instrument, locale) ??
+      propertyInstrumentDisplay(instrument, locale) ??
+      '',
+    '',
   )
 }
 
 /** Localized proposition for curated sports fixtures and election picks. */
 export function rankedPropositionDisplay(instrument: string, stored: string, locale: LeagueLocale): string {
-  if (decodeSportsInstrument(instrument)) return sportsPropositionDisplay(instrument, stored, locale)
-  if (decodePoliticsInstrument(instrument)) return politicsPropositionDisplay(instrument, stored, locale)
-  if (decodeEntertainmentInstrument(instrument)) return entertainmentPropositionDisplay(instrument, stored, locale)
-  if (decodePropertyInstrument(instrument)) return propertyPropositionDisplay(instrument, stored, locale)
-  if (decodeKrStockInstrument(instrument)) return krStockPropositionDisplay(instrument, stored, locale)
-  return stored
+  if (decodeSportsInstrument(instrument)) {
+    return publicFacingLabel(sportsPropositionDisplay(instrument, stored, locale), stored)
+  }
+  if (decodePoliticsInstrument(instrument)) {
+    return publicFacingLabel(politicsPropositionDisplay(instrument, stored, locale), stored)
+  }
+  if (decodeEntertainmentInstrument(instrument)) {
+    return publicFacingLabel(entertainmentPropositionDisplay(instrument, stored, locale), stored)
+  }
+  if (decodePropertyInstrument(instrument)) {
+    return publicFacingLabel(propertyPropositionDisplay(instrument, stored, locale), stored)
+  }
+  if (decodeKrStockInstrument(instrument)) {
+    return publicFacingLabel(krStockPropositionDisplay(instrument, stored, locale), stored)
+  }
+  return publicFacingLabel(stored, '')
 }
 
 export function headerHeadline(args: {
@@ -160,7 +172,10 @@ export function headerHeadline(args: {
   if (propositionKindOf({ proposition_kind: args.propositionKind }) !== 'binary_close_higher') {
     // Non-price contract: no anchor price EXISTS, so neither the price form
     // nor the "starting price unavailable" apology is the truth.
-    const displayInst = nonPriceInstrumentDisplay(args.instrument, args.locale)
+    const displayInst = publicFacingLabel(
+      nonPriceInstrumentDisplay(args.instrument, args.locale),
+      args.subjectLabel || args.propositionText || '',
+    )
     return args.t.header.headlinePlain(args.roundDate, displayInst)
   }
   if (args.anchorPrice === null) {

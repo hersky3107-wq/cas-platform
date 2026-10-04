@@ -269,6 +269,8 @@ export type LeagueUiPack = {
       'sports' | 'politics_election' | 'entertainment' | 'real_estate' | 'tech',
       { title: string; body: string; examples: readonly string[] }
     >
+    /** Open public-gateway questions under the freeform intro. */
+    recentQuestions: string
     noCardYet: string
     /** Horizon selector chips shown next to the instrument chips. Default '1d'. */
     horizons: { '1d': string; '1w': string; '1m': string; '3m': string }
@@ -1061,6 +1063,7 @@ const en: LeagueUiPack = {
         examples: ['Will the Seoul apartment price index rise this month?'],
       },
     },
+    recentQuestions: 'Recent questions',
     noCardYet: 'No prediction card for this instrument yet.',
     horizons: { '1d': '1 day', '1w': '1 week', '1m': '1 month', '3m': '3 months' },
     spotVsEtfNote:
@@ -1679,6 +1682,7 @@ const ko: LeagueUiPack = {
         examples: ['서울 아파트 이번 달 오를까?'],
       },
     },
+    recentQuestions: '최근 질문',
     noCardYet: '이 종목의 예측 카드가 아직 없습니다.',
     horizons: { '1d': '1일', '1w': '1주', '1m': '1개월', '3m': '3개월' },
     spotVsEtfNote:
@@ -2293,6 +2297,7 @@ const ja: LeagueUiPack = {
         examples: ['ソウルのマンション指数は今月上がる？'],
       },
     },
+    recentQuestions: '最近の質問',
     noCardYet: 'この銘柄の予測カードはまだありません。',
     horizons: { '1d': '1日', '1w': '1週間', '1m': '1か月', '3m': '3か月' },
     spotVsEtfNote:
@@ -2904,6 +2909,7 @@ const zhTW: LeagueUiPack = {
         examples: ['首爾公寓指數這個月會漲嗎？'],
       },
     },
+    recentQuestions: '最近的問題',
     noCardYet: '此標的尚無預測卡。',
     horizons: { '1d': '1天', '1w': '1週', '1m': '1個月', '3m': '3個月' },
     spotVsEtfNote:
@@ -3514,6 +3520,7 @@ const fr: LeagueUiPack = {
         examples: ['L’indice des appartements à Séoul montera-t-il ce mois-ci ?'],
       },
     },
+    recentQuestions: 'Questions récentes',
     noCardYet: 'Pas encore de carte de prédiction pour cet instrument.',
     horizons: { '1d': '1 jour', '1w': '1 semaine', '1m': '1 mois', '3m': '3 mois' },
     spotVsEtfNote:
@@ -4140,6 +4147,7 @@ const es: LeagueUiPack = {
         examples: ['¿Subirá este mes el índice de pisos de Seúl?'],
       },
     },
+    recentQuestions: 'Preguntas recientes',
     noCardYet: 'Aún no hay tarjeta de predicción para este instrumento.',
     horizons: { '1d': '1 día', '1w': '1 semana', '1m': '1 mes', '3m': '3 meses' },
     spotVsEtfNote:
@@ -4765,6 +4773,7 @@ const ar: LeagueUiPack = {
         examples: ['هل يرتفع مؤشر شقق سيول هذا الشهر؟'],
       },
     },
+    recentQuestions: 'الأسئلة الأخيرة',
     noCardYet: 'لا توجد بطاقة توقع لهذه الأداة بعد.',
     horizons: { '1d': 'يوم واحد', '1w': 'أسبوع واحد', '1m': 'شهر واحد', '3m': '3 أشهر' },
     spotVsEtfNote:
@@ -5385,6 +5394,7 @@ const pt: LeagueUiPack = {
         examples: ['O índice de apartamentos de Seul sobe neste mês?'],
       },
     },
+    recentQuestions: 'Perguntas recentes',
     noCardYet: 'Ainda não há cartão de previsão para este instrumento.',
     horizons: { '1d': '1 dia', '1w': '1 semana', '1m': '1 mês', '3m': '3 meses' },
     spotVsEtfNote:

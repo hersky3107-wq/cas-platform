@@ -357,6 +357,7 @@ describe('header honesty', () => {
       }),
     )
     expect(html).toContain('순위 데이터: LMArena (CC BY 4.0)')
+    expect(html).not.toContain('AIRANK:')
   })
 
   it('rankedPropositionDisplay decodes politics when stored proposition is the instrument id', () => {
