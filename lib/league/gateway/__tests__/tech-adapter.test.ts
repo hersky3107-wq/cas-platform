@@ -135,7 +135,6 @@ describe('tech adapter — open-world resolution', () => {
       ['애플 폴더블은 루머일 뿐일까?', 'rumor_only'],
       ['아이폰이 혁신적일까?', 'subjective_claim'],
       ['엔비디아 주가가 오를까?', 'price_or_earnings'],
-      ['GPT가 이번 달 LMArena 1위일까?', 'ai_ranking'],
       ['삼성이 2027년 6월에 폴더블을 출시할까?', 'deadline_too_far'],
       ['애플이 2024년 9월에 아이폰을 발표했을까?', 'already_resolved'],
     ]
@@ -149,7 +148,31 @@ describe('tech adapter — open-world resolution', () => {
       assertApprovedCopy(ko)
     }
     expect(refusalMessageForKey('league.gateway.refusal.price_or_earnings', 'ko')).toContain('주식')
-    expect(refusalMessageForKey('league.gateway.refusal.ai_ranking', 'ko')).toContain('AI 순위')
+    expect(refusalMessageForKey('league.gateway.refusal.airank_min_horizon', 'ko')).toContain('AI 순위')
+  })
+
+  it('routes ranking questions to AIRANK and leaves tech events on TECH:OPEN', async () => {
+    const ranking = await openAdapter.resolveEntity('GPT가 이번 달 LMArena 1위일까?', 'ko')
+    expect(ranking.ok).toBe(true)
+    if (!ranking.ok) throw new Error('expected AIRANK')
+    expect(ranking.entity_id).toMatch(/^AIRANK:text:overall:brand_rank1:OpenAI:20261031$/)
+    const composed = openAdapter.composeProposition(
+      slots({ entity_id: ranking.entity_id, entity_label: ranking.label, slots: { locale: 'ko' } }),
+      OPEN_NOW,
+    )
+    expect(composed.category).toBe('ai_models')
+    expect(composed.horizon).toBe('1m')
+    expect(composed.proposition_text).toContain('이후 처음 발표되는 LMArena')
+    expect(openAdapter.gradeSources(slots({ entity_id: ranking.entity_id }))[0]).toEqual({
+      tier: 1,
+      kind: 'official_api',
+      endpoint: 'lmarena:leaderboard',
+    })
+
+    const tech = await openAdapter.resolveEntity('스페이스엑스가 이번 달 스타십을 발사할까?', 'ko')
+    expect(tech.ok).toBe(true)
+    if (!tech.ok) throw new Error('expected tech')
+    expect(tech.entity_id).toMatch(/^TECH:OPEN:/)
   })
 })
 
@@ -268,7 +291,8 @@ describe('tech adapter — side pair, grade ladder, refusals', () => {
       'rumor_only',
       'subjective_claim',
       'price_or_earnings',
-      'ai_ranking',
+      'unsupported_field',
+      'airank_min_horizon',
       'deadline_too_far',
       'already_resolved',
       'missing_slot',

@@ -31,7 +31,7 @@ import type { JurisdictionGroup } from './jurisdiction/types'
  *  - `bond_rate` and `macro_econ` stay on the ledger CHECK only (not a public chip)
  *  - `futures_derivatives` is schema-only (not a public chip)
  *  - `entertainment_awards` is the ledger key for public `entertainment`
- *  - `tech` is a public free-prompt category (no chips). `ai_models` stays ledger-only.
+ *  - `tech` is a public free-prompt category (no chips). Ranking questions route to `ai_models` / AIRANK.
  */
 
 export const PUBLIC_CATEGORY_IDS = [

@@ -7,7 +7,13 @@
  * Non-text arenas use the dataset's own `overall` category string.
  */
 
-import { AI_VENDOR_BRANDS, brandFromOrganization, type AiVendorBrand } from './brands'
+import {
+  AI_VENDOR_BRANDS,
+  brandFromOrganization,
+  isAirankCamp,
+  type AiVendorBrand,
+  type AirankCamp,
+} from './brands'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { LMARENA_ATTRIBUTION } from './meta'
 
@@ -17,7 +23,14 @@ export const AIRANK_LEDGER_CATEGORY = 'ai_models' as const
 /** Dataset category string for non-text arenas (webdev / vision / image / video / search). */
 export const AIRANK_OVERALL_CATEGORY = 'overall'
 
-export const AIRANK_KINDS = ['brand_rank1', 'brand_topn', 'brand_above', 'model_rank1'] as const
+export const AIRANK_KINDS = [
+  'brand_rank1',
+  'brand_topn',
+  'brand_above',
+  'model_rank1',
+  'camp_rank1',
+  'camp_topn',
+] as const
 export type AirankKind = (typeof AIRANK_KINDS)[number]
 
 export const AIRANK_HORIZONS = ['1w', '1m', '3m'] as const
@@ -137,7 +150,7 @@ export function encodeAirankInstrument(input: EncodeAirankInput): string {
   const deadline = ymdToYyyymmdd(p.deadlineYmd)
   if (!deadline) throw new Error('AIRANK encode failed: bad_deadline')
   const mid =
-    p.kind === 'brand_topn' || p.kind === 'brand_above'
+    p.kind === 'brand_topn' || p.kind === 'brand_above' || p.kind === 'camp_topn'
       ? `${encodeToken(p.subject)}:${encodeToken(p.param!)}`
       : encodeToken(p.subject)
   return `${AIRANK_PREFIX}:${p.arena}:${p.category}:${p.kind}:${mid}:${deadline}`
@@ -204,6 +217,38 @@ function parseAirankParts(
         category: input.category,
         kind: input.kind,
         subject,
+        deadlineYmd: input.deadlineYmd,
+      },
+    }
+  }
+
+  if (input.kind === 'camp_rank1' || input.kind === 'camp_topn') {
+    const camp = input.subject.trim().toLowerCase()
+    if (!isAirankCamp(camp)) return { ok: false, reason: 'bad_subject' }
+    if (input.kind === 'camp_rank1') {
+      return {
+        ok: true,
+        parts: {
+          arena: input.arena,
+          category: input.category,
+          kind: input.kind,
+          subject: camp,
+          deadlineYmd: input.deadlineYmd,
+        },
+      }
+    }
+    const n = Number(input.param)
+    if (!Number.isInteger(n) || n < AIRANK_TOPN_MIN || n > AIRANK_TOPN_MAX) {
+      return { ok: false, reason: 'n_out_of_range' }
+    }
+    return {
+      ok: true,
+      parts: {
+        arena: input.arena,
+        category: input.category,
+        kind: input.kind,
+        subject: camp,
+        param: String(n),
         deadlineYmd: input.deadlineYmd,
       },
     }
@@ -280,17 +325,109 @@ export function horizonDays(horizon: AirankHorizon): number {
   return 90
 }
 
-/** Server-composed proposition — no user substring. */
-export function airankPropositionText(parts: AirankParts): string {
-  const field = `LMArena ${parts.arena}/${parts.category}`
-  if (parts.kind === 'brand_rank1') {
-    return `Will ${parts.subject} hold rank 1 on ${field} on ${parts.deadlineYmd}?`
+const FIELD_LABEL: Record<string, { ko: string; en: string }> = {
+  'text/overall': { ko: '종합', en: 'overall' },
+  'text/coding': { ko: '코딩', en: 'coding' },
+  'text/math': { ko: '수학', en: 'math' },
+  'text/creative_writing': { ko: '글쓰기', en: 'creative writing' },
+  'text/hard_prompts': { ko: '추론', en: 'hard prompts' },
+  'text/instruction_following': { ko: '지시 따르기', en: 'instruction following' },
+  'webdev/overall': { ko: '웹개발', en: 'webdev' },
+  'text_to_image/overall': { ko: '이미지 생성', en: 'image generation' },
+  'text_to_video/overall': { ko: '영상 생성', en: 'video' },
+  'vision/overall': { ko: '이미지 이해', en: 'vision' },
+  'search/overall': { ko: '검색', en: 'search' },
+}
+
+const BRAND_LABEL_KO: Record<string, string> = {
+  OpenAI: '오픈AI',
+  Google: '구글',
+  Anthropic: '클로드',
+  xAI: '그록',
+  DeepSeek: '딥시크',
+  'Alibaba/Qwen': '알리바바',
+  Moonshot: '문샷',
+  'Zhipu/GLM': '지푸',
+  MiniMax: '미니맥스',
+  Meta: '메타',
+  Mistral: '미스트랄',
+  'Black Forest Labs': '플럭스',
+  Runway: '런웨이',
+  'Kuaishou (Kling)': '클링',
+  Luma: '루마',
+  Pika: '피카',
+  Ideogram: '아이디오그램',
+  Recraft: '리크래프트',
+  Microsoft: '마이크로소프트',
+  NVIDIA: '엔비디아',
+  Amazon: '아마존',
+}
+
+const CAMP_LABEL: Record<AirankCamp, { ko: string; en: string }> = {
+  us: { ko: '미국 AI', en: 'US AI' },
+  china: { ko: '중국 AI', en: 'Chinese AI' },
+  europe: { ko: '유럽 AI', en: 'European AI' },
+}
+
+function fieldLabel(parts: AirankParts, locale: 'ko' | 'en'): string {
+  const hit = FIELD_LABEL[`${parts.arena}/${parts.category}`]
+  return hit ? hit[locale] : parts.category
+}
+
+function iGa(name: string): '이' | '가' {
+  const last = name.charCodeAt(name.length - 1)
+  if (last >= 0xac00 && last <= 0xd7a3) return (last - 0xac00) % 28 === 0 ? '가' : '이'
+  return '가'
+}
+
+export function airankSubjectLabel(parts: AirankParts, locale: 'ko' | 'en' = 'en'): string {
+  if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') {
+    const camp = isAirankCamp(parts.subject) ? CAMP_LABEL[parts.subject] : null
+    return camp ? camp[locale] : parts.subject
   }
-  if (parts.kind === 'brand_topn') {
-    return `Will ${parts.subject} rank in the top ${parts.param} on ${field} on ${parts.deadlineYmd}?`
+  if (parts.kind === 'model_rank1') return parts.subject
+  if (locale === 'ko') return BRAND_LABEL_KO[parts.subject] ?? parts.subject
+  if (parts.subject === 'Black Forest Labs') return 'Flux'
+  if (parts.subject === 'Anthropic') return 'Claude'
+  if (parts.subject === 'Google') return 'Gemini'
+  if (parts.subject === 'OpenAI') return 'GPT'
+  if (parts.subject === 'xAI') return 'Grok'
+  return parts.subject
+}
+
+export function airankResolutionRule(parts: AirankParts, locale: 'ko' | 'en' = 'en'): string {
+  if (locale === 'ko') {
+    return `${parts.deadlineYmd} 이후 처음 발표되는 LMArena 스냅샷으로 판정합니다. 라운드가 열린 날보다 이른 스냅샷은 쓰지 않습니다.`
+  }
+  return `First LMArena snapshot published on or after ${parts.deadlineYmd} (never a snapshot from before the round opened). YES if the queried ranking holds; ties on brand_above are NO. Camp kinds are YES if any brand of that camp meets the condition.`
+}
+
+/** Server-composed proposition — no user substring. The first-snapshot rule is visible. */
+export function airankPropositionText(parts: AirankParts, locale: 'ko' | 'en' = 'en'): string {
+  const field = fieldLabel(parts, locale)
+  const subject = airankSubjectLabel(parts, locale)
+  const deadline = parts.deadlineYmd
+  if (locale === 'ko') {
+    const particle = iGa(subject)
+    if (parts.kind === 'brand_rank1' || parts.kind === 'model_rank1' || parts.kind === 'camp_rank1') {
+      return `${subject}${particle} ${deadline} 이후 처음 발표되는 LMArena ${field} 순위에서 1위일까?`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return `${subject}${particle} ${deadline} 이후 처음 발표되는 LMArena ${field} 순위에서 ${parts.param}위 안에 들까?`
+    }
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'ko')
+    return `${subject}${particle} ${deadline} 이후 처음 발표되는 LMArena ${field} 순위에서 ${other}보다 위일까?`
+  }
+  const first = `the first LMArena ${field} ranking published on or after ${deadline}`
+  if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+    return `Will ${subject} be #1 on ${first}?`
+  }
+  if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+    return `Will ${subject} rank in the top ${parts.param} on ${first}?`
   }
   if (parts.kind === 'brand_above') {
-    return `Will ${parts.subject} rank above ${parts.param} on ${field} on ${parts.deadlineYmd}?`
+    const other = airankSubjectLabel({ ...parts, kind: 'brand_rank1', subject: parts.param ?? '' }, 'en')
+    return `Will ${subject} rank above ${other} on ${first}?`
   }
-  return `Will a model whose name contains "${parts.subject}" hold rank 1 on ${field} on ${parts.deadlineYmd}?`
+  return `Will a model whose name contains "${parts.subject}" be #1 on ${first}?`
 }

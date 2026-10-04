@@ -81,6 +81,8 @@ export type RefusalCode =
   | 'rumor_only'
   | 'subjective_claim'
   | 'ai_ranking'
+  | 'unsupported_field'
+  | 'airank_min_horizon'
   | 'deadline_too_far'
   | 'already_resolved'
 

@@ -1,8 +1,6 @@
 /**
- * AI_MODELS adapter — ledger-only AIRANK engine.
- *
- * Public chip and freeform tech-prompt routing are NOT wired. Packet +
- * official LMArena grading only. Horizons: 1w / 1m / 3m.
+ * AI_MODELS adapter — AIRANK engine + freeform ranking prompts.
+ * Horizons: 1w / 1m / 3m. Tech free-prompt also routes ranking here.
  */
 
 import { isUiHorizon } from '../../horizon'
@@ -23,19 +21,25 @@ import type {
 import {
   AIRANK_LEDGER_CATEGORY,
   airankPropositionText,
+  airankResolutionRule,
+  airankSubjectLabel,
   decodeAirankInstrument,
   isAirankHorizon,
   isAirankInstrument,
   parseAirankInstrument,
-  validateAirankHorizon,
 } from '../../ai-ranking/instrument'
+import { airankHorizonFromDeadline, parseAirankPrompt } from '../../ai-ranking/resolve'
 import { buildAirankPacket, type AirankAdapterIo } from './ai-models-packet'
 
 const REFUSALS: readonly RefusalCode[] = [
   'prompt_not_available',
+  'unsupported_field',
+  'airank_min_horizon',
+  'deadline_too_far',
+  'already_resolved',
+  'vague_claim',
   'ungradeable',
   'horizon_incompatible',
-  'already_resolved',
   'missing_slot',
   'jurisdiction_blocked',
 ]
@@ -44,25 +48,34 @@ function refuse(code: RefusalCode, safe_facts?: Record<string, string>): Refusal
   return { code, message_i18n_key: refusalMessageKey(code), ...(safe_facts ? { safe_facts } : {}) }
 }
 
-export function createAiModelsAdapter(io: AirankAdapterIo): CategoryAdapter {
+export function createAiModelsAdapter(io: AirankAdapterIo, nowFn: () => Date = () => new Date()): CategoryAdapter {
   return {
     category_id: 'ai_models',
     ledger_category: AIRANK_LEDGER_CATEGORY,
     entity_kinds: ['company'],
     observation_shape: 'occurrence',
 
-    async resolveEntity(raw: string): Promise<EntityResolution> {
+    async resolveEntity(raw: string, locale: string): Promise<EntityResolution> {
       if (isAirankInstrument(raw) && decodeAirankInstrument(raw)) {
         const parts = decodeAirankInstrument(raw)!
         return {
           ok: true,
           entity_id: raw,
           entity_kind: 'company',
-          label: parts.subject,
+          label: airankSubjectLabel(parts, locale === 'ko' ? 'ko' : 'en'),
           skip_confirm: true,
         }
       }
-      return { ok: false, refuse: refuse('prompt_not_available') }
+      const parsed = parseAirankPrompt(raw, nowFn())
+      if (parsed.ok) {
+        return {
+          ok: true,
+          entity_id: parsed.instrument,
+          entity_kind: 'company',
+          label: parsed.label,
+        }
+      }
+      return { ok: false, refuse: refuse(parsed.code === 'vague_claim' ? 'prompt_not_available' : parsed.code) }
     },
 
     requiredSlots(entity): readonly string[] {
@@ -82,22 +95,29 @@ export function createAiModelsAdapter(io: AirankAdapterIo): CategoryAdapter {
       return REFUSALS.map((code) => ({ code, message_i18n_key: refusalMessageKey(code) }))
     },
 
-    composeProposition(slots: NormalizeSlots): ComposedRound {
-      const parsed = parseAirankInstrument(slots.entity_id, slots.horizon)
+    composeProposition(slots: NormalizeSlots, now: Date = new Date()): ComposedRound {
+      const parsed = parseAirankInstrument(slots.entity_id)
       if (!parsed.ok) throw new Error(`ai_models.composeProposition: ${parsed.reason}`)
       const parts = parsed.parts
-      const horizon = slots.horizon && isAirankHorizon(slots.horizon) ? slots.horizon : '1m'
+      const locale = slots.slots.locale === 'ko' || /[\uAC00-\uD7A3]/.test(slots.entity_label) ? 'ko' : 'en'
+      const fromDeadline = airankHorizonFromDeadline(parts.deadlineYmd, now)
+      const horizon =
+        fromDeadline.ok
+          ? fromDeadline.horizon
+          : slots.horizon && isAirankHorizon(slots.horizon)
+            ? slots.horizon
+            : '1m'
       return {
-        proposition_text: airankPropositionText(parts),
+        proposition_text: airankPropositionText(parts, locale),
         category: AIRANK_LEDGER_CATEGORY,
         instrument: slots.entity_id,
         horizon,
-        resolution_rule: `First LMArena snapshot published on or after ${parts.deadlineYmd} (never a snapshot from before the round opened). YES if the queried ranking holds; ties on brand_above are NO.`,
+        resolution_rule: airankResolutionRule(parts, locale),
         resolves_at: `${parts.deadlineYmd}T23:59:59.999Z`,
         item_type: 'ranked',
         cache_key: `airank|${slots.entity_id}|${horizon}`,
         proposition_kind: 'binary_subject_outcome',
-        subject_label: parts.subject,
+        subject_label: airankSubjectLabel(parts, locale),
         observation_shape: 'occurrence',
       }
     },
@@ -111,8 +131,7 @@ export function createAiModelsAdapter(io: AirankAdapterIo): CategoryAdapter {
     },
 
     isDecidable(slots: NormalizeSlots): boolean {
-      if (validateAirankHorizon(slots.horizon) != null) return false
-      return parseAirankInstrument(slots.entity_id, slots.horizon).ok
+      return decodeAirankInstrument(slots.entity_id) !== null
     },
 
     slotsForRound(round: PacketRound): NormalizeSlots {

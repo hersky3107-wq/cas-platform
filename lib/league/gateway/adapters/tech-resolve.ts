@@ -41,7 +41,6 @@ const MAX_HORIZON_DAYS = 92
 
 const PRICE =
   /주가|종가|실적|매출|어닝|가이던스|\bearnings\b|\beps\b|stock price|share price|close higher|주식이?\s*(?:오르|내리|상승|하락)/i
-const AI_RANK = /순위|리더보드|leaderboard|lmarena|chatbot arena|artificial analysis|open llm|벤치마크/i
 const SUBJECTIVE = /흥행|혁신적|잘\s*팔|대박|명작|좋을까|성공할|innovative|sell well|hit product|blockbuster/i
 const RUMOR = /루머|소문|rumou?r|카더라|unconfirmed/i
 
@@ -338,7 +337,6 @@ export function parseOpenTechPrompt(raw: string, now: Date = new Date()): TechPa
   const text = raw.trim()
   if (!text) return { ok: false, code: 'vague_claim' }
   if (PRICE.test(text)) return { ok: false, code: 'price_or_earnings' }
-  if (AI_RANK.test(text)) return { ok: false, code: 'ai_ranking' }
   if (SUBJECTIVE.test(text)) return { ok: false, code: 'subjective_claim' }
   if (RUMOR.test(text)) return { ok: false, code: 'rumor_only' }
   if (/[가-힣]/.test(text)) {

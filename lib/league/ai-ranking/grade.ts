@@ -6,7 +6,7 @@
 
 import type { AirankHorizon, AirankParts } from './instrument'
 import { horizonDays } from './instrument'
-import type { MappedVendorBrand } from './brands'
+import { campOfBrand, isAirankCamp, type MappedVendorBrand } from './brands'
 
 export type AirankVerdict = 'YES' | 'NO' | 'VOID'
 
@@ -97,13 +97,33 @@ export function gradeAirankSnapshot(parts: AirankParts, input: {
     )
   }
 
-  const token = parts.subject.toLowerCase()
+  if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') {
+    const camp = isAirankCamp(parts.subject) ? parts.subject : null
+    const n = parts.kind === 'camp_topn' ? Number(parts.param) : 1
+    const hits = camp
+      ? input.brands.filter((r) => campOfBrand(r.brand) === camp && r.rank <= n)
+      : []
+    if (!hits.length) {
+      return no(`NO: no ${parts.subject} brand in top ${n} on ${date}`, date)
+    }
+    const best = hits.reduce((a, b) => (b.rank < a.rank ? b : a))
+    return yesGrade(
+      `YES: ${best.brand} (${best.model}) holds rank ${best.rank} for camp ${parts.subject} on ${date}`,
+      date,
+    )
+  }
+
+  const token = foldToken(parts.subject)
   const rank1 = input.models.filter((m) => m.rank === 1)
-  const hit = rank1.find((m) => m.model.toLowerCase().includes(token))
+  const hit = rank1.find((m) => foldToken(m.model).includes(token))
   if (!hit) {
     return no(`NO: no rank-1 model contains "${parts.subject}" on ${date}`, date)
   }
   return yesGrade(`YES: ${hit.model} holds rank 1 on ${date}`, date)
+}
+
+function foldToken(value: string): string {
+  return value.toLowerCase().replace(/[\s._-]+/g, '')
 }
 
 function yesGrade(raw: string, _date: string): AirankGrade {
@@ -129,6 +149,12 @@ export function brandHeldQueriedPosition(
   parts: AirankParts,
   brands: readonly SnapshotBrandRow[],
 ): boolean {
+  if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') {
+    const camp = isAirankCamp(parts.subject) ? parts.subject : null
+    if (!camp) return false
+    const n = parts.kind === 'camp_topn' ? Number(parts.param) : 1
+    return brands.some((r) => campOfBrand(r.brand) === camp && r.rank <= n)
+  }
   const hit = bestOf(brands, parts.subject)
   if (!hit) return false
   if (parts.kind === 'brand_rank1') return hit.rank === 1
@@ -164,6 +190,14 @@ export function baseRateFromHistory(args: {
       if ((a?.brand ?? '') !== (b?.brand ?? '')) rank1Changes += 1
     }
     if (args.parts.kind === 'model_rank1') continue
+    if (args.parts.kind === 'camp_rank1' || args.parts.kind === 'camp_topn') {
+      const camp = isAirankCamp(args.parts.subject) ? args.parts.subject : null
+      if (camp && row.brands.some((r) => campOfBrand(r.brand) === camp)) {
+        subjectObserved += 1
+        if (brandHeldQueriedPosition(args.parts, row.brands)) subjectHeld += 1
+      }
+      continue
+    }
     if (bestOf(row.brands, args.parts.subject)) {
       subjectObserved += 1
       if (brandHeldQueriedPosition(args.parts, row.brands)) subjectHeld += 1

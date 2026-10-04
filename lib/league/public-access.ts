@@ -28,6 +28,7 @@ import { buildSportsRankedRoundInput } from './gateway/adapters/sports-compose'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { buildStockRankedRoundInput, decodeStockInstrument } from './gateway/adapters/stock-catalog'
 import { decodeKrStockInstrument } from './korea-equity-catalog'
+import { decodeAirankInstrument } from './ai-ranking/instrument'
 import { buildKrStockRankedRoundInput } from './korea-stock-round'
 import { admissionStockLane, isGlobalStockInstrument } from './stock-lane'
 import { isUniverseCodeVisible } from './korea-universe-store'
@@ -88,7 +89,8 @@ export function isPublicRankedInstrument(instrument: string): boolean {
     decodeEntertainmentInstrument(instrument) !== null ||
     decodePropertyInstrument(instrument) !== null ||
     decodeStockInstrument(instrument) !== null ||
-    decodeKrStockInstrument(instrument) !== null
+    decodeKrStockInstrument(instrument) !== null ||
+    decodeAirankInstrument(instrument) !== null
   )
 }
 

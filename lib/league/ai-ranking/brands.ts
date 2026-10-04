@@ -138,6 +138,116 @@ const ORG_ALIASES: Record<string, AiVendorBrand> = {
   'inception-ai': 'Inception',
   'inception ai': 'Inception',
   inception: 'Inception',
+  chatgpt: 'OpenAI',
+  'chat gpt': 'OpenAI',
+  gpt: 'OpenAI',
+  '챗gpt': 'OpenAI',
+  챗지피티: 'OpenAI',
+  '오픈ai': 'OpenAI',
+  오픈에이아이: 'OpenAI',
+  클로드: 'Anthropic',
+  claude: 'Anthropic',
+  앤트로픽: 'Anthropic',
+  제미나이: 'Google',
+  gemini: 'Google',
+  구글: 'Google',
+  그록: 'xAI',
+  grok: 'xAI',
+  딥시크: 'DeepSeek',
+  큐웬: 'Alibaba/Qwen',
+  알리바바: 'Alibaba/Qwen',
+  키미: 'Moonshot',
+  kimi: 'Moonshot',
+  문샷: 'Moonshot',
+  glm: 'Zhipu/GLM',
+  지푸: 'Zhipu/GLM',
+  미니맥스: 'MiniMax',
+  라마: 'Meta',
+  llama: 'Meta',
+  메타: 'Meta',
+  뮤즈: 'Meta',
+  muse: 'Meta',
+  미스트랄: 'Mistral',
+  플럭스: 'Black Forest Labs',
+  블랙포레스트: 'Black Forest Labs',
+  '블랙 포레스트': 'Black Forest Labs',
+  런웨이: 'Runway',
+  클링: 'Kuaishou (Kling)',
+  루마: 'Luma',
+  피카: 'Pika',
+  아이디오그램: 'Ideogram',
+  리크래프트: 'Recraft',
+  엔비디아: 'NVIDIA',
+  마이크로소프트: 'Microsoft',
+  아마존: 'Amazon',
+}
+
+export const AIRANK_CAMPS = ['us', 'china', 'europe'] as const
+export type AirankCamp = (typeof AIRANK_CAMPS)[number]
+export type AirankCampOrOther = AirankCamp | 'other'
+
+const BRAND_CAMP: Record<AiVendorBrand, AirankCampOrOther> = {
+  OpenAI: 'us',
+  Google: 'us',
+  Anthropic: 'us',
+  xAI: 'us',
+  Meta: 'us',
+  Microsoft: 'us',
+  Amazon: 'us',
+  NVIDIA: 'us',
+  IBM: 'us',
+  AllenAI: 'us',
+  'Thinking Machines': 'us',
+  Ideogram: 'us',
+  Runway: 'us',
+  Pika: 'us',
+  Luma: 'us',
+  Perplexity: 'us',
+  Poolside: 'us',
+  Diffbot: 'us',
+  Inception: 'us',
+  Krea: 'us',
+  Genmo: 'us',
+  DeepSeek: 'china',
+  'Alibaba/Qwen': 'china',
+  Moonshot: 'china',
+  'Zhipu/GLM': 'china',
+  MiniMax: 'china',
+  ByteDance: 'china',
+  Tencent: 'china',
+  Baidu: 'china',
+  Xiaomi: 'china',
+  StepFun: 'china',
+  Meituan: 'china',
+  'Ant Group': 'china',
+  'Kuaishou (Kling)': 'china',
+  'Black Forest Labs': 'europe',
+  Mistral: 'europe',
+  Recraft: 'europe',
+  Cohere: 'other',
+  Upstage: 'other',
+  NAVER: 'other',
+  Leonardo: 'other',
+  HiDream: 'other',
+  Reve: 'other',
+  'Sber (Kandinsky)': 'other',
+}
+
+export const AIRANK_CAMP_OTHER_BRANDS: readonly AiVendorBrand[] = AI_VENDOR_BRANDS.filter(
+  (brand) => BRAND_CAMP[brand] === 'other',
+)
+
+export function isAirankCamp(value: string): value is AirankCamp {
+  return (AIRANK_CAMPS as readonly string[]).includes(value)
+}
+
+export function campOfBrand(brand: MappedVendorBrand): AirankCampOrOther {
+  if (brand === OTHER_VENDOR_BRAND) return 'other'
+  return BRAND_CAMP[brand]
+}
+
+export function brandsInCamp(camp: AirankCamp): AiVendorBrand[] {
+  return AI_VENDOR_BRANDS.filter((brand) => BRAND_CAMP[brand] === camp)
 }
 
 function fold(value: string): string {

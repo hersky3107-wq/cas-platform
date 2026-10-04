@@ -16,7 +16,7 @@ import { LIVE_PRICE_SERIES_IO } from '@/lib/league/gateway/adapters/price-series
 import type { CategoryPacket, PacketBuildContext } from '@/lib/league/gateway/types'
 import { extractAnswerJsonSupplement, sanitizeRationale } from '@/lib/league/prediction-parse'
 import { visibleLeagueText } from '@/lib/league/visible-disclosure'
-import { formatSelfVendorMarker, selfVendorFlags } from '@/lib/league/ai-ranking/self-vendor'
+import { selfVendorFlags, stripSelfVendorMarkers } from '@/lib/league/ai-ranking/self-vendor'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { aggregateMagnitude } from '@/lib/league/magnitude'
@@ -844,11 +844,9 @@ async function runOneModel(
   // Visible reasoning block (everything before the final answer JSON). Stored
   // for every tier — scout's pre-JSON prose (citations) is raw material too.
   // reasoning_snippet stays the one-line display rationale; this is the full text.
-  const vendorNote =
-    category === 'ai_models' && instrument
-      ? formatSelfVendorMarker(selfVendorFlags(entry, instrument))
-      : null
-  const reasoningText = [contract.splitReasoning(raw.text), vendorNote].filter(Boolean).join('\n')
+  const vendorFlags =
+    category === 'ai_models' && instrument ? selfVendorFlags(entry, instrument) : null
+  const reasoningText = stripSelfVendorMarkers(contract.splitReasoning(raw.text))
   let probability = answer!.probability ?? null
   if (probability == null && jsonSupplement?.probability != null) probability = jsonSupplement.probability
   // LEDGER SHAPE: predicted_direction stores the contract-neutral side token
@@ -878,6 +876,8 @@ async function runOneModel(
         predicted_qualifier_text: ledger_fields.qualifierText,
         reasoning_snippet: rationale,
         reasoning_text: reasoningText,
+        self_vendor_subject: vendorFlags ? vendorFlags.isSubjectVendor : null,
+        self_vendor_param: vendorFlags ? vendorFlags.isParamVendor : null,
         prompt_tokens: raw.promptTokens,
         completion_tokens: raw.completionTokens,
         reasoning_tokens: null,

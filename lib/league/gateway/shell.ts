@@ -73,7 +73,8 @@ function isFreeformInstrument(id: string): boolean {
     decodePoliticsInstrument(id) !== null ||
     decodeEntertainmentInstrument(id) !== null ||
     decodePropertyInstrument(id) !== null ||
-    decodeStockInstrument(id) !== null
+    decodeStockInstrument(id) !== null ||
+    id.startsWith('AIRANK:')
   )
 }
 
@@ -102,6 +103,8 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'rumor_only' ||
     code === 'subjective_claim' ||
     code === 'ai_ranking' ||
+    code === 'unsupported_field' ||
+    code === 'airank_min_horizon' ||
     code === 'deadline_too_far' ||
     code === 'already_resolved' ||
     code === 'price_or_earnings' ||
@@ -478,7 +481,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
     horizon: effectiveHorizon,
     resolve_by: null,
     proposition_kind: normalized.proposition_kind,
-    slots: { ...normalized.slots, ...answered },
+    slots: { ...normalized.slots, ...answered, locale: locale === 'ko' ? 'ko' : 'en' },
     confidence: normalized.confidence,
   }
 

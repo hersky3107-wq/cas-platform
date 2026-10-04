@@ -170,8 +170,16 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'Subjective outcomes such as a hit, an innovation, or selling well cannot be graded. Name a yes-or-no event such as an announcement, a release, or an approval.',
   },
   ai_ranking: {
-    ko: 'AI 모델 순위는 테크에서 열 수 없습니다. 곧 열리는 AI 순위 영역에서 예측해 주세요.',
-    en: 'AI model leaderboard rankings cannot be opened in Tech. Use the upcoming AI rankings area.',
+    ko: '지원하는 AI 순위 질문으로 적어 주세요. 예: 구글이 이번 달 말 AI 1위 할까?',
+    en: 'Ask a supported AI ranking question. e.g. Will Google be #1 in AI by the end of this month?',
+  },
+  unsupported_field: {
+    ko: '지원하는 분야는 종합, 코딩, 수학, 글쓰기, 추론, 지시 따르기, 웹개발, 이미지 생성, 영상 생성, 이미지 이해, 검색입니다.',
+    en: 'Supported fields: overall, coding, math, creative writing, hard prompts, instruction following, webdev, image generation, video, vision, search.',
+  },
+  airank_min_horizon: {
+    ko: 'AI 순위는 1주 이상만 가능합니다.',
+    en: 'AI ranking predictions need at least one week.',
   },
   deadline_too_far: {
     ko: '3개월을 넘는 마감은 열 수 없습니다. 1일, 1주, 1개월, 3개월 안의 날짜로 적어 주세요.',

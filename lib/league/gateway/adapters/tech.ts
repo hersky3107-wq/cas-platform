@@ -46,6 +46,17 @@ import {
   openTechResolutionRule,
   parseOpenTechPrompt,
 } from './tech-resolve'
+import {
+  AIRANK_LEDGER_CATEGORY,
+  airankPropositionText,
+  airankResolutionRule,
+  airankSubjectLabel,
+  decodeAirankInstrument,
+  isAirankHorizon,
+  isAirankInstrument,
+  parseAirankInstrument,
+} from '../../ai-ranking/instrument'
+import { airankHorizonFromDeadline, isAirankRankingQuestion, parseAirankPrompt } from '../../ai-ranking/resolve'
 
 /**
  * TECH adapter — first binary_subject_outcome CategoryAdapter.
@@ -61,7 +72,8 @@ const TECH_REFUSALS: readonly RefusalCode[] = [
   'rumor_only',
   'subjective_claim',
   'price_or_earnings',
-  'ai_ranking',
+  'unsupported_field',
+  'airank_min_horizon',
   'deadline_too_far',
   'already_resolved',
   'missing_slot',
@@ -76,6 +88,11 @@ function refuse(code: RefusalCode, safe_facts?: Record<string, string>): Refusal
 
 function extra(slots: NormalizeSlots) {
   return slots.slots
+}
+
+function airankLocale(slots: NormalizeSlots): 'ko' | 'en' {
+  if (slots.slots.locale === 'ko' || slots.slots.locale === 'en') return slots.slots.locale
+  return /[\uAC00-\uD7A3]/.test(slots.entity_label) ? 'ko' : 'en'
 }
 
 function claimKindOf(slots: NormalizeSlots): string | null {
@@ -110,8 +127,28 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
     entity_kinds: ['company'],
     observation_shape: 'occurrence',
 
-    async resolveEntity(raw: string, _locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
+    async resolveEntity(raw: string, locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
       const trimmed = raw.trim()
+      if (isAirankInstrument(trimmed) && decodeAirankInstrument(trimmed)) {
+        const parts = decodeAirankInstrument(trimmed)!
+        return {
+          ok: true,
+          entity_id: trimmed,
+          entity_kind: 'company',
+          label: airankSubjectLabel(parts, locale === 'ko' ? 'ko' : 'en'),
+          skip_confirm: true,
+        }
+      }
+      if (isAirankRankingQuestion(trimmed)) {
+        const parsed = parseAirankPrompt(trimmed, nowFn())
+        if (!parsed.ok) return { ok: false, refuse: refuse(parsed.code) }
+        return {
+          ok: true,
+          entity_id: parsed.instrument,
+          entity_kind: 'company',
+          label: parsed.label,
+        }
+      }
       const legacy = decodeTechInstrument(trimmed)
       if (legacy) {
         const company = companyById(legacy.companyId)
@@ -144,12 +181,19 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
     },
 
     requiredSlots(entity): readonly string[] {
-      if (decodeOpenTechInstrument(entity.entity_id) || decodeTechInstrument(entity.entity_id)) return []
+      if (isAirankInstrument(entity.entity_id) || decodeOpenTechInstrument(entity.entity_id) || decodeTechInstrument(entity.entity_id)) {
+        return []
+      }
       return ['claim_kind', 'object_id', 'artifact_id', 'venue_id', 'resolve_by']
     },
 
     clarifyingQuestions(partial: Partial<NormalizeSlots>): ClarifyingQuestion[] {
-      if (partial.entity_id && (decodeOpenTechInstrument(partial.entity_id) || decodeTechInstrument(partial.entity_id))) {
+      if (
+        partial.entity_id &&
+        (isAirankInstrument(partial.entity_id) ||
+          decodeOpenTechInstrument(partial.entity_id) ||
+          decodeTechInstrument(partial.entity_id))
+      ) {
         return []
       }
       const questions: ClarifyingQuestion[] = []
@@ -224,6 +268,32 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
     },
 
     composeProposition(slots: NormalizeSlots, now: Date = new Date()): ComposedRound {
+      if (isAirankInstrument(slots.entity_id)) {
+        const parsed = parseAirankInstrument(slots.entity_id)
+        if (!parsed.ok) throw new Error(`tech.composeProposition: ${parsed.reason}`)
+        const parts = parsed.parts
+        const locale = airankLocale(slots)
+        const fromDeadline = airankHorizonFromDeadline(parts.deadlineYmd, now)
+        const horizon =
+          fromDeadline.ok
+            ? fromDeadline.horizon
+            : slots.horizon && isAirankHorizon(slots.horizon)
+              ? slots.horizon
+              : '1m'
+        return {
+          proposition_text: airankPropositionText(parts, locale),
+          category: AIRANK_LEDGER_CATEGORY,
+          instrument: slots.entity_id,
+          horizon,
+          resolution_rule: airankResolutionRule(parts, locale),
+          resolves_at: `${parts.deadlineYmd}T23:59:59.999Z`,
+          item_type: 'ranked',
+          cache_key: `airank|${slots.entity_id}|${horizon}`,
+          proposition_kind: 'binary_subject_outcome',
+          subject_label: airankSubjectLabel(parts, locale),
+          observation_shape: 'occurrence',
+        }
+      }
       const open = claimFromOpenInstrument(slots.entity_id, slots.entity_label, now)
       if (open) {
         return {
@@ -268,7 +338,14 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
       }
     },
 
-    gradeSources(_slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {
+    gradeSources(slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {
+      if (isAirankInstrument(slots.entity_id)) {
+        return [
+          { tier: 1, kind: 'official_api', endpoint: 'lmarena:leaderboard' },
+          { tier: 2, kind: 'perplexity_sourced', require_url: true },
+          { tier: 3, kind: 'operator_manual', require_url: true },
+        ]
+      }
       return [
         { tier: 1, kind: 'perplexity_sourced', require_url: true },
         { tier: 2, kind: 'perplexity_sourced', require_url: true },
@@ -277,12 +354,37 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
     },
 
     isDecidable(slots: NormalizeSlots): boolean {
+      if (isAirankInstrument(slots.entity_id)) return decodeAirankInstrument(slots.entity_id) !== null
       if (decodeOpenTechInstrument(slots.entity_id)) return true
       if (decodeTechInstrument(slots.entity_id)) return true
       return isDecidableSlots(slots)
     },
 
     slotsForRound(round: PacketRound): NormalizeSlots {
+      if (isAirankInstrument(round.instrument)) {
+        const parts = decodeAirankInstrument(round.instrument)
+        const horizon = isUiHorizon(round.horizon) && isAirankHorizon(round.horizon) ? round.horizon : null
+        return {
+          category_id: 'ai_models',
+          entity_id: round.instrument,
+          entity_kind: 'company',
+          entity_label: parts?.subject ?? '',
+          horizon,
+          resolve_by: parts?.deadlineYmd ?? round.resolves_at.slice(0, 10),
+          proposition_kind: 'binary_subject_outcome',
+          slots: parts
+            ? {
+                arena: parts.arena,
+                category: parts.category,
+                kind: parts.kind,
+                subject: parts.subject,
+                param: parts.param ?? '',
+                deadline: parts.deadlineYmd,
+              }
+            : {},
+          confidence: 1,
+        }
+      }
       const open = decodeOpenTechInstrument(round.instrument)
       if (open) {
         const date = open.deadline

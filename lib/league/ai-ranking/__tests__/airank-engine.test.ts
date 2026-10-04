@@ -79,6 +79,20 @@ describe('AIRANK codec', () => {
       param: 'Ideogram',
     })
 
+    const camp = encodeAirankInstrument({
+      arena: 'text',
+      category: 'overall',
+      kind: 'camp_topn',
+      subject: 'china',
+      param: '3',
+      deadlineYmd: DEADLINE,
+    })
+    expect(decodeAirankInstrument(camp)).toMatchObject({
+      kind: 'camp_topn',
+      subject: 'china',
+      param: '3',
+    })
+
     const modelRank = encodeAirankInstrument({
       arena: 'search',
       category: 'overall',
@@ -253,6 +267,15 @@ describe('self-vendor analysis flag', () => {
       isSubjectVendor: false,
       isParamVendor: false,
     })
+    const campInst = encodeAirankInstrument({
+      arena: 'text',
+      category: 'overall',
+      kind: 'camp_rank1',
+      subject: 'us',
+      deadlineYmd: DEADLINE,
+    })
+    expect(selfVendorFlags({ model_id: 'gpt-6-astra', brand: 'OpenAI' }, campInst).isSubjectVendor).toBe(true)
+    expect(selfVendorFlags({ model_id: 'deepseek-v4', brand: 'DeepSeek' }, campInst).isSubjectVendor).toBe(false)
   })
 })
 
