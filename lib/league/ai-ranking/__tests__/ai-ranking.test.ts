@@ -72,6 +72,7 @@ describe('LMArena license + Artificial Analysis', () => {
       'text_to_image',
       'text_to_video',
       'search_style_control',
+      'agent',
     ])
   })
 })

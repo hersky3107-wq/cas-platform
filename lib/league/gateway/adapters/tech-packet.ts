@@ -312,6 +312,7 @@ export function assembleTechInjection(args: {
     `Subject: ${subject}`,
     `Object: ${objectLabel}`,
     `Deadline: ${args.round.resolves_at.slice(0, 10)}`,
+    `Window: events dated before the round open date do not count; count only after open and by ${args.round.resolves_at.slice(0, 10)}.`,
     `Resolution rule: ${args.round.resolution_rule}`,
     '',
     'BASE RATE (catalog prior when the subject is known; not a short-window trend)',

@@ -36,6 +36,7 @@ describe('parsePrediction — binary up/down only', () => {
       magnitude: null,
       rationale: 'Momentum looks positive after the last earnings beat.',
       rejectedDirection: false,
+      probabilityFlipped: false,
     })
   })
 
@@ -47,6 +48,7 @@ describe('parsePrediction — binary up/down only', () => {
       magnitude: null,
       rationale: null,
       rejectedDirection: false,
+      probabilityFlipped: false,
     })
   })
 
@@ -124,6 +126,7 @@ describe('sanitizeRationale', () => {
       magnitude: null,
       rationale: null,
       rejectedDirection: false,
+      probabilityFlipped: false,
     })
   })
 })

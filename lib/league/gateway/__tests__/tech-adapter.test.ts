@@ -103,15 +103,33 @@ describe('tech adapter — open-world resolution', () => {
     expect(r.entity_id).toMatch(/^TECH:OPEN:nvidia:announce:/)
     expect(r.entity_id).toContain('20261031')
     expect(r.entity_kind).toBe('company')
+    expect(openAdapter.requiredSlots({ entity_id: r.entity_id, entity_kind: 'company', entity_label: r.label })).toEqual([
+      'object_scope',
+    ])
+    const questions = openAdapter.clarifyingQuestions({
+      entity_id: r.entity_id,
+      entity_kind: 'company',
+      entity_label: r.label,
+    })
+    expect(questions).toHaveLength(1)
+    expect(questions[0]?.slot).toBe('object_scope')
+    expect(openAdapter.isDecidable(slots({ entity_id: r.entity_id, entity_label: r.label, horizon: null }))).toBe(false)
     const composed = openAdapter.composeProposition(
-      slots({ entity_id: r.entity_id, entity_label: r.label, horizon: null }),
+      slots({
+        entity_id: r.entity_id,
+        entity_label: r.label,
+        horizon: null,
+        slots: { object_scope: 'new_product_any' },
+      }),
       OPEN_NOW,
     )
     expect(composed.proposition_kind).toBe('binary_subject_outcome')
     expect(composed.observation_shape).toBe('occurrence')
     expect(composed.proposition_text).toContain('엔비디아')
-    expect(composed.proposition_text).toContain('2026-10-31')
-    expect(composed.resolution_rule).toMatch(/official newsroom|company blog/)
+    expect(composed.proposition_text).toContain('2026-10-04 이후 2026-10-31까지')
+    expect(composed.proposition_text).toContain('새 GPU 제품 공식 발표')
+    expect(composed.proposition_text).toContain('이미 발표된 제품의 출시·재공지는 제외')
+    expect(composed.resolution_rule).toMatch(/2026-10-04 이전/)
     expect(composed.proposition_text).not.toMatch(/주가|순위/)
   })
 
@@ -125,7 +143,11 @@ describe('tech adapter — open-world resolution', () => {
       slots({ entity_id: r.entity_id, entity_label: r.label }),
       OPEN_NOW,
     )
-    expect(composed.proposition_text).toBe('Will SpaceX launch starship by 2026-10-31?')
+    expect(composed.proposition_text).toBe('Will SpaceX launch starship after 2026-10-04 and by 2026-10-31?')
+    expect(composed.resolution_rule).toMatch(/Events dated before 2026-10-04 do not count/)
+    expect(openAdapter.requiredSlots({ entity_id: r.entity_id, entity_kind: 'company', entity_label: r.label })).toEqual(
+      [],
+    )
     expect(composed.horizon).toBe('1m')
     expect(composed.observation_shape).toBe('occurrence')
   })

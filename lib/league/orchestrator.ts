@@ -859,6 +859,11 @@ async function runOneModel(
     }
   }
 
+  if (answer?.probabilityFlipped) {
+    console.info(
+      `[league-generate] probability_flipped round=${roundId} model=${entry.model_id} stored=${answer.probability}`,
+    )
+  }
   const rawText = raw.text?.trim() ?? ''
   const jsonSupplement = rawText ? extractAnswerJsonSupplement(rawText) : null
   const rawRationale =

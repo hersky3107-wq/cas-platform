@@ -47,6 +47,7 @@ import {
   RATIONALE_SNIPPET_MAX_CHARS,
 } from './prediction-parse'
 import { roundMagnitude, validateMagnitude } from './magnitude'
+import { normalizeChosenSideProbability } from './probability-normalize'
 
 export type AnswerSide = 'up' | 'down' | 'yes' | 'no' | 'above' | 'below'
 
@@ -56,8 +57,10 @@ export { EQUITY_QUALITATIVE_GUIDANCE }
 export type ContractAnswer = {
   /** One of the contract's two sides, or null when missing/non-binary. */
   side: AnswerSide | null
-  /** Confidence 0–100 (clamped, rounded), or null when missing. */
+  /** Confidence that the chosen side happens, 50–100 after flip-normalize. */
   probability: number | null
+  /** True when the model reported P(other side) below 50 and we stored 100 − p. */
+  probabilityFlipped?: boolean
   /** Numeric qualifier (signed % / predicted value) — raw, unvalidated. */
   qualifierNumber: number | null
   /** Text qualifier (scoreline, margin, gap) — raw, unvalidated. */
@@ -279,6 +282,10 @@ function clampProbability(raw: unknown): number | null {
   return Number.isFinite(p) ? Math.max(0, Math.min(100, Math.round(p))) : null
 }
 
+function chosenSideProbability(raw: unknown): { probability: number | null; probabilityFlipped: boolean } {
+  return normalizeChosenSideProbability(clampProbability(raw))
+}
+
 /** Pre-mortem field cap. Extra words are clipped; the seat is still accepted. */
 export const STRONGEST_COUNTER_MAX_WORDS = 20
 
@@ -374,9 +381,11 @@ function normalizeSideFields(
   }
 
   const rationaleLeak = typeof obj.rationale === 'string' && hasReasoningTrace(obj.rationale)
+  const chosen = side && !rationaleLeak ? chosenSideProbability(obj.probability) : { probability: clampProbability(obj.probability), probabilityFlipped: false }
   const base = {
     side: rationaleLeak ? null : side,
-    probability: clampProbability(obj.probability),
+    probability: chosen.probability,
+    probabilityFlipped: chosen.probabilityFlipped,
     qualifierNumber,
     qualifierText,
     rationale: rationaleLeak ? null : sanitizeRationale(typeof obj.rationale === 'string' ? obj.rationale : null),
@@ -495,7 +504,7 @@ const CLOSE_HIGHER_CONFIG: PromptConfig = {
     '{"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close.","strongest_counter":"The earnings beat is already priced in."}',
   fieldRules: [
     '- direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).',
-    '- probability: your confidence in the stated direction, integer 0 through 100.',
+    '- probability: confidence that YOUR chosen side happens, integer 50 through 100 (not P(the other side)).',
     '- magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.',
     STRONGEST_COUNTER_RULE,
   ],
@@ -509,7 +518,7 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
   jsonKeys: CLOSE_HIGHER_CONFIG.jsonKeys,
   closedBookSystemPrompt: composeClosedBookPrompt(CLOSE_HIGHER_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(CLOSE_HIGHER_CONFIG),
-  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"...","strongest_counter":"<20 words>"}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`,
+  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":50-100,"magnitude":<signed number>,"rationale":"...","strongest_counter":"<20 words>"}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid direction. Output EXACTLY one JSON line and nothing else: {"direction":"up"} or {"direction":"down"}. Never flat, abstain, empty, or any other value.',
   packetAnswerGuidance:
@@ -527,6 +536,7 @@ const BINARY_CLOSE_HIGHER: AnswerContract = {
     return {
       side: parsed.parseFailure ? null : parsed.direction,
       probability: parsed.parseFailure ? null : parsed.probability,
+      probabilityFlipped: parsed.parseFailure ? false : Boolean(parsed.probabilityFlipped),
       qualifierNumber: parsed.parseFailure ? null : parsed.magnitude,
       qualifierText: null,
       rationale: parsed.parseFailure ? null : parsed.rationale,
@@ -565,7 +575,7 @@ const SUBJECT_OUTCOME_CONFIG: PromptConfig = {
     '{"side":"yes","probability":64,"qualifier":"2-1","rationale":"Stronger recent form and a rest advantage support the stated outcome.","strongest_counter":"A derby draw is still a live result."}',
   fieldRules: [
     '- side: exactly one of "yes" or "no" — whether the NAMED subject achieves the stated outcome. Exactly two answers exist — any result that is not the stated outcome (including a draw) is "no". Never abstain, never a name, never any other value.',
-    '- probability: your confidence in the stated side, integer 0 through 100.',
+    '- probability: confidence that YOUR chosen side happens, integer 50 through 100 (not P(the other side)).',
     `- qualifier: the concrete detail behind your call, as a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) — e.g. a predicted final scoreline "2-1", a predicted vote margin in points "4.5", a predicted confidence gap. Required; it is never graded.`,
     STRONGEST_COUNTER_RULE,
   ],
@@ -622,7 +632,7 @@ const BINARY_SUBJECT_OUTCOME: AnswerContract = {
   sportsScoutSystemPrompt: composeScoutPrompt(SPORTS_SUBJECT_OUTCOME_CONFIG),
   politicsClosedBookSystemPrompt: composeClosedBookPrompt(POLITICS_SUBJECT_OUTCOME_CONFIG),
   politicsScoutSystemPrompt: composeScoutPrompt(POLITICS_SUBJECT_OUTCOME_CONFIG),
-  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":0-100,"qualifier":"<short string>","rationale":"...","strongest_counter":"<20 words>"}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
+  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"yes"|"no","probability":50-100,"qualifier":"<short string>","rationale":"...","strongest_counter":"<20 words>"}. side must be exactly "yes" or "no" — whether the named subject achieves the stated outcome; any other result (including a draw) is "no". Never abstain, never a name. qualifier is required: a short string (${QUALIFIER_TEXT_MAX_CHARS} characters or fewer) with your predicted detail (scoreline, margin, gap).`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"yes"} or {"side":"no"}. Never abstain, empty, a name, or any other value.',
   packetAnswerGuidance:
@@ -661,7 +671,7 @@ const THRESHOLD_CONFIG: PromptConfig = {
     '{"side":"above","probability":58,"predicted_value":3.4,"rationale":"Recent tracking data runs ahead of the consensus line.","strongest_counter":"One soft print would slip back under the line."}',
   fieldRules: [
     '- side: exactly one of "above" or "below" the threshold named in the proposition. Exactly two answers exist — never at, equal, abstain, or any other value. If you expect a value near the line, still pick the closer side; an exact tie resolves per the stated resolution rule.',
-    '- probability: your confidence in the stated side, integer 0 through 100.',
+    '- probability: confidence that YOUR chosen side happens, integer 50 through 100 (not P(the other side)).',
     '- predicted_value: your predicted actual value as a plain number, in the same units as the proposition\'s threshold. Required; it is never graded.',
     STRONGEST_COUNTER_RULE,
   ],
@@ -675,7 +685,7 @@ const BINARY_THRESHOLD: AnswerContract = {
   jsonKeys: THRESHOLD_CONFIG.jsonKeys,
   closedBookSystemPrompt: composeClosedBookPrompt(THRESHOLD_CONFIG),
   scoutSystemPrompt: composeScoutPrompt(THRESHOLD_CONFIG),
-  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"above"|"below","probability":0-100,"predicted_value":<number>,"rationale":"...","strongest_counter":"<20 words>"}. side must be exactly "above" or "below" — never at, equal, abstain, or any other value. predicted_value is required: a plain number in the same units as the proposition's threshold.`,
+  retryInstruction: `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"side":"above"|"below","probability":50-100,"predicted_value":<number>,"rationale":"...","strongest_counter":"<20 words>"}. side must be exactly "above" or "below" — never at, equal, abstain, or any other value. predicted_value is required: a plain number in the same units as the proposition's threshold.`,
   directionOnlyRetryInstruction:
     'RETRY: Previous answer had no valid side. Output EXACTLY one JSON line and nothing else: {"side":"above"} or {"side":"below"}. Never at, equal, abstain, empty, or any other value.',
   packetAnswerGuidance:

@@ -22,6 +22,8 @@ export type ParsedPrediction = {
    */
   magnitude: number | null
   rationale: string | null
+  /** True when a chosen-side probability below 50 was flipped to 100 − p. */
+  probabilityFlipped?: boolean
   /** True when the model named a non-binary direction (flat/abstain/neutral/…). */
   rejectedDirection: boolean
   /** Set when the output is a no-answer (leak or truncated CoT). */
@@ -376,8 +378,17 @@ function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction |
   }
 
   let probability: number | null = null
+  let probabilityFlipped = false
   const p = Number(obj.probability)
-  if (Number.isFinite(p)) probability = Math.max(0, Math.min(100, Math.round(p)))
+  if (Number.isFinite(p)) {
+    const clamped = Math.max(0, Math.min(100, Math.round(p)))
+    if (direction && clamped < 50) {
+      probability = 100 - clamped
+      probabilityFlipped = true
+    } else {
+      probability = clamped
+    }
+  }
 
   let magnitude: number | null = null
   if (typeof obj.magnitude === 'number' || typeof obj.magnitude === 'string') {
@@ -391,5 +402,5 @@ function normalizeParsedFields(obj: Record<string, unknown>): ParsedPrediction |
   const rationale = sanitizeRationale(rationaleRaw)
 
   if (!direction && !rationale && probability === null && magnitude === null && !rejectedDirection) return null
-  return { direction, probability, magnitude, rationale, rejectedDirection }
+  return { direction, probability, magnitude, rationale, rejectedDirection, probabilityFlipped }
 }

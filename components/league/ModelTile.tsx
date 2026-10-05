@@ -87,7 +87,7 @@ export function ModelTile({
   const glyph = labels ? labels.glyph(model.direction) : LEGACY_GLYPH[slot]
   const badge = directionBadgeLabel(model.direction, t, labels)
   const showGlyph = !(labels?.namedSides)
-  const isDivination = model.model_id === 'divination'
+  const isDivination = model.model_id === 'divination' || model.model_id.startsWith('divination')
   const divinationLabel =
     isDivination && model.direction
       ? divinationConfidenceLabel(model.probability ?? model.qualifierText, t)
@@ -99,14 +99,16 @@ export function ModelTile({
   const showConfidenceBadge = Boolean(pct && labels && labels.kind !== 'binary_close_higher')
   // ONE qualifier next to the badge: numeric magnitude on price rounds,
   // adapter-provided qualifier text (scoreline, margin) on the others.
-  const magnitudeText =
-    model.direction && model.magnitude !== null
+  // Divination never renders a letter grade or raw qualifier as confidence.
+  const magnitudeText = isDivination
+    ? null
+    : model.direction && model.magnitude !== null
       ? formatSignedPercent(
           model.magnitude,
           1,
           model.direction === 'up' || model.direction === 'down' ? model.direction : null,
         )
-      : model.direction && model.qualifierText
+      : model.direction && model.qualifierText && !/^[ABC][+-]?$/i.test(model.qualifierText.trim())
         ? model.qualifierText
         : null
   const magnitudeCompare =
@@ -174,7 +176,11 @@ export function ModelTile({
                   {pct}
                 </span>
               ) : null}
-              {magnitudeText ? (
+              {divinationLabel ? (
+                <span className="text-[10px] font-semibold" data-testid="divination-confidence-label">
+                  {divinationLabel}
+                </span>
+              ) : magnitudeText ? (
                 <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
                   {magnitudeText}
                 </span>
@@ -200,7 +206,11 @@ export function ModelTile({
                 {pct}
               </span>
             ) : null}
-            {magnitudeText ? (
+            {divinationLabel ? (
+              <span className="text-[10px] font-semibold" data-testid="divination-confidence-label">
+                {divinationLabel}
+              </span>
+            ) : magnitudeText ? (
               <span className="text-[10px] font-semibold tabular-nums" aria-hidden>
                 {magnitudeText}
               </span>

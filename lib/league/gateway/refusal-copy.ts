@@ -174,8 +174,8 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'Ask a supported AI ranking question. e.g. Will Google be #1 in AI by the end of this month?',
   },
   unsupported_field: {
-    ko: '지원하는 분야는 종합, 코딩, 수학, 글쓰기, 추론, 지시 따르기, 웹개발, 이미지 생성, 영상 생성, 이미지 이해, 검색입니다.',
-    en: 'Supported fields: overall, coding, math, creative writing, hard prompts, instruction following, webdev, image generation, video, vision, search.',
+    ko: '지원하는 분야는 종합, 코딩, 수학, 글쓰기, 추론, 지시 따르기, 웹개발, 에이전트, 이미지 생성, 영상 생성, 이미지 이해, 검색입니다.',
+    en: 'Supported fields: overall, coding, math, creative writing, hard prompts, instruction following, webdev, agents, image generation, video, vision, search.',
   },
   airank_min_horizon: {
     ko: 'AI 순위는 1주 이상만 가능합니다.',
@@ -236,6 +236,10 @@ const CLARIFY_COPY: Record<string, Copy> = {
   'league.gateway.clarify.tech.resolve_by': {
     ko: '언제까지의 공개를 예측하나요?',
     en: 'By which date must the artifact be published?',
+  },
+  'league.gateway.clarify.tech.object_scope': {
+    ko: '무엇을 세나요? 너무 넓으면 판정할 수 없습니다.',
+    en: 'What counts? The wording is too broad to grade without a pin.',
   },
 }
 

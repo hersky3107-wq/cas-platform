@@ -1,5 +1,5 @@
 /**
- * AIRANK brand_table — weekly (overall only) / monthly (all 6 fields) top-10 ranking product.
+ * AIRANK brand_table — weekly (overall only) / monthly (all 9 fields) top-10 ranking product.
  * Pure: codec helpers, answer parse/validate, Borda, grading, KST deadlines.
  */
 
@@ -29,7 +29,16 @@ export type BrandTableHorizon = (typeof BRAND_TABLE_HORIZONS)[number]
 
 export const KST_TZ = 'Asia/Seoul'
 
-export type BrandTableFieldId = 'overall' | 'coding' | 'math' | 'writing' | 'image' | 'video'
+export type BrandTableFieldId =
+  | 'overall'
+  | 'coding'
+  | 'math'
+  | 'writing'
+  | 'image'
+  | 'video'
+  | 'webdev'
+  | 'agent'
+  | 'reasoning'
 
 export type BrandTableField = {
   id: BrandTableFieldId
@@ -44,6 +53,9 @@ export const BRAND_TABLE_FIELDS: readonly BrandTableField[] = [
   { id: 'writing', arena: 'text', category: 'creative_writing' },
   { id: 'image', arena: 'text_to_image', category: 'overall' },
   { id: 'video', arena: 'text_to_video', category: 'overall' },
+  { id: 'webdev', arena: 'webdev', category: 'overall' },
+  { id: 'agent', arena: 'agent', category: 'overall' },
+  { id: 'reasoning', arena: 'text', category: 'hard_prompts' },
 ]
 
 const OTHER_ALIASES = new Set(

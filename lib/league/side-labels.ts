@@ -6,6 +6,7 @@ import type { DirectionTally, ModelSide, SideToken } from './card-types'
 import { decodeAirankInstrument, isAirankInstrument, airankSubjectLabel } from './ai-ranking/instrument'
 import { decodeSportsInstrument, opponentTeamOf } from './gateway/adapters/sports-catalog'
 import { displaySportsTeam } from './sports-display'
+import { techEventFromInstrument, techVerbPair } from './tech-labels'
 
 export function iGa(name: string | null | undefined): '이' | '가' {
   if (!name || typeof name !== 'string' || name.length === 0) return '가'
@@ -334,6 +335,30 @@ export function sideLabelsFor(
         answer: (side) => (side === 'yes' ? yesWord : noWord),
         tallyWord: (side) => (slot(side) === 'none' ? t.direction.noCallTally : badge(side)),
         namedSides: named,
+      }
+    }
+
+    const techEvent = round.category === 'tech' ? techEventFromInstrument(round.instrument) : null
+    if (techEvent) {
+      const verbs = techVerbPair(techEvent, locale)
+      const yesWord = verbs.yes
+      const noWord = verbs.no
+      const badge = (side: ModelSide | null): string => {
+        const s = slot(side)
+        if (s === 'a') return yesWord
+        if (s === 'b') return noWord
+        return t.direction.noCallBadge
+      }
+      return {
+        kind,
+        sides,
+        glyphs,
+        slot,
+        glyph,
+        badge,
+        answer: (side) => (side === 'yes' ? yesWord : noWord),
+        tallyWord: (side) => (slot(side) === 'none' ? t.direction.noCallTally : badge(side)),
+        namedSides: true,
       }
     }
 

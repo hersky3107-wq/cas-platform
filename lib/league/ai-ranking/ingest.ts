@@ -45,6 +45,7 @@ export const BACKFILL_ARENAS = [
   'text_to_image',
   'text_to_video',
   'search_style_control',
+  'agent',
 ] as const
 
 export type BackfillArena = (typeof BACKFILL_ARENAS)[number]

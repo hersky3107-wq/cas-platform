@@ -15,6 +15,7 @@ import { KrDataNotice } from '@/components/league/KrLaneDisclosureBlocks'
 import { airankGradingFootnote } from '@/lib/league/ai-ranking/instrument'
 import { isNonFinancialCategory } from '@/lib/league/compliance'
 import { resolveLocalizedProposition } from '@/lib/league/proposition-i18n'
+import { techCardHeaderLine, techEventFromInstrument } from '@/lib/league/tech-labels'
 
 /**
  * Header: the ROUND's opened date + instrument + ANCHOR (or "unavailable"),
@@ -85,7 +86,8 @@ export function CardHeader({
             <p className="text-sm font-bold leading-snug text-league-fg md:text-lg">{headline}</p>
             {round.category === 'ai_models' ? null : (
               <p className="mt-0.5 text-[11px] text-league-fg-muted">
-                {propertyHorizon ?? t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · {formatCategory(round.category)}
+                {techSubhead(round, locale, t) ??
+                  `${propertyHorizon ?? t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · ${formatCategory(round.category)}`}
               </p>
             )}
           </div>
@@ -173,4 +175,18 @@ function HitRateBadge({ hitRate, t }: { hitRate: HitRateSummary; t: LeagueUiPack
 /** Category is a technical/data label (like a ticker), not translated chrome — see i18n dictionary scoping note. */
 function formatCategory(category: string): string {
   return category.replace(/_/g, ' ')
+}
+
+function techSubhead(round: CardRoundMeta, locale: LeagueLocale, t: LeagueUiPack): string | null {
+  if (round.category !== 'tech') return null
+  const event = techEventFromInstrument(round.instrument)
+  if (!event) return null
+  const horizonLabel =
+    t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon
+  return techCardHeaderLine({
+    subject: round.subject_label?.trim() || 'Tech',
+    event,
+    horizonLabel,
+    locale,
+  })
 }

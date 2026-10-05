@@ -33,7 +33,7 @@ import {
 } from './divination'
 import {
   HISTORY_ENGINE_MODEL_ID,
-  HISTORY_NO_SERIES_REASON,
+  extractTechCadenceFromPacket,
   assertHistoryInputShape,
   buildHistoryInput,
   buildHistorySystemPrompt,
@@ -645,13 +645,20 @@ export async function runHistorySeat(
     isPoliticsLedgerCategory(round.category) ||
     isEntertainmentLedgerCategory(round.category) ||
     isRealEstateLedgerCategory(round.category)
-  const series = isAiModels
+  const isTech = round.category === 'tech'
+  let series = isAiModels
     ? await resolveAiModelRankSeries(round.instrument, round.opened_at)
     : nonPrice
       ? { bars: [] as HistorySeriesBar[], latestClose: null as number | null, asOf: round.opened_at ?? null }
       : await resolveHistorySeries(round.instrument, providedSeries)
-  if (!series || (isAiModels && series.bars.length === 0)) {
-    const abstainReason = isAiModels ? null : HISTORY_NO_SERIES_REASON
+  let cadenceNote: string | null = null
+  if ((!series || series.bars.length === 0) && isTech) {
+    cadenceNote = extractTechCadenceFromPacket(round.closed_book_packet_text)
+    if (cadenceNote) {
+      series = { bars: [], latestClose: null, asOf: round.opened_at ?? null }
+    }
+  }
+  if (!series || (isAiModels && series.bars.length === 0) || (isTech && !cadenceNote && series.bars.length === 0)) {
     await upsertExtraPrediction({
       roundId: round.id,
       category: round.category,
@@ -660,18 +667,18 @@ export async function runHistorySeat(
       direction: null,
       probability: null,
       qualifier_text: null,
-      reasoning_snippet: abstainReason,
+      reasoning_snippet: null,
       cost_usd: 0,
       estimated_cost_usd: 0,
     })
     return {
       ...baseOutcome('history', seat.brand),
-      reasoning_snippet: abstainReason,
+      reasoning_snippet: null,
       status: 'abstain',
     }
   }
 
-  const input = buildHistoryInput(round, series)
+  const input = buildHistoryInput(round, { ...series, cadenceNote })
   assertHistoryInputShape(input)
 
   try {

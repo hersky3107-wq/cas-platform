@@ -44,8 +44,10 @@ import {
   decodeOpenTechInstrument,
   formatOpenTechProposition,
   openTechResolutionRule,
+  openTechResolutionRuleKo,
   parseOpenTechPrompt,
 } from './tech-resolve'
+import { applyTechObjectScope, isBroadTechObject, isTechObjectScope, techObjectScopeOptions } from './tech-object'
 import { formatOpenTechPropositionAllLocales } from '@/lib/league/proposition-i18n.server'
 import {
   AIRANK_LEDGER_CATEGORY,
@@ -183,19 +185,39 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
     },
 
     requiredSlots(entity): readonly string[] {
-      if (isAirankInstrument(entity.entity_id) || decodeOpenTechInstrument(entity.entity_id) || decodeTechInstrument(entity.entity_id)) {
+      if (isAirankInstrument(entity.entity_id) || decodeTechInstrument(entity.entity_id)) {
         return []
+      }
+      const open = decodeOpenTechInstrument(entity.entity_id)
+      if (open) {
+        return isBroadTechObject(open.objectSlug.replace(/_/g, ' ')) ? ['object_scope'] : []
       }
       return ['claim_kind', 'object_id', 'artifact_id', 'venue_id', 'resolve_by']
     },
 
     clarifyingQuestions(partial: Partial<NormalizeSlots>): ClarifyingQuestion[] {
-      if (
-        partial.entity_id &&
-        (isAirankInstrument(partial.entity_id) ||
-          decodeOpenTechInstrument(partial.entity_id) ||
-          decodeTechInstrument(partial.entity_id))
-      ) {
+      if (partial.entity_id && isAirankInstrument(partial.entity_id)) return []
+      if (partial.entity_id && decodeTechInstrument(partial.entity_id)) return []
+      if (partial.entity_id && decodeOpenTechInstrument(partial.entity_id)) {
+        const decoded = decodeOpenTechInstrument(partial.entity_id)!
+        const extras = partial.slots ?? {}
+        if (
+          isBroadTechObject(decoded.objectSlug.replace(/_/g, ' ')) &&
+          !isTechObjectScope(extras.object_scope)
+        ) {
+          const locale = extras.locale === 'en' ? 'en' : 'ko'
+          return [
+            {
+              slot: 'object_scope',
+              prompt_i18n_key: 'league.gateway.clarify.tech.object_scope',
+              options: techObjectScopeOptions(decoded.objectSlug.replace(/_/g, ' '), locale).map((opt) => ({
+                id: opt.id,
+                label_i18n_key: `league.gateway.tech.object_scope.${opt.id}`,
+                label: opt.label,
+              })),
+            },
+          ]
+        }
         return []
       }
       const questions: ClarifyingQuestion[] = []
@@ -299,19 +321,23 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
       }
       const open = claimFromOpenInstrument(slots.entity_id, slots.entity_label, now)
       if (open) {
+        const locale = open.korean ? 'ko' : 'en'
+        const pinned = applyTechObjectScope(open.object, extra(slots).object_scope, locale)
+        const localized = { ...open, object: pinned }
         return {
-          proposition_text: formatOpenTechProposition(open),
+          proposition_text: formatOpenTechProposition(localized),
           category: 'tech',
-          instrument: open.instrument,
-          horizon: open.horizon,
-          resolution_rule: openTechResolutionRule(open),
-          resolves_at: `${open.deadline}T23:59:59.999Z`,
+          instrument: localized.instrument,
+          horizon: localized.horizon,
+          resolution_rule:
+            locale === 'ko' ? openTechResolutionRuleKo(localized) : openTechResolutionRule(localized),
+          resolves_at: `${localized.deadline}T23:59:59.999Z`,
           item_type: 'ranked',
-          cache_key: `tech|${open.instrument}|${open.deadline}`,
+          cache_key: `tech|${localized.instrument}|${localized.windowStart}|${localized.deadline}`,
           proposition_kind: 'binary_subject_outcome',
-          subject_label: open.subjectLabel,
+          subject_label: localized.subjectLabel,
           observation_shape: 'occurrence',
-          propositions: formatOpenTechPropositionAllLocales(open),
+          propositions: formatOpenTechPropositionAllLocales(localized),
         }
       }
       if (isPriceOrEarningsKind(claimKindOf(slots))) {
@@ -359,7 +385,13 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
 
     isDecidable(slots: NormalizeSlots): boolean {
       if (isAirankInstrument(slots.entity_id)) return decodeAirankInstrument(slots.entity_id) !== null
-      if (decodeOpenTechInstrument(slots.entity_id)) return true
+      if (decodeOpenTechInstrument(slots.entity_id)) {
+        const decoded = decodeOpenTechInstrument(slots.entity_id)!
+        if (isBroadTechObject(decoded.objectSlug.replace(/_/g, ' ')) && !isTechObjectScope(extra(slots).object_scope)) {
+          return false
+        }
+        return true
+      }
       if (decodeTechInstrument(slots.entity_id)) return true
       return isDecidableSlots(slots)
     },

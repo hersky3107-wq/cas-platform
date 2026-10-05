@@ -49,6 +49,7 @@ const SUPPORTED_FIELDS: Array<{ re: RegExp; arena: AirankArena; category: string
   { re: /text[-\s]*to[-\s]*video|영상(?:\s*생성)?|동영상(?:\s*생성)?|\bvideo\b/i, arena: 'text_to_video', category: 'overall' },
   { re: /이미지\s*이해|\bvision\b|비전/i, arena: 'vision', category: 'overall' },
   { re: /웹\s*개발|\bwebdev\b|web\s*dev/i, arena: 'webdev', category: 'overall' },
+  { re: /에이전트|\bagents?\b|agent\s*arena/i, arena: 'agent', category: 'overall' },
   { re: /코딩|\bcoding\b|코드/i, arena: 'text', category: 'coding' },
   { re: /수학|\bmath(?:s|ematics)?\b/i, arena: 'text', category: 'math' },
   { re: /검색|\bsearch\b/i, arena: 'search', category: 'overall' },

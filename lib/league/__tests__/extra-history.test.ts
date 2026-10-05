@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { buildCardData, type PredictionRow, type RoundRow } from '../card-aggregate'
 import {
@@ -16,6 +18,7 @@ import {
   historyPatternVocabularyLine,
   historyRationaleNeedsRetry,
   leagueSideFromHistory,
+  extractTechCadenceFromPacket,
   parseHistoryOutput,
   stripFakePatternWinRates,
 } from '../extra/history'
@@ -112,6 +115,7 @@ describe('history extra seat — engine + contract', () => {
     expect(Object.keys(input).sort()).toEqual(
       [
         'asOf',
+        'cadenceNote',
         'category',
         'horizon',
         'instrument',
@@ -215,5 +219,24 @@ describe('history extra seat — engine + contract', () => {
     expect(EXTRA_STUB_REASON).not.toHaveProperty('history')
     expect(Object.keys(EXTRA_STUB_REASON)).toEqual([])
     expect(HISTORY_NO_SERIES_REASON).toContain('가격 시계열')
+  })
+})
+
+describe('history extras — silent abstain + tech cadence', () => {
+  it('extracts cadence from a tech packet and ignores none-measured lines', () => {
+    const packet = [
+      'Official posts last 12 months: 4 (as of 2026-10-01)',
+      'Same-class official posts last 12 months: 2 (as of 2026-10-01)',
+      'Launch months last 5 years: none measured',
+    ].join('\n')
+    expect(extractTechCadenceFromPacket(packet)).toContain('Official posts last 12 months: 4')
+    expect(extractTechCadenceFromPacket(packet)).not.toMatch(/none measured/)
+    expect(extractTechCadenceFromPacket('Official posts last 12 months: none measured')).toBeNull()
+  })
+
+  it('runHistorySeat never writes the price-series message as user-facing copy', () => {
+    const src = readFileSync(join(__dirname, '../extra/run.ts'), 'utf8')
+    expect(src).not.toContain('HISTORY_NO_SERIES_REASON')
+    expect(src).toContain('extractTechCadenceFromPacket')
   })
 })

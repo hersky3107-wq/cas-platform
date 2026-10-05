@@ -39,7 +39,7 @@ Example shape (replace values with your own forecast — do not copy this exampl
 {"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close.","strongest_counter":"The earnings beat is already priced in."}
 
 - direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
-- probability: your confidence in the stated direction, integer 0 through 100.
+- probability: confidence that YOUR chosen side happens, integer 50 through 100 (not P(the other side)).
 - magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
 - strongest_counter: the single most plausible reason your chosen direction would be wrong, 20 words or fewer.
 - rationale: one concise sentence distilled from your reasoning (200 characters or fewer). Write your actual conclusion — never repeat these instructions, schema labels, or placeholder text.`
@@ -52,13 +52,13 @@ Example shape (replace values with your own forecast — do not copy this exampl
 {"direction":"up","probability":72,"magnitude":2.4,"rationale":"Recent earnings beat and buyback support a higher close.","strongest_counter":"The earnings beat is already priced in."}
 
 - direction: exactly one of "up" or "down". Exactly two answers exist — never flat, abstain, neutral, or any other value. If you expect little change, still pick the closer side (up or down).
-- probability: your confidence in the stated direction, integer 0 through 100.
+- probability: confidence that YOUR chosen side happens, integer 50 through 100 (not P(the other side)).
 - magnitude: your expected percent change over the stated horizon, as a plain number signed to match direction — positive for "up", negative for "down" (e.g. 2.4 for +2.4%, -1.1 for -1.1%). Keep it a plausible move for the horizon; an extreme value will be rejected and you will be asked again.
 - strongest_counter: the single most plausible reason your chosen direction would be wrong, 20 words or fewer.
 - rationale: one concise sentence of reasoning or a key citation in plain prose (200 characters or fewer). Write your actual reasoning — never repeat these instructions, schema labels, or placeholder text.
 Return the JSON object only.`
 
-const FROZEN_PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":0-100,"magnitude":<signed number>,"rationale":"...","strongest_counter":"<20 words>"}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
+const FROZEN_PREDICTION_RETRY_INSTRUCTION = `RETRY: Your previous answer was invalid. You may write brief reasoning first, but the LAST line of your output must be exactly one JSON line: {"direction":"up"|"down","probability":50-100,"magnitude":<signed number>,"rationale":"...","strongest_counter":"<20 words>"}. direction must be exactly "up" or "down" — never flat, abstain, neutral, or any other value. magnitude must be a plain number signed to match direction (positive for up, negative for down) and a plausible percent move for the stated horizon — not an extreme value.`
 
 /** FROZEN copy of the pre-refactor orchestrator buildPropositionBlock + buildPrompts. */
 function frozenBuildPropositionBlock(round: PromptRound): string {

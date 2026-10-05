@@ -34,6 +34,7 @@ export const HISTORY_INPUT_KEYS = [
   'series',
   'latestClose',
   'asOf',
+  'cadenceNote',
 ] as const
 
 export const HISTORY_RESEARCH_BAN = [
@@ -188,6 +189,7 @@ export type HistoryLeagueInput = {
   series: HistorySeriesBar[]
   latestClose: number | null
   asOf: string | null
+  cadenceNote: string | null
 }
 
 export type HistoryEngineOutput = {
@@ -223,6 +225,7 @@ export function buildHistoryInput(round: {
   bars: readonly HistorySeriesBar[]
   latestClose?: number | null
   asOf?: string | null
+  cadenceNote?: string | null
 }): HistoryLeagueInput {
   return {
     proposition: round.proposition_text,
@@ -234,6 +237,7 @@ export function buildHistoryInput(round: {
     series: series.bars.map((bar) => ({ date: bar.date, close: bar.close })),
     latestClose: typeof series.latestClose === 'number' ? series.latestClose : series.bars[series.bars.length - 1]?.close ?? null,
     asOf: series.asOf ?? series.bars[series.bars.length - 1]?.date ?? round.opened_at ?? null,
+    cadenceNote: series.cadenceNote?.trim() || null,
   }
 }
 
@@ -252,9 +256,14 @@ export function assertHistoryInputShape(input: object): asserts input is History
 }
 
 /** Dates + closes only. No TIPS, consensus, research, or derived oscillators. */
-export function formatPriceSeriesForHistory(input: Pick<HistoryLeagueInput, 'instrument' | 'series' | 'latestClose' | 'asOf'>): string {
+export function formatPriceSeriesForHistory(input: Pick<HistoryLeagueInput, 'instrument' | 'series' | 'latestClose' | 'asOf' | 'cadenceNote'>): string {
   const bars = input.series.filter((bar) => typeof bar.close === 'number' && bar.date)
-  if (bars.length === 0) return `Instrument: ${input.instrument}\n(no daily closes)`
+  if (bars.length === 0) {
+    if (input.cadenceNote) {
+      return [`Instrument: ${input.instrument}`, 'Subject event cadence (from the closed packet, not prices):', input.cadenceNote].join('\n')
+    }
+    return `Instrument: ${input.instrument}\n(no daily closes)`
+  }
   const printed = bars.slice(-HISTORY_SERIES_PRINT_BARS)
   const rows = printed.map((bar) => `  ${bar.date}: ${bar.close}`).join('\n')
   const lines = [
@@ -325,6 +334,19 @@ export function buildHistorySystemPrompt(category?: string): string {
       '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
       'direction is up or down only. For yes/no, up = the first/affirmative side, down = the other.',
       'rationale: 1–2 sentences, max 400 characters. Name H2H or recent form. No invented win-rate percents.',
+    ].join('\n')
+  }
+  if (category === 'tech') {
+    return [
+      'You are the 📜 역사·패턴 extra seat. For TECH answer from the subject company\'s past official-event cadence only.',
+      'Do not use a price chart. Do not invent unannounced products.',
+      '',
+      'Name one of: 출시 주기, 발표 주기, cadence.',
+      'Then pick a direction for THIS proposition.',
+      '',
+      'Last line MUST be JSON:',
+      '{"direction":"up"|"down","probability":50-100,"rationale":"..."}',
+      'probability is confidence that YOUR chosen side happens (50–100), not P(the other side).',
     ].join('\n')
   }
   if (category === 'ai_models') {
@@ -436,6 +458,20 @@ export function buildHistoryUserPrompt(input: HistoryLeagueInput): string {
       'Judge from the ranking trajectory. Name one of: 상승세, 하락세, 1위 수성, 박빙, 역전, 정체기, then output the JSON line.',
     ].join('\n')
   }
+  if (input.category === 'tech') {
+    return [
+      `PROPOSITION: ${input.proposition}`,
+      `SUBJECT: ${input.subjectName}`,
+      `INSTRUMENT: ${input.instrument}`,
+      `HORIZON: ${input.horizon}`,
+      `CATEGORY: ${input.category}`,
+      '',
+      'SUBJECT EVENT CADENCE:',
+      input.cadenceNote || '(no cadence)',
+      '',
+      'Judge from official-event cadence only. Name 출시 주기, 발표 주기, or cadence, then output the JSON line.',
+    ].join('\n')
+  }
   return [
     `PROPOSITION: ${input.proposition}`,
     `SUBJECT: ${input.subjectName}`,
@@ -535,6 +571,9 @@ export function historyRationaleNeedsRetry(rationale: string | null, category?: 
   if (category === 'ai_models') {
     return !/상승세|하락세|1위 수성|박빙|역전|정체기|추이|순위|랭킹|rank|trend/i.test(rationale)
   }
+  if (category === 'tech') {
+    return !/출시 주기|발표 주기|cadence|공식 발표|official posts/i.test(rationale)
+  }
   if (findHistoryNewsFundamentalLeak(rationale) && !findNamedHistoryPattern(rationale)) return true
   if (!findNamedHistoryPattern(rationale)) return true
   return false
@@ -573,3 +612,14 @@ export function leagueSideFromHistory(
 
 export const HISTORY_NO_SERIES_REASON =
   '가격 시계열이 없어 차트 패턴을 읽을 수 없습니다. 역사·패턴 좌석은 가격 경로가 있을 때만 답합니다.'
+
+/** Packet lines the tech history seat may read. Empty / "none measured" → silent abstain. */
+export function extractTechCadenceFromPacket(packet: string | null | undefined): string | null {
+  if (!packet) return null
+  const lines = packet
+    .split('\n')
+    .map((line) => line.trim())
+    .filter((line) => /official posts last 12|same-class official|launch months last 5|historical cadence/i.test(line))
+    .filter((line) => !/none measured/i.test(line))
+  return lines.length > 0 ? lines.join('\n') : null
+}

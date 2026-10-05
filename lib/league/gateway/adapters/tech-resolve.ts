@@ -27,6 +27,8 @@ export type OpenTechClaim = {
   event: TechEventId
   object: string
   deadline: string
+  /** Civil date the window opens (compose / parse time). Events before this do not count. */
+  windowStart: string
   horizon: UiHorizon
   verification: TechVerificationId
   instrument: string
@@ -190,7 +192,7 @@ function addDays(ymd: string, days: number): string {
   return new Date(ms).toISOString().slice(0, 10)
 }
 
-function todayYmd(now: Date): string {
+export function todayYmd(now: Date): string {
   return now.toISOString().slice(0, 10)
 }
 
@@ -374,6 +376,7 @@ function finish(
       instrument,
       korean,
       catalogCompanyId: catalog?.id ?? null,
+      windowStart: todayYmd(now),
     },
   }
 }
@@ -422,30 +425,41 @@ export function parseOpenTechPrompt(raw: string, now: Date = new Date()): TechPa
 
 export function formatOpenTechProposition(claim: OpenTechClaim): string {
   if (claim.korean) {
-    return `${claim.subjectLabel}, ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}할까?`
+    return `${claim.subjectLabel}, ${claim.windowStart} 이후 ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}할까?`
   }
-  return `Will ${claim.subjectLabel} ${EVENT_EN[claim.event]} ${claim.object} by ${claim.deadline}?`
+  return `Will ${claim.subjectLabel} ${EVENT_EN[claim.event]} ${claim.object} after ${claim.windowStart} and by ${claim.deadline}?`
 }
 
 export function formatOpenTechPropositionAllLocales(claim: OpenTechClaim): Record<LeagueLocale, string> {
-  const en = `Will ${claim.subjectLabel} ${EVENT_EN[claim.event]} ${claim.object} by ${claim.deadline}?`
-  const ko = `${claim.subjectLabel}, ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}할까?`
+  const s = claim.subjectLabel
+  const o = claim.object
+  const open = claim.windowStart
+  const by = claim.deadline
   return {
-    en,
-    ko,
-    ja: `${claim.subjectLabel}は${claim.deadline}までに${claim.object}を${EVENT_JA[claim.event]}するか？`,
-    'zh-TW': `${claim.subjectLabel}會在${claim.deadline}之前${EVENT_ZH[claim.event]}${claim.object}嗎？`,
-    fr: `${claim.subjectLabel} va-t-il ${EVENT_FR[claim.event]} ${claim.object} d'ici le ${claim.deadline} ?`,
-    es: `¿${claim.subjectLabel} va a ${EVENT_ES[claim.event]} ${claim.object} para el ${claim.deadline}?`,
-    pt: `O ${claim.subjectLabel} vai ${EVENT_PT[claim.event]} ${claim.object} até ${claim.deadline}?`,
-    ar: `هل ستعلن/تطلق ${claim.subjectLabel} ${claim.object} بحلول ${claim.deadline}؟`,
+    en: `Will ${s} ${EVENT_EN[claim.event]} ${o} after ${open} and by ${by}?`,
+    ko: `${s}, ${open} 이후 ${by}까지 ${o}를 ${EVENT_KO[claim.event]}할까?`,
+    ja: `${s}は${open}以降${by}までに${o}を${EVENT_JA[claim.event]}するか？`,
+    'zh-TW': `${s}會在${open}之後到${by}之前${EVENT_ZH[claim.event]}${o}嗎？`,
+    fr: `${s} va-t-il ${EVENT_FR[claim.event]} ${o} après le ${open} et d'ici le ${by} ?`,
+    es: `¿${s} va a ${EVENT_ES[claim.event]} ${o} después del ${open} y para el ${by}?`,
+    pt: `O ${s} vai ${EVENT_PT[claim.event]} ${o} após ${open} e até ${by}?`,
+    ar: `هل ${s} ${EVENT_AR[claim.event]} ${o} بعد ${open} وبحلول ${by}؟`,
   }
 }
 
 export function openTechResolutionRule(claim: OpenTechClaim): string {
   return (
-    `Occurred if ${claim.subjectLabel} ${EVENT_EN_3SG[claim.event]} ${claim.object} on or before ${claim.deadline}. ` +
+    `Occurred if ${claim.subjectLabel} ${EVENT_EN_3SG[claim.event]} ${claim.object} after ${claim.windowStart} and on or before ${claim.deadline}. ` +
+    `Events dated before ${claim.windowStart} do not count. ` +
     `Verification: ${VERIFY_EN[claim.verification]}. Graded from that source class — never from a share price or an AI leaderboard.`
+  )
+}
+
+export function openTechResolutionRuleKo(claim: OpenTechClaim): string {
+  return (
+    `${claim.subjectLabel}가 ${claim.windowStart} 이후 ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}하면 실현. ` +
+    `${claim.windowStart} 이전 날짜의 사건은 세지 않는다. ` +
+    `확인: ${VERIFY_EN[claim.verification]}. 주가나 AI 순위가 아니라 그 출처로만 판정.`
   )
 }
 
@@ -465,7 +479,7 @@ export function buildOpenTechRankedRoundInput(
     resolution_rule: openTechResolutionRule(localized),
     resolves_at: `${localized.deadline}T23:59:59.999Z`,
     item_type: 'ranked' as const,
-    cache_key: `tech|${localized.instrument}|${localized.deadline}`,
+    cache_key: `tech|${localized.instrument}|${localized.windowStart}|${localized.deadline}`,
     proposition_kind: 'binary_subject_outcome' as const,
     subject_label: localized.subjectLabel,
     observation_shape: 'occurrence' as const,
@@ -488,6 +502,7 @@ export function claimFromOpenInstrument(
     event: decoded.event,
     object: decoded.objectSlug.replace(/_/g, ' '),
     deadline: decoded.deadline,
+    windowStart: todayYmd(now),
     horizon: horizonForResolveDate(decoded.deadline, now),
     verification: decoded.verification,
     instrument,

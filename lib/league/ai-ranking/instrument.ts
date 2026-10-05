@@ -44,6 +44,7 @@ export const AIRANK_ARENA_CATEGORIES = {
   text_to_image: [AIRANK_OVERALL_CATEGORY],
   text_to_video: [AIRANK_OVERALL_CATEGORY],
   search: [AIRANK_OVERALL_CATEGORY],
+  agent: [AIRANK_OVERALL_CATEGORY],
 } as const
 
 export type AirankArena = keyof typeof AIRANK_ARENA_CATEGORIES
@@ -426,6 +427,16 @@ const FIELD_LABEL: Record<string, Record<LeagueLocale, string>> = {
     es: 'desarrollo web',
     pt: 'desenvolvimento web',
     ar: 'تطوير الويب',
+  },
+  'agent/overall': {
+    ko: '에이전트',
+    en: 'agents',
+    ja: 'エージェント',
+    'zh-TW': '代理',
+    fr: 'agents',
+    es: 'agentes',
+    pt: 'agentes',
+    ar: 'وكلاء',
   },
   'text_to_image/overall': {
     ko: '이미지 생성',
