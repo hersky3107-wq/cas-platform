@@ -18,6 +18,7 @@ import {
   findConsensusMoneyLanguage,
   findConsensusNewsMoodLeak,
   findConsensusPacketLeak,
+  hasExplicitImpliedProbability,
   leagueSideFromConsensus,
   parseConsensusOutput,
   consensusRationaleNeedsRetry,
@@ -156,13 +157,13 @@ describe('consensus extra seat — engine + contract', () => {
 
   it('parses money-language verdicts and maps contract sides', () => {
     const parsed = parseConsensusOutput(
-      '{"direction":"up","probability":61,"rationale":"옵션 시장은 상승 내재확률을 반영하고, 선물 포지션은 투기 순매수로 기울어 있다."}',
+      '{"direction":"up","probability":61,"rationale":"옵션 시장은 61%를 반영하고, 선물 포지션은 투기 순매수로 기울어 있다."}',
     )
     expect(parsed).toEqual({
       kind: 'verdict',
       verdict: 'up',
       confidence: 61,
-      rationale: '옵션 시장은 상승 내재확률을 반영하고, 선물 포지션은 투기 순매수로 기울어 있다.',
+      rationale: '옵션 시장은 61%를 반영하고, 선물 포지션은 투기 순매수로 기울어 있다.',
     })
     expect(findConsensusMoneyLanguage(parsed && parsed.kind === 'verdict' ? parsed.rationale : '')).toBeTruthy()
     expect(leagueSideFromConsensus('up', 'binary_close_higher')).toBe('up')
@@ -178,6 +179,19 @@ describe('consensus extra seat — engine + contract', () => {
       rationale: '시장이 돈으로 매긴 확률 신호를 찾지 못했습니다.',
     })
     expect(CONSENSUS_NO_SIGNAL_REASON).toBe('시장이 돈으로 매긴 확률 신호를 찾지 못했습니다')
+  })
+
+  it('abstains when search finds no explicit implied probability for this question', () => {
+    expect(hasExplicitImpliedProbability('A related launch market exists.')).toBe(false)
+    expect(hasExplicitImpliedProbability('옵션 시장은 61%를 반영')).toBe(true)
+    const noProb = parseConsensusOutput(
+      '{"direction":"up","probability":58,"rationale":"I found no implied probability for this exact question."}',
+    )
+    expect(noProb).toEqual({ kind: 'abstain', rationale: 'I found no implied probability for this exact question.' })
+    const existsOnly = parseConsensusOutput(
+      '{"direction":"up","probability":58,"rationale":"A Polymarket contract exists for a related launch."}',
+    )
+    expect(existsOnly).toMatchObject({ kind: 'abstain' })
   })
 
   it('rejects chart-pattern and news-mood language; keeps money language', () => {

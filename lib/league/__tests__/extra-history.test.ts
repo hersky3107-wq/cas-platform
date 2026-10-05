@@ -14,6 +14,7 @@ import {
   findFakePatternWinRate,
   findHistoryNewsFundamentalLeak,
   findNamedHistoryPattern,
+  isPriceSeriesHistoryCategory,
   formatPriceSeriesForHistory,
   historyPatternVocabularyLine,
   historyRationaleNeedsRetry,
@@ -232,6 +233,24 @@ describe('history extras — silent abstain + tech cadence', () => {
     expect(extractTechCadenceFromPacket(packet)).toContain('Official posts last 12 months: 4')
     expect(extractTechCadenceFromPacket(packet)).not.toMatch(/none measured/)
     expect(extractTechCadenceFromPacket('Official posts last 12 months: none measured')).toBeNull()
+  })
+
+  it('does not attach a price-chart pattern label on tech or other non-price rounds', () => {
+    expect(isPriceSeriesHistoryCategory('stock')).toBe(true)
+    expect(isPriceSeriesHistoryCategory('tech')).toBe(false)
+    expect(isPriceSeriesHistoryCategory('ai_models')).toBe(false)
+    expect(historyRationaleNeedsRetry('3단 폴더블 출시 주기상 연내 발표 경향', 'tech')).toBe(true)
+    const tech = parseHistoryOutput(
+      '{"direction":"up","probability":62,"rationale":"3단 폴더블은 출시 주기상 연내 발표 경향."}',
+      'tech',
+    )
+    expect(tech?.namedPattern).toBeNull()
+    expect(findNamedHistoryPattern('3단 폴더블 출시')).toBe('3단·5단 상승 후 급등')
+    const price = parseHistoryOutput(
+      '{"direction":"down","probability":64,"rationale":"3단계 상승 후 급등은 되돌림이 잦았음."}',
+      'stock',
+    )
+    expect(price?.namedPattern).toBe('3단·5단 상승 후 급등')
   })
 
   it('runHistorySeat never writes the price-series message as user-facing copy', () => {

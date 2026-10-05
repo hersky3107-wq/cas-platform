@@ -200,7 +200,7 @@ describe('research merge / tier / disagreement', () => {
 describe('multi-provider RESEARCH runner', () => {
   it('skips a failed provider and still merges the rest', async () => {
     const caller: ResearchProviderCaller = async ({ provider }) => {
-      if (provider === 'openai') throw new Error('timeout')
+      if (provider === 'youcom') throw new Error('timeout')
       return {
         costUsd: 0.02,
         findings: [
@@ -223,12 +223,12 @@ describe('multi-provider RESEARCH runner', () => {
       costCapUsd: 0.15,
       caller,
     })
-    expect(result.log.providersFailed).toEqual([{ provider: 'openai', error: 'timeout' }])
+    expect(result.log.providersFailed).toEqual([{ provider: 'youcom', error: 'timeout' }])
     expect(result.log.providersUsed).toEqual(['perplexity', 'xai', 'gemini'])
     expect(result.merged.facts).toHaveLength(1)
     expect(result.merged.facts[0]?.providerCount).toBe(3)
     expect(result.merged.facts[0]?.tier).toBe('regulator')
-    expect(result.section).toContain('openai (timeout)')
+    expect(result.section).toContain('youcom (timeout)')
     expect(result.section).toContain('Merged facts: 1')
   })
 
@@ -238,15 +238,21 @@ describe('multi-provider RESEARCH runner', () => {
       costCapUsd: 0.05,
     })
     expect(tight.selected).toEqual(['perplexity', 'gemini'])
-    expect(tight.skippedForCap).toEqual(['xai', 'openai'])
+    expect(tight.skippedForCap).toEqual(['xai', 'youcom'])
 
     const mid = selectResearchProviders({ configured: DEFAULT_RESEARCH_PROVIDERS, costCapUsd: 0.09 })
     expect(mid.selected).toEqual(['perplexity', 'xai', 'gemini'])
-    expect(mid.skippedForCap).toEqual(['openai'])
+    expect(mid.skippedForCap).toEqual(['youcom'])
 
     const roomy = selectResearchProviders({ configured: DEFAULT_RESEARCH_PROVIDERS, costCapUsd: 0.15 })
-    expect(roomy.selected).toEqual(['perplexity', 'xai', 'gemini', 'openai'])
+    expect(roomy.selected).toEqual(['perplexity', 'xai', 'gemini', 'youcom'])
     expect(roomy.skippedForCap).toEqual([])
+  })
+
+  it('keeps OpenAI off the default research list; env can still add it', () => {
+    expect(DEFAULT_RESEARCH_PROVIDERS).toEqual(['perplexity', 'xai', 'gemini', 'youcom'])
+    expect(DEFAULT_RESEARCH_PROVIDERS).not.toContain('openai')
+    expect(parseResearchProviderList('xai,gemini,youcom,openai')).toContain('openai')
   })
 
   it('does not launch more than Perplexity + 3 others even when the list is longer', async () => {

@@ -517,6 +517,16 @@ export function historyRetryInstruction(category?: string): string {
   ].join(' ')
 }
 
+export function isPriceSeriesHistoryCategory(category?: string | null): boolean {
+  if (!category) return true
+  if (category === 'tech' || category === 'ai_models') return false
+  if (isSportsLedgerCategory(category)) return false
+  if (isPoliticsLedgerCategory(category)) return false
+  if (isEntertainmentLedgerCategory(category)) return false
+  if (isRealEstateLedgerCategory(category)) return false
+  return true
+}
+
 export function findNamedHistoryPattern(text: string | null | undefined): string | null {
   if (!text) return null
   const lower = text.toLowerCase()
@@ -572,8 +582,10 @@ export function historyRationaleNeedsRetry(rationale: string | null, category?: 
     return !/상승세|하락세|1위 수성|박빙|역전|정체기|추이|순위|랭킹|rank|trend/i.test(rationale)
   }
   if (category === 'tech') {
+    if (findNamedHistoryPattern(rationale)) return true
     return !/출시 주기|발표 주기|cadence|공식 발표|official posts/i.test(rationale)
   }
+  if (!isPriceSeriesHistoryCategory(category) && findNamedHistoryPattern(rationale)) return true
   if (findHistoryNewsFundamentalLeak(rationale) && !findNamedHistoryPattern(rationale)) return true
   if (!findNamedHistoryPattern(rationale)) return true
   return false
@@ -588,18 +600,23 @@ export function stripFakePatternWinRates(text: string): string {
   return out.replace(/\s{2,}/g, ' ').replace(/\s+([,.])/g, '$1').trim()
 }
 
-export function parseHistoryOutput(text: string | null): HistoryEngineOutput | null {
+export function parseHistoryOutput(text: string | null, category?: string | null): HistoryEngineOutput | null {
   const parsed = parsePrediction(text)
   if (!parsed?.direction) return null
   const rawRationale = parsed.rationale ?? sanitizeRationale(text)
   if (!rawRationale) return null
   const rationale = stripFakePatternWinRates(rawRationale).slice(0, 500)
   if (!rationale) return null
+  const namedPattern = isPriceSeriesHistoryCategory(category)
+    ? findNamedHistoryPattern(rationale) ?? findNamedSportsHistoryPattern(rationale)
+    : isSportsLedgerCategory(category)
+      ? findNamedSportsHistoryPattern(rationale)
+      : null
   return {
     verdict: parsed.direction,
     rationale,
     confidence: parsed.probability,
-    namedPattern: findNamedHistoryPattern(rationale) ?? findNamedSportsHistoryPattern(rationale),
+    namedPattern,
   }
 }
 

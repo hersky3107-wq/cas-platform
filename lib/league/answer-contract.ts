@@ -33,6 +33,7 @@
 
 import type { PropositionKind } from './gateway/types'
 import { EQUITY_QUALITATIVE_GUIDANCE, scrubsAnalystDisclosure } from './analyst-disclosure'
+import { eventWindowConstraintLines } from './event-window-prompt'
 import { isPoliticsLedgerCategory } from './extra/politics-category'
 import { isSportsLedgerCategory } from './extra/sports-category'
 import {
@@ -755,6 +756,8 @@ export type PromptRound = {
   horizon: string
   resolution_rule: string
   resolves_at: string
+  opened_at?: string | null
+  closed_book_packet_text?: string | null
 }
 
 function buildPropositionBlock(round: PromptRound): string {
@@ -765,6 +768,12 @@ function buildPropositionBlock(round: PromptRound): string {
     `Horizon: ${round.horizon}`,
     `Resolution rule: ${round.resolution_rule}`,
     `Resolves at (UTC): ${round.resolves_at}`,
+    ...eventWindowConstraintLines({
+      instrument: round.instrument,
+      category: round.category,
+      openedAt: round.opened_at,
+      packet: round.closed_book_packet_text,
+    }),
   ].join('\n')
 }
 

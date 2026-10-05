@@ -487,7 +487,7 @@ async function callOpenAiCompatibleOnce(
       return {
         result: {
           text: null,
-          error: `HTTP ${res.status} ${res.statusText}${rawBody ? ` - ${rawBody.slice(0, 800)}` : ''}`,
+          error: `HTTP ${res.status} ${res.statusText}${res.headers.get('retry-after') ? `; retry-after=${res.headers.get('retry-after')!.trim()}` : ''}${rawBody ? ` - ${rawBody.slice(0, 800)}` : ''}`,
           diagnostics: {
             errorClass: 'HttpError',
             httpStatus: res.status,
@@ -657,7 +657,7 @@ async function callYouComResearch(params: {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
-      return { text: null, error: `HTTP ${res.status} ${res.statusText}${errText ? ` - ${errText}` : ''}` }
+      return { text: null, error: `HTTP ${res.status} ${res.statusText}${res.headers.get('retry-after') ? `; retry-after=${res.headers.get('retry-after')!.trim()}` : ''}${errText ? ` - ${errText}` : ''}` }
     }
 
     const json = (await res.json()) as {
@@ -733,7 +733,7 @@ async function callClovaStudio(params: {
 
     if (!res.ok) {
       const errText = await res.text().catch(() => '')
-      return { text: null, error: `HTTP ${res.status} ${res.statusText}${errText ? ` - ${errText}` : ''}` }
+      return { text: null, error: `HTTP ${res.status} ${res.statusText}${res.headers.get('retry-after') ? `; retry-after=${res.headers.get('retry-after')!.trim()}` : ''}${errText ? ` - ${errText}` : ''}` }
     }
 
     const json = (await res.json()) as {

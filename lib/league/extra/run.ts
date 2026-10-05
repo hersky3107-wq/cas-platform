@@ -16,6 +16,8 @@ import { runSingleAiProvider } from '@/lib/ai/router'
 import { readLeagueDivinationLive } from '@/lib/oracle/league-divination/live'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { classifyNoAnswerFailReason, type NoAnswerFailReason } from '../fail-reason'
+import { withEventWindowConstraint } from '../event-window-prompt'
+import { waitThenRetry429 } from '../http-429-retry'
 import type { AnswerSide } from '../answer-contract'
 import { fetchDataPacket } from '../market-data'
 import { decodeStockInstrument } from '../gateway/adapters/stock-catalog'
@@ -714,7 +716,7 @@ export async function runHistorySeat(
   try {
     let raw = await callHistoryOnce(call, input, false)
     if (raw.error) throw new Error(raw.error)
-    let parsed = parseHistoryOutput(raw.text)
+    let parsed = parseHistoryOutput(raw.text, round.category)
     if (!parsed || historyRationaleNeedsRetry(parsed.rationale, round.category)) {
       const retryRaw = await callHistoryOnce(call, input, true)
       if (!retryRaw.error) {
@@ -725,7 +727,7 @@ export async function runHistorySeat(
           costUsd: (raw.costUsd ?? 0) + (retryRaw.costUsd ?? 0),
           costIsEstimated: raw.costIsEstimated && retryRaw.costIsEstimated,
         }
-        const retryParsed = parseHistoryOutput(retryRaw.text)
+        const retryParsed = parseHistoryOutput(retryRaw.text, round.category)
         if (retryParsed) parsed = retryParsed
       }
     }
@@ -1554,11 +1556,43 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
     assertNoPacketOnDivinationInput(input)
     return readLeagueDivinationLive(input)
   })
-  const historyCall = opts.historyCaller ?? defaultHistoryCaller()
-  const sentimentCall = opts.sentimentCaller ?? defaultSentimentCaller()
-  const consensusCall = opts.consensusCaller ?? defaultConsensusCaller()
-  const crowCall = opts.crowCaller ?? defaultCrowCaller()
-  const replayCall = opts.replayCaller ?? defaultReplayCaller()
+  const wrapExtraCall = <T extends { error?: string }>(
+    call: (args: { systemPrompt: string; userPrompt: string }) => Promise<T>,
+    label: string,
+  ) => {
+    return async (args: { systemPrompt: string; userPrompt: string }) => {
+      const first = await call({
+        systemPrompt: args.systemPrompt,
+        userPrompt: withEventWindowConstraint(args.userPrompt, {
+          instrument: round.instrument,
+          category: round.category,
+          openedAt: round.opened_at,
+          packet: round.closed_book_packet_text,
+        }),
+      })
+      return waitThenRetry429({
+        first,
+        errorOf: (value) => value.error,
+        retry: () =>
+          call({
+            systemPrompt: args.systemPrompt,
+            userPrompt: withEventWindowConstraint(args.userPrompt, {
+              instrument: round.instrument,
+              category: round.category,
+              openedAt: round.opened_at,
+              packet: round.closed_book_packet_text,
+            }),
+          }),
+        remainingBudgetMs: opts.deadlineAtMs != null ? opts.deadlineAtMs - Date.now() : null,
+        label,
+      })
+    }
+  }
+  const historyCall = wrapExtraCall(opts.historyCaller ?? defaultHistoryCaller(), 'history')
+  const sentimentCall = wrapExtraCall(opts.sentimentCaller ?? defaultSentimentCaller(), 'sentiment')
+  const consensusCall = wrapExtraCall(opts.consensusCaller ?? defaultConsensusCaller(), 'consensus')
+  const crowCall = wrapExtraCall(opts.crowCaller ?? defaultCrowCaller(), 'crow')
+  const replayCall = wrapExtraCall(opts.replayCaller ?? defaultReplayCaller(), 'replay')
   const runSeat = (seat: ExtraSeat): Promise<ExtraSeatOutcome> => {
     if (seat.kind === 'replay') return runReplaySeat(round, replayCall)
     if (isBrandTableInstrument(round.instrument)) {

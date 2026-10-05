@@ -349,7 +349,10 @@ async function callOpenAICompatibleChat({
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
+    const retryAfter = res.headers.get('retry-after')
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${retryAfter ? `; retry-after=${retryAfter.trim()}` : ''}${text ? ` - ${text}` : ''}`,
+    )
   }
 
   const json: any = await res.json()
@@ -447,7 +450,10 @@ async function callXaiAgentSearch({
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
+    const retryAfter = res.headers.get('retry-after')
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${retryAfter ? `; retry-after=${retryAfter.trim()}` : ''}${text ? ` - ${text}` : ''}`,
+    )
   }
 
   const json: any = await res.json()
@@ -541,7 +547,10 @@ async function callAnthropic({
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
+    const retryAfter = res.headers.get('retry-after')
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${retryAfter ? `; retry-after=${retryAfter.trim()}` : ''}${text ? ` - ${text}` : ''}`,
+    )
   }
 
   const json = (await res.json()) as {
@@ -749,7 +758,10 @@ async function callGoogleGemini({
 
   if (!res.ok) {
     const text = await res.text().catch(() => '')
-    throw new Error(`HTTP ${res.status} ${res.statusText}${text ? ` - ${text}` : ''}`)
+    const retryAfter = res.headers.get('retry-after')
+    throw new Error(
+      `HTTP ${res.status} ${res.statusText}${retryAfter ? `; retry-after=${retryAfter.trim()}` : ''}${text ? ` - ${text}` : ''}`,
+    )
   }
 
   if (!res.body) {

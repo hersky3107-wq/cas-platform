@@ -270,6 +270,9 @@ const NO_SIGNAL_RES: readonly RegExp[] = [
   /포지셔닝 신호를 찾지/,
   /no (?:money[- ]positioning|priced|odds|implied) (?:data|signal)/i,
   /no prediction[- ]market/i,
+  /no implied probability/i,
+  /내재\s*확률을?\s*찾지/,
+  /implied probability.{0,40}(?:not found|unavailable|none)/i,
 ]
 
 export type ConsensusLeagueInput = {
@@ -354,6 +357,7 @@ export function buildConsensusSystemPrompt(category?: string | null): string {
     ...(scrubsAnalystDisclosure(category) ? [EQUITY_QUALITATIVE_GUIDANCE] : []),
     '',
     'If search finds no money-positioning data for THIS category after searching the category-appropriate signals, do NOT invent odds. Abstain.',
+    'A market existing is not enough. If no venue market is accepted AND search does not quote an explicit implied probability for THIS exact question, abstain (direction null). Never pick a side from "a market exists" alone.',
     'Do not abstain just because equity analyst targets or CFTC COT are missing — those are not the money signals for crypto or index ETFs.',
     'Abstain JSON (last line): {"direction":null,"found":false,"probability":null,"rationale":"시장이 돈으로 매긴 확률 신호를 찾지 못했습니다."}',
     '',
@@ -479,6 +483,15 @@ export function consensusRationaleNeedsRetry(rationale: string | null, category?
   return false
 }
 
+export function hasExplicitImpliedProbability(text: string | null | undefined): boolean {
+  if (!text) return false
+  return (
+    /(?:내재\s*확률|implied(?:\s+yes)?\s+probabilit(?:y|ies)|예측시장|시장 기준선|옵션 시장은|배당은|펀딩비)[^.]{0,40}\d{1,3}(?:\.\d+)?\s*%/i.test(
+      text,
+    ) || /\d{1,3}(?:\.\d+)?\s*%를 반영/.test(text)
+  )
+}
+
 export function parseConsensusOutput(text: string | null): ConsensusEngineOutput | null {
   if (!text) return null
   const found = parseFoundFlag(text)
@@ -496,6 +509,12 @@ export function parseConsensusOutput(text: string | null): ConsensusEngineOutput
 
   if (!parsed?.direction) return null
   if (!rationale) return null
+  if (!hasExplicitImpliedProbability(rationale) && !hasExplicitImpliedProbability(text)) {
+    return {
+      kind: 'abstain',
+      rationale: CONSENSUS_NO_SIGNAL_REASON,
+    }
+  }
   return {
     kind: 'verdict',
     verdict: parsed.direction,

@@ -14,7 +14,8 @@ import {
 export const RESEARCH_PROVIDER_IDS = ['perplexity', 'xai', 'gemini', 'openai', 'youcom', 'claude'] as const
 export type ResearchProviderId = (typeof RESEARCH_PROVIDER_IDS)[number]
 
-export const DEFAULT_RESEARCH_PROVIDERS: ResearchProviderId[] = ['perplexity', 'xai', 'gemini', 'openai']
+/** OpenAI web search is off by default — it 429s scout seats that share the same quota. Override via LEAGUE_RESEARCH_PROVIDERS. */
+export const DEFAULT_RESEARCH_PROVIDERS: ResearchProviderId[] = ['perplexity', 'xai', 'gemini', 'youcom']
 export const DEFAULT_RESEARCH_CAP_USD = 0.15
 export const RESEARCH_PROVIDER_TIMEOUT_MS = 45_000
 export const MAX_OTHER_RESEARCH_PROVIDERS = 3

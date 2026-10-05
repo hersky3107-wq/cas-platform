@@ -50,7 +50,22 @@ export function hasReasoningTrace(text: string): boolean {
 
 /** Drop hidden-thinking wrappers so a trailing answer JSON can still be found. */
 export function stripReasoningTracePreamble(text: string): string {
-  return text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '').replace(/<think\b[^>]*>[\s\S]*$/gi, '').trim()
+  let out = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+  const lastJson = findLastAnswerJson(out)
+  if (lastJson) {
+    const before = out.slice(0, lastJson.start)
+    if (/<think\b/i.test(before) || /^(?:thinking(?:\s+process)?|reasoning)\s*:/i.test(before.trim())) {
+      return out.slice(lastJson.start).trim()
+    }
+  }
+  out = out.replace(/<think\b[^>]*>[\s\S]*$/gi, '')
+  const thinkingLead = out.match(/^(?:thinking(?:\s+process)?|reasoning)\s*:\s*/i)
+  if (thinkingLead) {
+    const afterLead = out.slice(thinkingLead[0].length)
+    const jsonAfter = findLastAnswerJson(afterLead)
+    if (jsonAfter) return afterLead.slice(jsonAfter.start).trim()
+  }
+  return out.trim()
 }
 
 function leakedPrediction(): ParsedPrediction {
@@ -306,14 +321,14 @@ export function parsePrediction(text: string | null): ParsedPrediction | null {
   const stripped = stripReasoningTracePreamble(text)
 
   // v2 shape first: the answer is the LAST JSON object carrying "direction".
-  const last = findLastAnswerJson(stripped)
+  const last = findLastAnswerJson(stripped) ?? findLastAnswerJson(text)
   if (last) {
     const parsed = normalizeParsedFields(last.obj)
     if (parsed?.parseFailure === 'reasoning_leak') return leakedPrediction()
     if (parsed) return parsed
   }
 
-  if (hasReasoningTrace(text) || hasReasoningTrace(stripped)) return leakedPrediction()
+  if (hasReasoningTrace(stripped) || (hasReasoningTrace(text) && !stripped.trim())) return leakedPrediction()
   if (stripped.length > RATIONALE_SNIPPET_MAX_CHARS && !last) return unparseablePrediction()
 
   const candidates: string[] = []

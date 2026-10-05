@@ -39,6 +39,7 @@ import { claimNextLaunchableIndex, entryTimeoutMs, LAUNCH_GATE_FRESH_CHUNK_MS } 
 import { coalesceRoundPacketBuild } from '@/lib/league/generation/parallel-policy'
 import { rosterProviderRoute, type ProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
+import { isHttp429Message, waitThenRetry429 } from '@/lib/league/http-429-retry'
 import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
 import { seatIdForModel } from '@/lib/league/seats'
 import { classifyNoAnswerFailReason, type NoAnswerFailReason } from '@/lib/league/fail-reason'
@@ -561,7 +562,12 @@ async function callOnce(
 }
 
 function isHttp429(message: string | undefined): boolean {
-  return !!message && message.toLowerCase().includes('429')
+  return isHttp429Message(message)
+}
+
+export function logUnparseableRaw(modelId: string, text: string | null | undefined): void {
+  const raw = (text ?? '').replace(/\s+/g, ' ').slice(0, 300)
+  console.log(`[league-generate] unparseable model=${modelId} raw=${raw}`)
 }
 
 /** One provider call. With a gate, the permit covers only this attempt. */
@@ -596,25 +602,59 @@ async function callWithRetry(
   category?: string,
   gate?: ProviderCallGate,
   http429?: { n: number },
+  deadlineAtMs?: number,
 ): Promise<RawCall> {
+  const remaining = () => (deadlineAtMs != null ? deadlineAtMs - Date.now() : null)
+  const empty = (error: string): RawCall => ({
+    text: null,
+    promptTokens: null,
+    completionTokens: null,
+    actualModel: entry.model_id,
+    costUsd: null,
+    costIsEstimated: false,
+    serverSideToolsUsed: null,
+    costInUsdTicks: null,
+    toolFeeUsd: null,
+    error,
+  })
+
   if (!gate) {
     try {
       const first = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
       if (first.error && isTransient(first.error)) {
-        const second = await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
-        return second
+        if (isHttp429(first.error)) {
+          if (http429) http429.n += 1
+          return waitThenRetry429({
+            first,
+            errorOf: (value) => value.error,
+            retry: () => callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category),
+            remainingBudgetMs: remaining(),
+            label: entry.model_id,
+          })
+        }
+        return callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
       }
       return first
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'unknown error'
       if (isTransient(msg)) {
+        if (isHttp429(msg) && http429) http429.n += 1
         try {
+          if (isHttp429(msg)) {
+            return await waitThenRetry429({
+              first: empty(msg),
+              errorOf: (value) => value.error,
+              retry: () => callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category),
+              remainingBudgetMs: remaining(),
+              label: entry.model_id,
+            })
+          }
           return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
         } catch (e2: unknown) {
-          return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
+          return empty(e2 instanceof Error ? e2.message : 'unknown error')
         }
       }
-      return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: msg }
+      return empty(msg)
     }
   }
 
@@ -626,8 +666,15 @@ async function callWithRetry(
     if (first.error && isTransient(first.error)) {
       if (isHttp429(first.error)) {
         if (http429) http429.n += 1
+        return waitThenRetry429({
+          first,
+          errorOf: (value) => value.error,
+          retry: attempt,
+          remainingBudgetMs: remaining(),
+          label: entry.model_id,
+        })
       }
-      return await attempt()
+      return attempt()
     }
     return first
   } catch (e: unknown) {
@@ -635,12 +682,21 @@ async function callWithRetry(
     if (isTransient(msg)) {
       if (isHttp429(msg) && http429) http429.n += 1
       try {
+        if (isHttp429(msg)) {
+          return await waitThenRetry429({
+            first: empty(msg),
+            errorOf: (value) => value.error,
+            retry: attempt,
+            remainingBudgetMs: remaining(),
+            label: entry.model_id,
+          })
+        }
         return await attempt()
       } catch (e2: unknown) {
-        return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: e2 instanceof Error ? e2.message : 'unknown error' }
+        return empty(e2 instanceof Error ? e2.message : 'unknown error')
       }
     }
-    return { text: null, promptTokens: null, completionTokens: null, actualModel: entry.model_id, costUsd: null, costIsEstimated: false, serverSideToolsUsed: null, costInUsdTicks: null, toolFeeUsd: null, error: msg }
+    return empty(msg)
   }
 }
 
@@ -683,8 +739,9 @@ async function runOneModel(
   gate?: ProviderCallGate,
   http429?: { n: number },
   instrument?: string,
+  deadlineAtMs?: number,
 ): Promise<ModelRunResult> {
-  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429)
+  let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429, deadlineAtMs)
   let totalCostUsd = 0
   let estimatedCostUsd = 0
   let toolsUsed: number | null = null
@@ -795,7 +852,7 @@ async function runOneModel(
         ? contract.retryInstruction
         : contract.directionOnlyRetryInstruction
     const retryPrompt = `${userPrompt}\n\n${retryText}`
-    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429)
+    const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429, deadlineAtMs)
     if (retryRaw.error) {
       const failReason = classifyNoAnswerFailReason({ error: retryRaw.error })
       await upsertNullPrediction(roundId, entry, failReason)
@@ -838,6 +895,7 @@ async function runOneModel(
             ? answer.parseFailure
             : 'unparseable',
       })
+      logUnparseableRaw(entry.model_id, raw.text)
       await upsertNullPrediction(roundId, entry, failReason)
       logNoAnswer(roundId, entry, failReason)
       return {
@@ -1320,6 +1378,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         opts.callGate,
         http429,
         round.instrument,
+        opts.deadlineAtMs,
       )
       runningCost += outcome.cost_usd
       results.push(outcome)

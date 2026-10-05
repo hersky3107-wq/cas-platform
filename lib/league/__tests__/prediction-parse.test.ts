@@ -284,6 +284,35 @@ describe('reasoning-trace leak — no-answer, nothing stored as rationale', () =
     expect(contract.validate(answer, '1d')).toEqual({ ok: false, reason: 'reasoning_leak' })
   })
 
+  it('parses sonar and hunyuan answers after a thinking block', () => {
+    const sonar = parsePrediction(
+      [
+        'Thinking:',
+        'The January 2026 tri-fold already shipped, so it cannot count.',
+        '{"direction":"down","probability":61,"rationale":"No official listing inside the window."}',
+      ].join('\n'),
+    )
+    expect(sonar?.direction).toBe('down')
+    expect(sonar?.probability).toBe(61)
+    expect(sonar?.parseFailure).toBeUndefined()
+    expect(sonar?.rationale).toContain('window')
+
+    const hunyuan = parsePrediction(
+      [
+        '<think>Weigh cadence vs rumor. The last JSON is the call.</think>',
+        '{"direction":"up","probability":57,"rationale":"Official posts continue inside the window."}',
+      ].join('\n'),
+    )
+    expect(hunyuan?.direction).toBe('up')
+    expect(hunyuan?.probability).toBe(57)
+
+    const unclosed = parsePrediction(
+      '<think>still thinking\n{"direction":"down","probability":70,"rationale":"Packet has no in-window event."}',
+    )
+    expect(unclosed?.direction).toBe('down')
+    expect(unclosed?.parseFailure).toBeUndefined()
+  })
+
   it('does not infer a direction from truncated CoT that exceeds the snippet cap', () => {
     const long = `${'x'.repeat(520)} direction: up probability: 80`
     const parsed = parsePrediction(long)
