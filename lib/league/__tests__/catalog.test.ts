@@ -421,4 +421,23 @@ describe('catalog i18n', () => {
     const wti = buildCatalogRankedRoundInput('WTI/USD', '1m', now)
     expect(wti!.proposition_text).not.toMatch(/weekday/)
   })
+
+  it('24h spots name both bar dates and never resolve 1d on the anchor bar', () => {
+    const sunday = new Date('2026-08-30T15:00:00.000Z')
+    const weekday = new Date('2026-08-24T10:00:00.000Z')
+    const xau = buildCatalogRankedRoundInput('XAU/USD', '1d', sunday)!
+    const eur = buildCatalogRankedRoundInput('EUR/USD', '1d', sunday)!
+    const btc = buildCatalogRankedRoundInput('BTC/USD', '1d', weekday)!
+    expect(xau.anchor_session_date).toBe('2026-08-28')
+    expect(xau.resolves_at).toBe('2026-08-31T23:59:59.999Z')
+    expect(xau.proposition_text).toBe('Will XAU/USD close higher on 2026-08-31 than its 2026-08-28 close?')
+    expect(xau.propositions?.ko).toContain('2026-08-28 종가 대비 2026-08-31 종가')
+    expect(eur.anchor_session_date).toBe(xau.anchor_session_date)
+    expect(eur.resolves_at).toBe(xau.resolves_at)
+    expect(btc.anchor_session_date).toBe('2026-08-23')
+    expect(btc.resolves_at).toBe('2026-08-24T23:59:59.999Z')
+    expect(btc.proposition_text).toContain('2026-08-24')
+    expect(btc.proposition_text).toContain('2026-08-23')
+    expect(btc.anchor_session_date).not.toBe(btc.resolves_at.slice(0, 10))
+  })
 })

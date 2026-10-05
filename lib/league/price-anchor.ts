@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { dailyBarCloseIso, pickCompletedDailyClose, usesCompletedDailyBars, usesWeekdayDailyBars } from '@/lib/league/horizon'
 import { fetchDataPacket, sessionDateForPrice } from '@/lib/league/market-data'
 import {
   decidePriceAnchorGate,
@@ -27,7 +28,8 @@ export type EnsurePriceAnchorResult =
 export async function persistAnchorPrice(
   roundId: string,
   price: number,
-  sessionDate: string | null
+  sessionDate: string | null,
+  observedAt?: string | null,
 ): Promise<boolean> {
   if (!hasUsableAnchor(price)) return false
   try {
@@ -35,7 +37,7 @@ export async function persistAnchorPrice(
       .from('prediction_rounds')
       .update({
         anchor_price: price,
-        anchor_price_at: new Date().toISOString(),
+        anchor_price_at: observedAt ?? new Date().toISOString(),
         ...(sessionDate ? { anchor_session_date: sessionDate } : {}),
       })
       .eq('id', roundId)
@@ -52,9 +54,23 @@ export async function persistAnchorPrice(
   }
 }
 
-export async function probeObtainablePriceAnchor(instrument: string): Promise<ObtainableAnchor> {
+export async function probeObtainablePriceAnchor(
+  instrument: string,
+  category?: string | null,
+  now: Date = new Date(),
+): Promise<ObtainableAnchor> {
   const packet = await fetchDataPacket(instrument)
-  if (!packet.available || !hasUsableAnchor(packet.latestClose)) {
+  if (!packet.available) {
+    return { ok: false, error: packet.error ?? 'TWELVE_DATA_UNAVAILABLE' }
+  }
+  if (category && usesCompletedDailyBars(category, instrument)) {
+    const completed = pickCompletedDailyClose(packet.series ?? [], now.toISOString(), usesWeekdayDailyBars(category, instrument))
+    if (!completed || !hasUsableAnchor(completed.close)) {
+      return { ok: false, error: packet.error ?? 'completed_close_unavailable' }
+    }
+    return { ok: true, price: completed.close, sessionDate: completed.sessionDate }
+  }
+  if (!hasUsableAnchor(packet.latestClose)) {
     return { ok: false, error: packet.error ?? 'TWELVE_DATA_UNAVAILABLE' }
   }
   return {
@@ -96,7 +112,7 @@ export async function runnerPriceAnchorGate(roundId: string): Promise<'proceed' 
 export async function ensurePriceRoundAnchor(roundId: string): Promise<EnsurePriceAnchorResult> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, instrument, proposition_kind, anchor_price')
+    .select('id, instrument, category, proposition_kind, anchor_price')
     .eq('id', roundId)
     .maybeSingle()
   if (error || !data) return { ok: false, code: 'round_not_found' }
@@ -104,6 +120,7 @@ export async function ensurePriceRoundAnchor(roundId: string): Promise<EnsurePri
   const row = data as {
     id: string
     instrument: string
+    category: string | null
     proposition_kind: string | null
     anchor_price: number | null
   }
@@ -120,10 +137,14 @@ export async function ensurePriceRoundAnchor(roundId: string): Promise<EnsurePri
     return { ok: false, code: 'market_data_unavailable', error: 'missing_anchor_after_generation' }
   }
 
-  const probed = await probeObtainablePriceAnchor(row.instrument)
+  const probed = await probeObtainablePriceAnchor(row.instrument, row.category)
   if (!probed.ok) return { ok: false, code: 'market_data_unavailable', error: probed.error }
 
-  const persisted = await persistAnchorPrice(roundId, probed.price, probed.sessionDate)
+  const observedAt =
+    row.category && usesCompletedDailyBars(row.category, row.instrument) && probed.sessionDate
+      ? dailyBarCloseIso(probed.sessionDate)
+      : null
+  const persisted = await persistAnchorPrice(roundId, probed.price, probed.sessionDate, observedAt)
   if (!persisted) return { ok: false, code: 'market_data_unavailable', error: 'anchor_persist_failed' }
   return { ok: true, needed: true, source: 'fetched' }
 }

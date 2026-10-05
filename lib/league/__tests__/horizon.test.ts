@@ -8,13 +8,21 @@ import {
   computeResolvesAt,
   EQUITY_SESSION_RESOLVES_AT_SUFFIX,
   isUiHorizon,
+  lastCompletedDailyBarDate,
+  nthFutureDailyBarDate,
   nthFutureUsEquitySessionDate,
+  pickCompletedDailyClose,
   TRADING_SESSION_COUNT,
   tradingApproximationNote,
   UI_HORIZONS,
+  usesCompletedDailyBars,
   usesTradingSessions,
+  usesWeekdayDailyBars,
   type UiHorizon,
 } from '../horizon'
+import { closeHigherPropositionEn, closeHigherPropositionKo } from '../close-higher-copy'
+import { formatSessionDate, headerWindow } from '../card-header-copy'
+import { getLeagueUiPack } from '../i18n/dictionary'
 import { isUsEquityTradingDay } from '../us-equity-calendar'
 
 function at(
@@ -92,9 +100,9 @@ describe('computeResolvesAt', () => {
     expect(resolvesAt.slice(0, 10)).toBe('2026-08-24')
   })
 
-  it('crypto/FX: 1d resolves exactly 1 calendar day later, weekend included', () => {
+  it('crypto 1d is the next completed UTC daily bar after the last completed close', () => {
     const resolvesAt = at('crypto_spot', '1d', anchor)
-    expect(resolvesAt.slice(0, 10)).toBe('2026-08-22')
+    expect(resolvesAt).toBe('2026-08-21T23:59:59.999Z')
   })
 
   it('equities: 1w/1m/3m use trading-session counts (5/21/63), never plain calendar days', () => {
@@ -107,20 +115,22 @@ describe('computeResolvesAt', () => {
     expect(Date.parse(threeMonths)).toBeGreaterThan(Date.parse(oneMonth))
   })
 
-  it('crypto/FX: 1w/1m/3m are flat calendar-day counts (7/30/90)', () => {
-    const base = Date.parse(anchor)
-    expect(at('fx', '1w', anchor)).toBe(new Date(base + 7 * 86_400_000).toISOString())
-    expect(at('fx', '1m', anchor)).toBe(new Date(base + 30 * 86_400_000).toISOString())
-    expect(at('fx', '3m', anchor)).toBe(new Date(base + 90 * 86_400_000).toISOString())
+  it('FX/metals 1w is the 5th weekday bar; crypto 1w is the 7th calendar bar', () => {
+    expect(at('fx', '1w', anchor)).toBe('2026-08-27T23:59:59.999Z')
+    expect(at('crypto_spot', '1w', anchor)).toBe('2026-08-27T23:59:59.999Z')
+    expect(at('fx', '1m', anchor)).toBe(`${nthFutureDailyBarDate('2026-08-20', 21, true)}T23:59:59.999Z`)
+    expect(at('crypto_spot', '1m', anchor)).toBe(`${nthFutureDailyBarDate('2026-08-20', 30, false)}T23:59:59.999Z`)
+    expect(at('fx', '3m', anchor)).toBe(`${nthFutureDailyBarDate('2026-08-20', 63, true)}T23:59:59.999Z`)
+    expect(at('crypto_spot', '3m', anchor)).toBe(`${nthFutureDailyBarDate('2026-08-20', 90, false)}T23:59:59.999Z`)
   })
 
-  it('crypto/FX keep the anchor clock time even on a weekend morning UTC open (the equity failure case)', () => {
+  it('24h spots pin resolves_at to the target bar close, not the open clock', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
-    expect(at('crypto_spot', '1d', weekendMorning)).toBe('2026-08-30T09:43:16.752Z')
-    expect(at('fx', '1d', weekendMorning)).toBe('2026-08-30T09:43:16.752Z')
-    expect(at('crypto_spot', '1w', weekendMorning)).toBe('2026-09-05T09:43:16.752Z')
-    expect(at('fx', '1m', weekendMorning)).toBe('2026-09-28T09:43:16.752Z')
-    expect(at('crypto_spot', '3m', weekendMorning)).toBe('2026-11-27T09:43:16.752Z')
+    expect(at('crypto_spot', '1d', weekendMorning)).toBe('2026-08-29T23:59:59.999Z')
+    expect(at('fx', '1d', weekendMorning)).toBe('2026-08-31T23:59:59.999Z')
+    expect(at('crypto_spot', '1w', weekendMorning)).toBe('2026-09-04T23:59:59.999Z')
+    expect(at('fx', '1m', weekendMorning)).toBe(`${nthFutureDailyBarDate('2026-08-28', 21, true)}T23:59:59.999Z`)
+    expect(at('crypto_spot', '3m', weekendMorning)).toBe(`${nthFutureDailyBarDate('2026-08-28', 90, false)}T23:59:59.999Z`)
   })
 
   it('etf_index including VNQ matches stock; house-price indexes use calendar days', () => {
@@ -132,17 +142,15 @@ describe('computeResolvesAt', () => {
     }
   })
 
-  it('gold / energy stay on the crypto/FX calendar-day path', () => {
+  it('spot metals and energy spots share the FX weekday calendar, not crypto weekends', () => {
     const weekendMorning = '2026-08-29T09:43:16.752Z'
     for (const h of UI_HORIZONS) {
-      expect(at('gold_metal', h, weekendMorning)).toBe(at('crypto_spot', h, weekendMorning))
-      expect(at('gold_metal', h, weekendMorning, 'XAU/USD')).toBe(
-        at('crypto_spot', h, weekendMorning),
-      )
-      expect(at('commodity_energy', h, weekendMorning)).toBe(
-        at('crypto_spot', h, weekendMorning),
-      )
+      expect(at('gold_metal', h, weekendMorning, 'XAU/USD')).toBe(at('fx', h, weekendMorning))
+      expect(at('commodity_energy', h, weekendMorning, 'WTI/USD')).toBe(at('fx', h, weekendMorning))
     }
+    expect(at('gold_metal', '1d', weekendMorning, 'XAU/USD')).not.toBe(
+      at('crypto_spot', '1d', weekendMorning),
+    )
   })
 
   it('GLD and SLV use the equity session clock even though they are filed under gold_metal', () => {
@@ -153,12 +161,8 @@ describe('computeResolvesAt', () => {
       expect(at('commodity_energy', h, weekendMorning, 'UNG')).toBe(
         at('stock', h, weekendMorning),
       )
-      expect(at('gold_metal', h, weekendMorning, 'XAG/USD')).toBe(
-        at('crypto_spot', h, weekendMorning),
-      )
-      expect(at('gold_metal', h, weekendMorning, 'XPT/USD')).toBe(
-        at('crypto_spot', h, weekendMorning),
-      )
+      expect(at('gold_metal', h, weekendMorning, 'XAG/USD')).toBe(at('fx', h, weekendMorning))
+      expect(at('gold_metal', h, weekendMorning, 'XPT/USD')).toBe(at('fx', h, weekendMorning))
     }
   })
 })
@@ -220,6 +224,88 @@ describe('tradingApproximationNote', () => {
       expect(tradingApproximationNote('gold_metal', h, 'GLD')).toBeNull()
       expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toBeNull()
     }
+  })
+})
+
+describe('24h completed-close anchors', () => {
+  const sundayEvening = '2026-08-30T15:00:00.000Z'
+  const weekdayMorning = '2026-08-24T10:00:00.000Z'
+
+  it('classifies spots vs session ETFs', () => {
+    expect(usesCompletedDailyBars('gold_metal', 'XAU/USD')).toBe(true)
+    expect(usesWeekdayDailyBars('gold_metal', 'XAU/USD')).toBe(true)
+    expect(usesCompletedDailyBars('fx', 'EUR/USD')).toBe(true)
+    expect(usesWeekdayDailyBars('crypto_spot', 'BTC/USD')).toBe(false)
+    expect(usesCompletedDailyBars('gold_metal', 'GLD')).toBe(false)
+    expect(usesCompletedDailyBars('commodity_energy', 'UNG')).toBe(false)
+    expect(usesCompletedDailyBars('commodity_energy', 'WTI/USD')).toBe(true)
+  })
+
+  it('Sunday-evening and weekday opens: 1d never resolves on the anchor bar', () => {
+    for (const [category, instrument, openIso, anchorDate, resolveDate] of [
+      ['gold_metal', 'XAU/USD', sundayEvening, '2026-08-28', '2026-08-31'],
+      ['fx', 'EUR/USD', sundayEvening, '2026-08-28', '2026-08-31'],
+      ['crypto_spot', 'BTC/USD', sundayEvening, '2026-08-29', '2026-08-30'],
+      ['gold_metal', 'XAU/USD', weekdayMorning, '2026-08-21', '2026-08-24'],
+      ['fx', 'EUR/USD', weekdayMorning, '2026-08-21', '2026-08-24'],
+      ['crypto_spot', 'BTC/USD', weekdayMorning, '2026-08-23', '2026-08-24'],
+    ] as const) {
+      const weekdayOnly = usesWeekdayDailyBars(category, instrument)
+      expect(lastCompletedDailyBarDate(openIso, weekdayOnly)).toBe(anchorDate)
+      expect(at(category, '1d', openIso, instrument)).toBe(`${resolveDate}T23:59:59.999Z`)
+      expect(resolveDate).not.toBe(anchorDate)
+      const bars = [
+        { sessionDate: anchorDate, close: 100 },
+        { sessionDate: resolveDate, close: 101 },
+      ]
+      const selected = selectResolutionSession(
+        bars,
+        Date.parse(`${anchorDate}T23:59:59.999Z`),
+        Date.parse(`${resolveDate}T23:59:59.999Z`),
+      )
+      expect(selected?.sessionDate).toBe(resolveDate)
+    }
+  })
+
+  it('picks the last completed series close, not a live same-day quote', () => {
+    const series = [
+      { date: '2026-08-21', close: 3330 },
+      { date: '2026-08-24', close: 3331.2 },
+    ]
+    expect(pickCompletedDailyClose(series, weekdayMorning, true)).toEqual({
+      close: 3330,
+      sessionDate: '2026-08-21',
+    })
+    expect(pickCompletedDailyClose(series, sundayEvening, true)).toBeNull()
+    expect(
+      pickCompletedDailyClose(
+        [
+          { date: '2026-08-28', close: 1.17 },
+          { date: '2026-08-31', close: 1.18 },
+        ],
+        sundayEvening,
+        true,
+      ),
+    ).toEqual({ close: 1.17, sessionDate: '2026-08-28' })
+  })
+
+  it('proposition and audit sentence name both bar dates', () => {
+    const en = closeHigherPropositionEn('XAU/USD', '2026-08-31', '2026-08-28')
+    const ko = closeHigherPropositionKo('XAU/USD', '2026-08-31', '2026-08-28')
+    expect(en).toBe('Will XAU/USD close higher on 2026-08-31 than its 2026-08-28 close?')
+    expect(ko).toContain('2026-08-28 종가 대비 2026-08-31 종가')
+    const t = getLeagueUiPack('ko')
+    const sentence = headerWindow({
+      instrument: 'XAU/USD',
+      anchorPrice: 3330,
+      anchorSessionDate: '2026-08-28',
+      resolutionSessionDate: '2026-08-31',
+      locale: 'ko',
+      t,
+    })
+    expect(sentence).toContain(formatSessionDate('2026-08-28', 'ko'))
+    expect(sentence).toContain(formatSessionDate('2026-08-31', 'ko'))
+    expect(sentence).toMatch(/종가/)
   })
 })
 

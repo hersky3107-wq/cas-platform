@@ -1,10 +1,14 @@
 import type { ColorBucket } from './card-types'
 import type { PredictionCategory } from '@/lib/prediction/categories'
+import { closeHigherPropositionEn, closeHigherPropositionKo } from './close-higher-copy'
 import {
   cacheBucketFor,
   computeResolvesAt,
+  lastCompletedDailyBarDate,
   tradingApproximationNote,
+  usesCompletedDailyBars,
   usesTradingSessions,
+  usesWeekdayDailyBars,
   type UiHorizon,
 } from './horizon'
 import { identityMismatchMessage, isPoisonTicker, quoteMatchesIdentity } from './instrument-identity'
@@ -373,6 +377,7 @@ export type CatalogRankedRoundInput = {
   anchor_price_at?: string
   anchor_session_date?: string
   anchor_source?: string
+  propositions?: Record<string, string>
 }
 
 /**
@@ -417,19 +422,36 @@ export function buildCatalogRankedRoundInput(
   const resolvesAt = computed.resolvesAt
   const resolveDate = resolvesAt.slice(0, 10)
   const note = tradingApproximationNote(found.category.ledgerCategory, uiHorizon, found.entry.instrument)
-  const proposition_text = `Will ${found.entry.instrument} close higher by ${resolveDate} than its last close?${
+  const ledger = found.category.ledgerCategory
+  const symbol = found.entry.instrument
+  if (usesCompletedDailyBars(ledger, symbol)) {
+    const anchorDate = lastCompletedDailyBarDate(now.toISOString(), usesWeekdayDailyBars(ledger, symbol))
+    const en = closeHigherPropositionEn(symbol, resolveDate, anchorDate)
+    return {
+      proposition_text: en,
+      category: ledger,
+      instrument: symbol,
+      horizon: uiHorizon,
+      resolution_rule: found.entry.resolution_rule,
+      resolves_at: resolvesAt,
+      item_type: 'ranked',
+      cache_key: `daily|${symbol}|${uiHorizon}|${bucket}`,
+      anchor_session_date: anchorDate,
+      propositions: { en, ko: closeHigherPropositionKo(symbol, resolveDate, anchorDate) },
+    }
+  }
+  const proposition_text = `Will ${symbol} close higher by ${resolveDate} than its last close?${
     note ? ` (${resolveDate} ${note}.)` : ''
   }`
   return {
     proposition_text,
-    category: found.category.ledgerCategory,
-    instrument: found.entry.instrument,
-    // The UI horizon code IS the stored value — no translation table.
+    category: ledger,
+    instrument: symbol,
     horizon: uiHorizon,
     resolution_rule: found.entry.resolution_rule,
     resolves_at: resolvesAt,
     item_type: 'ranked',
-    cache_key: `daily|${found.entry.instrument}|${uiHorizon}|${bucket}`,
+    cache_key: `daily|${symbol}|${uiHorizon}|${bucket}`,
   }
 }
 

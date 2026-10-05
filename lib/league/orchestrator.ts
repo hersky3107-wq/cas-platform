@@ -32,6 +32,7 @@ import {
   type ContractAnswer,
 } from '@/lib/league/answer-contract'
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
+import { dailyBarCloseIso, usesCompletedDailyBars } from '@/lib/league/horizon'
 import { generateExtraSeats } from '@/lib/league/extra/run'
 import { extraSeatIds, officialRowsForConsensus } from '@/lib/league/extra/seats'
 import { claimNextLaunchableIndex, entryTimeoutMs, LAUNCH_GATE_FRESH_CHUNK_MS } from '@/lib/league/generation/launch-gate'
@@ -1069,7 +1070,11 @@ async function buildAndPersistRoundPacket(round: ResolvedRound, costCap: number)
     costCapUsd: costCap,
     onEvent: async (event) => {
       if (event.kind === 'anchor_price') {
-        await persistAnchorPrice(round.id, event.price, event.sessionDate)
+        const observedAt =
+          usesCompletedDailyBars(round.category, round.instrument) && event.sessionDate
+            ? dailyBarCloseIso(event.sessionDate)
+            : null
+        await persistAnchorPrice(round.id, event.price, event.sessionDate, observedAt)
       }
     },
   }

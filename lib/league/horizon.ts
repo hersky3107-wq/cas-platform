@@ -108,30 +108,7 @@ export const CALENDAR_DAY_COUNT: Record<UiHorizon, number> = {
   '3m': 90,
 }
 
-/**
- * How many daily bars ahead the base rate / `resolves_at` counts for this
- * (category, horizon). Equities/ETFs: trading sessions. Crypto/FX: calendar
- * days (those series include weekend bars). Unknown horizon → 1 (1d).
- */
-export function sessionsForHorizon(
-  category: PredictionCategory | string,
-  horizon: string,
-  instrument?: string | null,
-): number {
-  const h = isUiHorizon(horizon) ? horizon : '1d'
-  return usesTradingSessions(category, instrument) ? TRADING_SESSION_COUNT[h] : CALENDAR_DAY_COUNT[h]
-}
-
 const DAY_MS = 24 * 60 * 60 * 1000
-
-/**
- * Public catalog equities/ETFs are NYSE/Nasdaq. Session-counted categories
- * and SESSION_CLOCK_INSTRUMENTS (GLD, SLV) use this exchange clock.
- * (KRX symbols exist in `open-phase.ts` but are not in the public catalog.)
- */
-const US_EQUITY_TIME_ZONE = 'America/New_York'
-const US_EQUITY_CLOSE_HOUR = 16
-const US_EQUITY_CLOSE_MINUTE = 0
 
 /**
  * Buffer after the target session's exchange close.
@@ -146,6 +123,134 @@ const US_EQUITY_CLOSE_MINUTE = 0
  *   - excludes the next UTC day's bar.
  */
 export const EQUITY_SESSION_RESOLVES_AT_SUFFIX = 'T23:59:59.999Z'
+
+/**
+ * How many daily bars ahead the base rate / `resolves_at` counts for this
+ * (category, horizon). Equities/ETFs: trading sessions. Crypto/FX: calendar
+ * days (those series include weekend bars). Unknown horizon → 1 (1d).
+ */
+export function sessionsForHorizon(
+  category: PredictionCategory | string,
+  horizon: string,
+  instrument?: string | null,
+): number {
+  const h = isUiHorizon(horizon) ? horizon : '1d'
+  if (usesTradingSessions(category, instrument) || usesWeekdayDailyBars(category, instrument)) {
+    return TRADING_SESSION_COUNT[h]
+  }
+  return CALENDAR_DAY_COUNT[h]
+}
+
+const COMPLETED_DAILY_BAR_CATEGORIES: ReadonlySet<string> = new Set([
+  'gold_metal',
+  'fx',
+  'crypto_spot',
+  'memecoin',
+  'commodity_energy',
+  'crypto_perps',
+])
+
+const WEEKDAY_DAILY_BAR_CATEGORIES: ReadonlySet<string> = new Set(['gold_metal', 'fx', 'commodity_energy'])
+
+/**
+ * 24h spots (XAU, EUR/USD, BTC, DOGE, WTI…). Not NYSE-session ETFs, not KRSTOCK.
+ * These grade on completed UTC daily bars, not a live quote vs the same day's bar.
+ */
+export function usesCompletedDailyBars(
+  category: PredictionCategory | string,
+  instrument?: string | null,
+): boolean {
+  if (usesTradingSessions(category, instrument)) return false
+  return COMPLETED_DAILY_BAR_CATEGORIES.has(category)
+}
+
+/** FX / spot metals / energy spots: Mon–Fri UTC bars. Crypto / memecoin: every civil day. */
+export function usesWeekdayDailyBars(
+  category: PredictionCategory | string,
+  instrument?: string | null,
+): boolean {
+  return usesCompletedDailyBars(category, instrument) && WEEKDAY_DAILY_BAR_CATEGORIES.has(category)
+}
+
+export function dailyBarCloseIso(ymd: string): string {
+  return `${ymd}${EQUITY_SESSION_RESOLVES_AT_SUFFIX}`
+}
+
+function utcYmdFromMs(ms: number): string {
+  return new Date(ms).toISOString().slice(0, 10)
+}
+
+function shiftUtcYmd(ymd: string, days: number): string {
+  return utcYmdFromMs(Date.parse(`${ymd}T00:00:00.000Z`) + days * DAY_MS)
+}
+
+function isUtcWeekday(ymd: string): boolean {
+  const day = new Date(`${ymd}T12:00:00.000Z`).getUTCDay()
+  return day !== 0 && day !== 6
+}
+
+function isEligibleDailyBar(ymd: string, weekdayOnly: boolean): boolean {
+  return weekdayOnly ? isUtcWeekday(ymd) : true
+}
+
+/**
+ * Most recent completed UTC daily bar before `openIso`. A bar dated D completes
+ * at `D T23:59:59.999Z`. Weekday-only skips Sat/Sun.
+ */
+export function lastCompletedDailyBarDate(openIso: string, weekdayOnly: boolean): string {
+  const openMs = Date.parse(openIso)
+  let ymd = utcYmdFromMs(openMs)
+  for (let i = 0; i < 21; i++) {
+    if (isEligibleDailyBar(ymd, weekdayOnly) && Date.parse(dailyBarCloseIso(ymd)) < openMs) {
+      return ymd
+    }
+    ymd = shiftUtcYmd(ymd, -1)
+  }
+  throw new Error(`lastCompletedDailyBarDate: no completed bar before ${openIso}`)
+}
+
+/** Nth completed daily bar strictly after `anchorBarDate`. */
+export function nthFutureDailyBarDate(anchorBarDate: string, n: number, weekdayOnly: boolean): string {
+  let ymd = shiftUtcYmd(anchorBarDate, 1)
+  let counted = 0
+  for (let i = 0; i < n * 3 + 21; i++) {
+    if (isEligibleDailyBar(ymd, weekdayOnly)) {
+      counted += 1
+      if (counted === n) return ymd
+    }
+    ymd = shiftUtcYmd(ymd, 1)
+  }
+  throw new Error(`nthFutureDailyBarDate: could not find bar ${n} after ${anchorBarDate}`)
+}
+
+export function pickCompletedDailyClose(
+  series: readonly { date: string; close: number }[],
+  openIso: string,
+  weekdayOnly: boolean,
+): { close: number; sessionDate: string } | null {
+  let want: string
+  try {
+    want = lastCompletedDailyBarDate(openIso, weekdayOnly)
+  } catch {
+    return null
+  }
+  for (let i = series.length - 1; i >= 0; i--) {
+    const date = series[i]!.date.trim().slice(0, 10)
+    if (date === want && Number.isFinite(series[i]!.close) && series[i]!.close > 0) {
+      return { close: series[i]!.close, sessionDate: date }
+    }
+  }
+  return null
+}
+
+/**
+ * Public catalog equities/ETFs are NYSE/Nasdaq. Session-counted categories
+ * and SESSION_CLOCK_INSTRUMENTS (GLD, SLV) use this exchange clock.
+ * (KRX symbols exist in `open-phase.ts` but are not in the public catalog.)
+ */
+const US_EQUITY_TIME_ZONE = 'America/New_York'
+const US_EQUITY_CLOSE_HOUR = 16
+const US_EQUITY_CLOSE_MINUTE = 0
 
 function pad2(n: number): string {
   return String(n).padStart(2, '0')
@@ -286,8 +391,12 @@ export type ComputeResolvesAtResult =
  *    `EQUITY_SESSION_RESOLVES_AT_SUFFIX`. Does NOT keep the anchor's clock
  *    time (that is what made a Saturday 09:43 UTC open due Monday 09:43 UTC,
  *    before Monday's graded close at 23:59:59.999Z).
- *  - crypto/FX and everything else: anchor + N calendar days, SAME clock
- *    time (these trade, and are graded, every day of the week).
+ *  - 24h spots (FX / metals / energy / crypto / memecoin): last completed
+ *    UTC daily bar before the open, then the Nth completed bar after that
+ *    (weekdays for FX/metals/energy; every civil day for crypto/memecoin).
+ *    `resolves_at` is that bar's UTC close (`T23:59:59.999Z`).
+ *  - everything else (e.g. house-price indexes): anchor + N calendar days,
+ *    SAME clock time.
  *
  * Session counts (US and KRSTOCK share `TRADING_SESSION_COUNT`):
  *   1d = 1, 1w = 5, 1m = 21, 3m = 63.
@@ -306,6 +415,12 @@ export function computeResolvesAt(
     return { ok: true, resolvesAt: krxSessionCloseIso(future.date) }
   }
   const anchorMs = Date.parse(anchorIso)
+  if (usesCompletedDailyBars(category, instrument)) {
+    const weekdayOnly = usesWeekdayDailyBars(category, instrument)
+    const last = lastCompletedDailyBarDate(anchorIso, weekdayOnly)
+    const future = nthFutureDailyBarDate(last, sessionsForHorizon(category, horizon, instrument), weekdayOnly)
+    return { ok: true, resolvesAt: dailyBarCloseIso(future) }
+  }
   if (!usesTradingSessions(category, instrument)) {
     return { ok: true, resolvesAt: new Date(anchorMs + CALENDAR_DAY_COUNT[horizon] * DAY_MS).toISOString() }
   }

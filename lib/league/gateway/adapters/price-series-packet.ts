@@ -11,6 +11,7 @@ import { decideResearchTier, type ResearchTier, type TierDecision } from '../../
 import { relationsFor, type ResearchLang } from '../../relations'
 import type { PacketInventoryInput } from '../../research-director'
 import { normalizeSessionDate } from '@/lib/prediction/resolution'
+import { pickCompletedDailyClose, usesCompletedDailyBars, usesWeekdayDailyBars } from '../../horizon'
 import type { DataPacket } from '../../market-data'
 import type { ResearchPacket } from '../../research'
 import type { RelatedInstrumentsResult } from '../../related-instruments'
@@ -81,6 +82,22 @@ export function sessionDateForClose(packet: DataPacket, price: number): string |
   return null
 }
 
+export function persistableAnchorFromPacket(
+  round: Pick<PacketRound, 'category' | 'instrument'>,
+  packet: DataPacket,
+  now: Date = new Date(),
+): { close: number; sessionDate: string | null } | null {
+  if (usesCompletedDailyBars(round.category, round.instrument)) {
+    return pickCompletedDailyClose(
+      packet.series ?? [],
+      now.toISOString(),
+      usesWeekdayDailyBars(round.category, round.instrument),
+    )
+  }
+  if (typeof packet.latestClose !== 'number') return null
+  return { close: packet.latestClose, sessionDate: sessionDateForClose(packet, packet.latestClose) }
+}
+
 /** Fetched inputs → `ClosedBookPacketInput`. Moved verbatim from the orchestrator. */
 export function toClosedBookInput(
   round: PacketRound,
@@ -94,7 +111,8 @@ export function toClosedBookInput(
   },
 ): ClosedBookPacketInput {
   const series = packet.series ?? []
-  const anchorClose = typeof packet.latestClose === 'number' ? packet.latestClose : null
+  const persistable = persistableAnchorFromPacket(round, packet)
+  const anchorClose = persistable?.close ?? (typeof packet.latestClose === 'number' ? packet.latestClose : null)
   // v2 (B): non-English findings get their own shared section; English
   // findings keep flowing through the existing prose-findings filter.
   const enFindings = research.findings.filter((f) => (f.lang ?? 'en') === 'en')
@@ -109,7 +127,7 @@ export function toClosedBookInput(
     seriesSource: packet.seriesSource ?? 'Twelve Data /time_series+quote',
     seriesAsOf: packet.asOf ?? series[series.length - 1]?.date ?? null,
     anchorClose,
-    anchorSessionDate: anchorClose != null ? sessionDateForClose(packet, anchorClose) : null,
+    anchorSessionDate: persistable?.sessionDate ?? (anchorClose != null ? sessionDateForClose(packet, anchorClose) : null),
     quoteAsOf: packet.asOf ?? null,
     consensus,
     crypto,
@@ -131,11 +149,12 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
   // ANCHOR price event — emitted at the exact point the pre-adapter
   // orchestrator persisted it (before the consensus fetch). The shell decides
   // whether to honor it (only for a newly CREATED round).
-  if (packet.available && typeof packet.latestClose === 'number') {
+  const persistable = persistableAnchorFromPacket(round, packet)
+  if (persistable) {
     await ctx.onEvent?.({
       kind: 'anchor_price',
-      price: packet.latestClose,
-      sessionDate: sessionDateForClose(packet, packet.latestClose),
+      price: persistable.close,
+      sessionDate: persistable.sessionDate,
     })
   }
   // v2 (D): consensus/crypto are fetched BEFORE research so the dispersion
