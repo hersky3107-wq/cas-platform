@@ -510,8 +510,9 @@ export async function resolveAiModelRankSeries(
   instrument: string,
   asOfIso?: string | null,
 ): Promise<{ bars: HistorySeriesBar[]; latestClose: number | null; asOf: string | null } | null> {
-  const parts = parseAirankInstrument(instrument)
-  if (!parts) return null
+  const parsed = parseAirankInstrument(instrument)
+  if (!parsed.ok) return null
+  const parts = parsed.parts
 
   const asOfYmd = asOfIso ? asOfIso.slice(0, 10) : null
   const storeArena = leaderboardStoreArena(parts.arena)

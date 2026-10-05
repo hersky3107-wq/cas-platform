@@ -620,20 +620,22 @@ function CardsPanel() {
         (selectedInstrument &&
           koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument))) ? (
         <div data-testid="league-round-card">
-          {view.kind === 'locked' ? (
+          {view.kind === 'locked' && (selectedInstrument ?? view.locked.round.instrument) ? (
             <LockedRoundPanel
               locked={view.locked}
-              instrument={selectedInstrument}
+              instrument={selectedInstrument ?? view.locked.round.instrument}
               horizon={horizon}
               locale={locale}
-              onOpened={() => void loadCard(selectedInstrument, horizon)}
+              onOpened={() =>
+                void loadCard(selectedInstrument ?? view.locked.round.instrument, horizon)
+              }
             />
-          ) : (
+          ) : view.kind === 'card' ? (
             <>
               <GenerationBanner
                 card={view.card}
                 locale={locale}
-                onRetried={() => void loadCard(selectedInstrument, horizon)}
+                onRetried={() => void loadCard(selectedInstrument ?? view.card.round.instrument, horizon)}
               />
               <PredictionCard key={view.card.round.round_id} initialData={view.card} />
               {isDeepDisabledForViewer(
@@ -653,7 +655,7 @@ function CardsPanel() {
                 />
               )}
             </>
-          )}
+          ) : null}
         </div>
       ) : null}
     </div>

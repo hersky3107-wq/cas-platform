@@ -264,7 +264,10 @@ function defaultVerification(event: TechEventId, raw: string): TechVerificationI
   return 'official_newsroom'
 }
 
-function boundDeadline(deadline: string, now: Date): TechParseResult | { ok: true; deadline: string; horizon: UiHorizon } {
+function boundDeadline(
+  deadline: string,
+  now: Date,
+): { ok: false; code: RefusalCode } | { ok: true; deadline: string; horizon: UiHorizon } {
   const today = todayYmd(now)
   if (deadline < today) return { ok: false, code: 'already_resolved' }
   const days = Math.ceil((Date.parse(`${deadline}T23:59:59.999Z`) - now.getTime()) / 86_400_000)

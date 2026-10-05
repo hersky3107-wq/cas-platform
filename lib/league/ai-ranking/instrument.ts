@@ -210,14 +210,14 @@ function parseAirankParts(
 
   if (input.kind === 'brand_table') {
     const subject = input.subject.trim().toLowerCase()
-    if (subject !== 'top5') return { ok: false, reason: 'bad_subject' }
+    if (subject !== 'top10' && subject !== 'top5') return { ok: false, reason: 'bad_subject' }
     return {
       ok: true,
       parts: {
         arena: input.arena,
         category: input.category,
         kind: input.kind,
-        subject: 'top5',
+        subject: subject === 'top5' ? 'top5' : 'top10',
         deadlineYmd: input.deadlineYmd,
       },
     }
@@ -333,6 +333,21 @@ const ATTRIBUTION_I18N: Record<LeagueLocale, string> = {
 
 export function airankAttributionLine(locale: LeagueLocale = 'ko'): string {
   return ATTRIBUTION_I18N[locale] ?? LMARENA_ATTRIBUTION
+}
+
+/** One card footnote: grading rule + attribution. User-facing propositions never name the source. */
+export function airankGradingFootnote(locale: LeagueLocale = 'ko'): string {
+  const grade: Record<LeagueLocale, string> = {
+    ko: '채점 기준: 마감일 이후 처음 발표되는 LMArena 공개 순위',
+    en: 'Grading: first public LMArena ranking published on or after the deadline',
+    ja: '採点: 締切日以降に最初に発表されるLMArena公開順位',
+    'zh-TW': '評分標準：截止日期之後首次發布的LMArena公開排名',
+    fr: 'Notation : premier classement public LMArena publié à partir de la date limite',
+    es: 'Criterio: primer ranking público de LMArena publicado a partir de la fecha límite',
+    pt: 'Critério: primeiro ranking público LMArena publicado a partir do prazo',
+    ar: 'معيار التقييم: أول ترتيب عام من LMArena يصدر في أو بعد الموعد النهائي',
+  }
+  return `${grade[locale] ?? grade.en} · ${airankAttributionLine(locale)}`
 }
 
 export function horizonDays(horizon: AirankHorizon): number {
@@ -545,7 +560,7 @@ export function airankResolutionRule(parts: AirankParts, locale: LeagueLocale = 
   return `First LMArena snapshot published on or after ${parts.deadlineYmd} (never a snapshot from before the round opened). YES if the queried ranking holds; ties on brand_above are NO. Camp kinds are YES if any brand of that camp meets the condition.`
 }
 
-/** Server-composed proposition — no user substring. The first-snapshot rule is visible. Localized across all 8 locales. */
+/** Stored/audit proposition — first-snapshot rule names the source. UI uses `airankDisplayProposition`. */
 export function airankPropositionText(parts: AirankParts, locale: LeagueLocale = 'en'): string {
   const field = fieldLabel(parts, locale)
   const subject = airankSubjectLabel(parts, locale)
@@ -553,7 +568,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'ko') {
     if (parts.kind === 'brand_table') {
-      return `${deadline} 이후 처음 발표되는 LMArena ${field} 순위의 상위 5개 브랜드는?`
+      return `${deadline} 이후 처음 발표되는 LMArena ${field} 순위의 상위 10개 브랜드는?`
     }
     const particle = iGa(subject)
     if (parts.kind === 'brand_rank1' || parts.kind === 'model_rank1' || parts.kind === 'camp_rank1') {
@@ -568,7 +583,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'ja') {
     if (parts.kind === 'brand_table') {
-      return `${deadline}以降に最初に発表されるLMArena ${field}ランキングの上位5ブランドは？`
+      return `${deadline}以降に最初に発表されるLMArena ${field}ランキングの上位10ブランドは？`
     }
     const first = `${deadline}以降に最初に発表されるLMArena ${field}ランキング`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -586,7 +601,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'zh-TW') {
     if (parts.kind === 'brand_table') {
-      return `${deadline}之後首次發布的LMArena ${field}排名前5品牌是哪些？`
+      return `${deadline}之後首次發布的LMArena ${field}排名前10品牌是哪些？`
     }
     const first = `${deadline}之後首次發布的LMArena ${field}排名`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -604,7 +619,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'fr') {
     if (parts.kind === 'brand_table') {
-      return `Quelles seront les 5 premières marques du premier classement LMArena ${field} publié à partir du ${deadline} ?`
+      return `Quelles seront les 10 premières marques du premier classement LMArena ${field} publié à partir du ${deadline} ?`
     }
     const first = `le premier classement LMArena ${field} publié à partir du ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -622,7 +637,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'es') {
     if (parts.kind === 'brand_table') {
-      return `¿Cuáles serán las 5 primeras marcas del primer ranking LMArena de ${field} publicado a partir del ${deadline}?`
+      return `¿Cuáles serán las 10 primeras marcas del primer ranking LMArena de ${field} publicado a partir del ${deadline}?`
     }
     const first = `el primer ranking LMArena de ${field} publicado a partir del ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -640,7 +655,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'pt') {
     if (parts.kind === 'brand_table') {
-      return `Quais serão as 5 primeiras marcas do primeiro ranking LMArena de ${field} publicado a partir de ${deadline}?`
+      return `Quais serão as 10 primeiras marcas do primeiro ranking LMArena de ${field} publicado a partir de ${deadline}?`
     }
     const first = `o primeiro ranking LMArena de ${field} publicado a partir de ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -658,7 +673,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   if (locale === 'ar') {
     if (parts.kind === 'brand_table') {
-      return `ما هي أفضل 5 علامات في أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}؟`
+      return `ما هي أفضل 10 علامات في أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}؟`
     }
     const first = `أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}`
     if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -676,7 +691,7 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
 
   // Default English ('en')
   if (parts.kind === 'brand_table') {
-    return `What are the top 5 brands on the first LMArena ${field} ranking published on or after ${deadline}?`
+    return `What are the top 10 brands on the first LMArena ${field} ranking published on or after ${deadline}?`
   }
   const first = `the first LMArena ${field} ranking published on or after ${deadline}`
   if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
@@ -690,6 +705,267 @@ export function airankPropositionText(parts: AirankParts, locale: LeagueLocale =
     return `Will ${subject} rank above ${other} on ${first}?`
   }
   return `Will a model whose name contains "${parts.subject}" be #1 on ${first}?`
+}
+
+const DISPLAY_BRAND_KO: Record<string, string> = {
+  ...BRAND_LABEL_KO,
+  OpenAI: 'GPT',
+}
+
+function canonicalBrandName(raw: string): string {
+  return Object.keys(BRAND_LABEL_KO).find((k) => k.toLowerCase() === raw.toLowerCase()) ?? raw
+}
+
+function displayBrandName(raw: string, locale: LeagueLocale): string {
+  const norm = canonicalBrandName(raw)
+  if (locale === 'ko') return DISPLAY_BRAND_KO[norm] ?? norm
+  return norm
+}
+
+function displaySubjectName(parts: AirankParts, locale: LeagueLocale): string {
+  if (parts.kind === 'camp_rank1' || parts.kind === 'camp_topn') return airankSubjectLabel(parts, locale)
+  if (parts.kind === 'model_rank1') return parts.subject
+  return displayBrandName(parts.subject, locale)
+}
+
+function inferAirankHorizon(parts: AirankParts, horizon?: AirankHorizon | string | null): AirankHorizon {
+  if (horizon === '1w' || horizon === '1m' || horizon === '3m') return horizon
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(parts.deadlineYmd)
+  if (!m) return '1m'
+  const y = Number(m[1])
+  const mo = Number(m[2])
+  const d = Number(m[3])
+  const last = new Date(Date.UTC(y, mo, 0)).getUTCDate()
+  if (d === last) return '1m'
+  const dt = new Date(Date.UTC(y, mo - 1, d))
+  if (dt.getUTCDay() === 0) return '1w'
+  return '1m'
+}
+
+function monthNameForYmd(ymd: string, locale: LeagueLocale): string {
+  const month = Number(ymd.slice(5, 7))
+  const idx = Number.isFinite(month) && month >= 1 && month <= 12 ? month - 1 : 0
+  const names: Record<LeagueLocale, string[]> = {
+    ko: ['1월', '2월', '3월', '4월', '5월', '6월', '7월', '8월', '9월', '10월', '11월', '12월'],
+    en: ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'],
+    ja: ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+    'zh-TW': ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'],
+    fr: ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'],
+    es: ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'septiembre', 'octubre', 'noviembre', 'diciembre'],
+    pt: ['janeiro', 'fevereiro', 'março', 'abril', 'maio', 'junho', 'julho', 'agosto', 'setembro', 'outubro', 'novembro', 'dezembro'],
+    ar: ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'],
+  }
+  return (names[locale] ?? names.en)[idx]
+}
+
+function periodEndPhrase(horizon: AirankHorizon, locale: LeagueLocale): string {
+  const map: Record<LeagueLocale, Record<AirankHorizon, string>> = {
+    ko: { '1w': '이번 주 말', '1m': '이번 달 말', '3m': '세 달 뒤' },
+    en: { '1w': 'by the end of this week', '1m': 'by the end of this month', '3m': 'in three months' },
+    ja: { '1w': '今週末', '1m': '今月末', '3m': '3か月後' },
+    'zh-TW': { '1w': '本週末', '1m': '本月底', '3m': '三個月後' },
+    fr: { '1w': "d'ici la fin de la semaine", '1m': "d'ici la fin du mois", '3m': 'dans trois mois' },
+    es: { '1w': 'a finales de esta semana', '1m': 'a finales de este mes', '3m': 'en tres meses' },
+    pt: { '1w': 'até o fim desta semana', '1m': 'até o fim deste mês', '3m': 'em três meses' },
+    ar: { '1w': 'بنهاية هذا الأسبوع', '1m': 'بنهاية هذا الشهر', '3m': 'خلال ثلاثة أشهر' },
+  }
+  return (map[locale] ?? map.en)[horizon]
+}
+
+function brandTableDisplayQuestion(
+  parts: AirankParts,
+  locale: LeagueLocale,
+  horizon: AirankHorizon,
+): string {
+  const field = fieldLabel(parts, locale)
+  const month = monthNameForYmd(parts.deadlineYmd, locale)
+  const tail: Record<LeagueLocale, string> = {
+    ko: 'AI 40개의 예상 순위',
+    en: "40 AIs' predicted ranking",
+    ja: 'AI 40件の予想順位',
+    'zh-TW': '40個AI的預測排名',
+    fr: 'classement prévu par 40 IA',
+    es: 'ranking previsto por 40 IA',
+    pt: 'ranking previsto por 40 IAs',
+    ar: 'ترتيب متوقع من 40 ذكاء اصطناعي',
+  }
+  const suffix = tail[locale] ?? tail.en
+  const overall = parts.category === 'overall'
+
+  if (horizon === '1w') {
+    const head: Record<LeagueLocale, string> = {
+      ko: '이번 주 AI 종합 순위는?',
+      en: "This week's overall AI ranking?",
+      ja: '今週のAI総合順位は？',
+      'zh-TW': '本週AI綜合排名是？',
+      fr: 'Le classement IA global de cette semaine ?',
+      es: '¿El ranking global de IA de esta semana?',
+      pt: 'O ranking geral de IA desta semana?',
+      ar: 'ترتيب الذكاء الاصطناعي العام لهذا الأسبوع؟',
+    }
+    return `${head[locale] ?? head.en} — ${suffix}`
+  }
+
+  if (overall) {
+    const head: Record<LeagueLocale, string> = {
+      ko: `${month} AI 종합 순위는?`,
+      en: `${month}'s overall AI ranking?`,
+      ja: `${month}のAI総合順位は？`,
+      'zh-TW': `${month}的AI綜合排名是？`,
+      fr: `Le classement IA global de ${month} ?`,
+      es: `¿El ranking global de IA de ${month}?`,
+      pt: `O ranking geral de IA de ${month}?`,
+      ar: `ترتيب الذكاء الاصطناعي العام لـ ${month}؟`,
+    }
+    return `${head[locale] ?? head.en} — ${suffix}`
+  }
+
+  const head: Record<LeagueLocale, string> = {
+    ko: `${month} ${field} 최강 AI는 어디?`,
+    en: `${month}'s strongest ${field} AI?`,
+    ja: `${month}の${field}最強AIは？`,
+    'zh-TW': `${month}最強${field}AI是誰？`,
+    fr: `Quelle IA de ${field} sera la plus forte en ${month} ?`,
+    es: `¿Cuál será la IA de ${field} más fuerte en ${month}?`,
+    pt: `Qual IA de ${field} será a mais forte em ${month}?`,
+    ar: `ما أقوى ذكاء اصطناعي في ${field} خلال ${month}؟`,
+  }
+  return `${head[locale] ?? head.en} — ${suffix}`
+}
+
+/** Short user-facing question. Never names the ranking source. */
+export function airankDisplayProposition(
+  parts: AirankParts,
+  locale: LeagueLocale = 'en',
+  horizon?: AirankHorizon | string | null,
+): string {
+  const hz = inferAirankHorizon(parts, horizon)
+  if (parts.kind === 'brand_table') return brandTableDisplayQuestion(parts, locale, hz)
+
+  const field = fieldLabel(parts, locale)
+  const subject = displaySubjectName(parts, locale)
+  const other = displayBrandName(parts.param ?? '', locale)
+  const period = periodEndPhrase(hz, locale)
+  const overall = parts.category === 'overall'
+  const n = parts.param ?? '3'
+
+  if (locale === 'ko') {
+    const particle = iGa(subject)
+    const fieldRank = overall ? 'AI 종합' : `${field} 순위`
+    if (parts.kind === 'brand_above') {
+      return `${subject}${particle} ${period} ${overall ? 'AI 종합 순위' : `${field} 순위`}에서 ${other}보다 위일까?`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return overall
+        ? `${subject}${particle} ${period} AI ${field} 1위일까?`
+        : `${subject}${particle} ${period} ${field} 순위에서 1위일까?`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `${subject}${particle} ${period} ${fieldRank}에서 1위 할까?`
+    }
+    if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
+      return overall
+        ? `${subject}${particle} ${period} AI 종합 ${n}위 안에 들까?`
+        : `${subject}${particle} ${period} ${field} 순위에서 ${n}위 안에 들까?`
+    }
+  }
+
+  if (locale === 'ja') {
+    const fieldBit = overall ? 'AI総合' : `${field}`
+    if (parts.kind === 'brand_above') {
+      return `${subject}は${period}の${fieldBit}ランキングで${other}より上位か？`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `${subject}は${period}の${fieldBit}で1位になるか？`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `${subject}は${period}の${fieldBit}で1位になるか？`
+    }
+    return `${subject}は${period}の${fieldBit}で${n}位以内に入るか？`
+  }
+
+  if (locale === 'zh-TW') {
+    const fieldBit = overall ? 'AI綜合' : field
+    if (parts.kind === 'brand_above') {
+      return `${subject}在${period}${fieldBit}排名會高於${other}嗎？`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1') {
+      return `${subject}會是${period}${fieldBit}第1名嗎？`
+    }
+    if (parts.kind === 'model_rank1') {
+      return `${subject}會是${period}${fieldBit}第1名嗎？`
+    }
+    return `${subject}會進入${period}${fieldBit}前${n}名嗎？`
+  }
+
+  if (locale === 'fr') {
+    const fieldBit = overall ? 'IA globale' : field
+    if (parts.kind === 'brand_above') {
+      return `${subject} sera-t-il classé devant ${other} en ${fieldBit} ${period} ?`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1' || parts.kind === 'model_rank1') {
+      return `${subject} sera-t-il n°1 en ${fieldBit} ${period} ?`
+    }
+    return `${subject} figurera-t-il dans le top ${n} en ${fieldBit} ${period} ?`
+  }
+
+  if (locale === 'es') {
+    const fieldBit = overall ? 'IA global' : field
+    if (parts.kind === 'brand_above') {
+      return `¿Estará ${subject} por encima de ${other} en ${fieldBit} ${period}?`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1' || parts.kind === 'model_rank1') {
+      return `¿Será ${subject} el n.° 1 en ${fieldBit} ${period}?`
+    }
+    return `¿Estará ${subject} entre los primeros ${n} en ${fieldBit} ${period}?`
+  }
+
+  if (locale === 'pt') {
+    const fieldBit = overall ? 'IA geral' : field
+    if (parts.kind === 'brand_above') {
+      return `${subject} ficará acima de ${other} em ${fieldBit} ${period}?`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1' || parts.kind === 'model_rank1') {
+      return `${subject} será o nº 1 em ${fieldBit} ${period}?`
+    }
+    return `${subject} ficará entre os ${n} primeiros em ${fieldBit} ${period}?`
+  }
+
+  if (locale === 'ar') {
+    const fieldBit = overall ? 'الذكاء الاصطناعي العام' : field
+    if (parts.kind === 'brand_above') {
+      return `هل سيتقدم ${subject} على ${other} في ${fieldBit} ${period}؟`
+    }
+    if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1' || parts.kind === 'model_rank1') {
+      return `هل سيحتل ${subject} المركز الأول في ${fieldBit} ${period}؟`
+    }
+    return `هل سيكون ${subject} ضمن أفضل ${n} في ${fieldBit} ${period}؟`
+  }
+
+  const fieldBit = overall ? 'overall AI' : field
+  if (parts.kind === 'brand_above') {
+    return `Will ${subject} rank above ${other} in ${fieldBit} ${period}?`
+  }
+  if (parts.kind === 'brand_rank1' || parts.kind === 'camp_rank1' || parts.kind === 'model_rank1') {
+    return `Will ${subject} be #1 in ${fieldBit} ${period}?`
+  }
+  return `Will ${subject} finish in the top ${n} in ${fieldBit} ${period}?`
+}
+
+export function airankDisplayAllPropositions(
+  parts: AirankParts,
+  horizon?: AirankHorizon | string | null,
+): Record<LeagueLocale, string> {
+  return {
+    ko: airankDisplayProposition(parts, 'ko', horizon),
+    en: airankDisplayProposition(parts, 'en', horizon),
+    ja: airankDisplayProposition(parts, 'ja', horizon),
+    'zh-TW': airankDisplayProposition(parts, 'zh-TW', horizon),
+    fr: airankDisplayProposition(parts, 'fr', horizon),
+    es: airankDisplayProposition(parts, 'es', horizon),
+    pt: airankDisplayProposition(parts, 'pt', horizon),
+    ar: airankDisplayProposition(parts, 'ar', horizon),
+  }
 }
 
 export function airankAllPropositions(parts: AirankParts): Record<LeagueLocale, string> {

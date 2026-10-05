@@ -241,10 +241,10 @@ describe('airank card fixes & proposition localization', () => {
       })
 
       const koDisplay = nonPriceInstrumentDisplay(meta.instrument, 'ko', meta.horizon, LEAGUE_UI.ko)
-      expect(koDisplay).toBe('앤트로픽 vs 오픈AI · 코딩 순위 · 1개월')
+      expect(koDisplay).toBe('클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?')
 
       const enDisplay = nonPriceInstrumentDisplay(meta.instrument, 'en', meta.horizon, LEAGUE_UI.en)
-      expect(enDisplay).toBe('Anthropic vs OpenAI · coding rank · 1 month')
+      expect(enDisplay).toBe('Will Anthropic rank above OpenAI in coding by the end of this month?')
 
       const koHeadline = headerHeadline({
         roundDate: '2026-10-04',
@@ -258,7 +258,7 @@ describe('airank card fixes & proposition localization', () => {
         locale: 'ko',
         t: LEAGUE_UI.ko,
       })
-      expect(koHeadline).toContain('앤트로픽 vs 오픈AI · 코딩 순위 · 1개월')
+      expect(koHeadline).toContain('클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?')
 
       const markup = renderToStaticMarkup(
         createElement(CardHeader, {
@@ -271,7 +271,9 @@ describe('airank card fixes & proposition localization', () => {
       // Must not render raw unformatted horizon/category like "1m · ai models"
       expect(markup).not.toContain('ai models')
       expect(markup).not.toMatch(/1m\s*·\s*ai models/)
-      expect(markup).toContain('앤트로픽 vs 오픈AI · 코딩 순위 · 1개월')
+      expect(markup).toContain('클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?')
+      expect(markup).toContain('채점 기준: 마감일 이후 처음 발표되는 LMArena 공개 순위')
+      expect(markup).not.toContain('AIRANK:')
     })
 
     it('formats topn and rank1 headers cleanly', () => {
@@ -281,10 +283,10 @@ describe('airank card fixes & proposition localization', () => {
         category: 'ai_models',
       })
       expect(nonPriceInstrumentDisplay(topnMeta.instrument, 'ko', topnMeta.horizon, LEAGUE_UI.ko)).toBe(
-        '앤트로픽 · 코딩 3위 안 · 1개월',
+        '클로드가 이번 달 말 코딩 순위에서 3위 안에 들까?',
       )
       expect(nonPriceInstrumentDisplay(topnMeta.instrument, 'en', topnMeta.horizon, LEAGUE_UI.en)).toBe(
-        'Anthropic · coding top 3 · 1 month',
+        'Will Anthropic finish in the top 3 in coding by the end of this month?',
       )
 
       const rank1Meta = makeRoundMeta({
@@ -293,10 +295,10 @@ describe('airank card fixes & proposition localization', () => {
         category: 'ai_models',
       })
       expect(nonPriceInstrumentDisplay(rank1Meta.instrument, 'ko', rank1Meta.horizon, LEAGUE_UI.ko)).toBe(
-        '앤트로픽 · 코딩 1위 · 1개월',
+        '클로드가 이번 달 말 코딩 순위에서 1위일까?',
       )
       expect(nonPriceInstrumentDisplay(rank1Meta.instrument, 'en', rank1Meta.horizon, LEAGUE_UI.en)).toBe(
-        'Anthropic · coding #1 · 1 month',
+        'Will Anthropic be #1 in coding by the end of this month?',
       )
     })
   })
@@ -498,7 +500,7 @@ describe('airank card fixes & proposition localization', () => {
       expect(src).not.toContain("import 'server-only'")
     })
 
-    it('renders AIRANK propositions from codec for all 8 locales without LLM', () => {
+    it('renders AIRANK stored audit propositions from codec for all 8 locales without LLM', () => {
       const parts = {
         arena: 'text' as const,
         category: 'coding',
@@ -542,7 +544,8 @@ describe('airank card fixes & proposition localization', () => {
         'zh-TW',
       )
       expect(recent).toHaveLength(1)
-      expect(recent[0].proposition_text).toBe('Anthropic在2026-11-04之後首次發布的LMArena 程式編寫排名中會排在OpenAI之前嗎？')
+      expect(recent[0].proposition_text).toBe('Anthropic在本月底程式編寫排名會高於OpenAI嗎？')
+      expect(recent[0].proposition_text).not.toMatch(/LMArena/)
     })
 
     it('resolveLocalizedProposition and leagueShareText respect viewer locale and fallbacks', () => {

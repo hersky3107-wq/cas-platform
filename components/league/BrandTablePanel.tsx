@@ -89,7 +89,6 @@ export function BrandTablePanel({
           ) : null}
         </div>
       ) : null}
-      <p className="mt-3 text-[10px] text-league-fg-muted">{c.attribution}</p>
     </section>
   )
 }

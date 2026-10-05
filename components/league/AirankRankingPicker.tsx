@@ -19,15 +19,20 @@ export function AirankRankingPicker({
   onOpen: (instrument: string, horizon: UiHorizon) => void
 }) {
   const c = brandTableCopy(locale)
-  const [fieldId, setFieldId] = useState<BrandTableFieldId>('coding')
+  const [fieldId, setFieldId] = useState<BrandTableFieldId>('overall')
   const [period, setPeriod] = useState<BrandTableHorizon>('1w')
   const [busy, setBusy] = useState(false)
+
+  function selectField(id: BrandTableFieldId) {
+    setFieldId(id)
+    if (id !== 'overall') setPeriod('1m')
+  }
 
   function open() {
     if (busy) return
     setBusy(true)
     const slot = currentBrandTableSlot(fieldId, period)
-    onOpen(slot.instrument, period)
+    onOpen(slot.instrument, slot.horizon)
     setBusy(false)
   }
 
@@ -42,7 +47,7 @@ export function AirankRankingPicker({
           <button
             key={field.id}
             type="button"
-            onClick={() => setFieldId(field.id)}
+            onClick={() => selectField(field.id)}
             className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
               fieldId === field.id ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
             }`}
@@ -51,20 +56,29 @@ export function AirankRankingPicker({
           </button>
         ))}
       </div>
-      <div className="mt-2 flex gap-1.5">
-        {(['1w', '1m'] as const).map((h) => (
+      {fieldId === 'overall' ? (
+        <div className="mt-2 flex gap-1.5">
+          {(['1w', '1m'] as const).map((h) => (
+            <button
+              data-testid={h === '1w' ? 'airank-period-week' : 'airank-period-month'}
+              className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
+                period === h ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
+              }`}
+            >
+              {h === '1w' ? c.periodWeek : c.periodMonth}
+            </button>
+          ))}
+        </div>
+      ) : (
+        <div className="mt-2 flex gap-1.5">
           <button
-            key={h}
             type="button"
-            onClick={() => setPeriod(h)}
-            className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
-              period === h ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
-            }`}
+            className="rounded-full bg-slate-900 px-3 py-1.5 text-xs font-semibold text-white"
           >
-            {h === '1w' ? c.periodWeek : c.periodMonth}
+            {c.periodMonth}
           </button>
-        ))}
-      </div>
+        </div>
+      )}
       <button
         type="button"
         disabled={busy}

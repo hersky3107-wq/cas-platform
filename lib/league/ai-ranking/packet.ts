@@ -14,7 +14,9 @@ import {
   type SnapshotBrandRow,
 } from './grade'
 import {
+  BRAND_TABLE_CANDIDATE_TOP,
   BRAND_TABLE_OTHER,
+  BRAND_TABLE_SIZE,
   candidateListFromRanking,
   isBrandTableParts,
 } from './brand-table'
@@ -138,13 +140,13 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
       : ['NEWS: none measured']
 
   const candidates = candidateListFromRanking(sorted)
-  const baselineTop = top.slice(0, 5).map((r) => r.brand)
+  const baselineTop = top.slice(0, BRAND_TABLE_SIZE).map((r) => r.brand)
   const candidateBlock = isBrandTableParts(parts)
     ? [
         '',
-        `CANDIDATES (choose exactly 5 distinct, in rank order, from this list only): ${candidates.join(' | ')}`,
-        `  Include "${BRAND_TABLE_OTHER}" only for a brand that is not among the current top 12.`,
-        `BASELINE TOP5 (persistence at open — current ranking if it held): ${baselineTop.join(' | ')}`,
+        `CANDIDATES (choose exactly ${BRAND_TABLE_SIZE} distinct, in rank order, from this list only): ${candidates.join(' | ')}`,
+        `  Include "${BRAND_TABLE_OTHER}" only for a brand that is not among the current top ${BRAND_TABLE_CANDIDATE_TOP}.`,
+        `BASELINE TOP${BRAND_TABLE_SIZE} (persistence at open — current ranking if it held): ${baselineTop.join(' | ')}`,
       ]
     : []
 
@@ -209,7 +211,7 @@ export async function loadAirankPacketData(
   const dates = (await io.listPublishDates(parts.arena, parts.category)).sort()
   const windowStart = addUtcDaysYmd(asOfYmd, -200)
   const inWindow = dates.filter((d) => d >= windowStart && d <= asOfYmd)
-  const rankingsByDate: AirankPacketInput['rankingsByDate'] = []
+  const rankingsByDate: Array<{ date: string; brands: readonly SnapshotBrandRow[] }> = []
   for (const date of inWindow) {
     rankingsByDate.push({ date, brands: await io.loadBrandRanking(parts.arena, parts.category, date) })
   }

@@ -171,6 +171,8 @@ export type ComposedRound = {
    * persisted on the round. Price adapters omit this.
    */
   observation_shape?: ObservationShape | null
+  /** Per-locale audit propositions (AIRANK/tech). UI may render a shorter display string. */
+  propositions?: Record<string, string> | null
 }
 
 export type EntityResolution =

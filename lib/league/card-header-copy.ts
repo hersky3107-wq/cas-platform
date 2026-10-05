@@ -17,11 +17,8 @@ import { publicFacingLabel } from './public-label'
 import {
   decodeAirankInstrument,
   isAirankInstrument,
-  airankSubjectLabel,
-  fieldLabel,
-  airankPropositionText,
+  airankDisplayProposition,
 } from './ai-ranking/instrument'
-import { brandTableHeader, isBrandTableParts } from './ai-ranking/brand-table'
 
 /** BCP 47 tag `Intl` understands for each league locale. */
 export function localeTag(locale: LeagueLocale): string {
@@ -156,28 +153,6 @@ export function formatAirankHorizonLabel(
   return HORIZONS[locale]?.[hz] ?? hz
 }
 
-const RANK_WORD: Record<LeagueLocale, string> = {
-  ko: '순위',
-  en: 'rank',
-  ja: '順位',
-  'zh-TW': '排名',
-  fr: 'classement',
-  es: 'ranking',
-  pt: 'ranking',
-  ar: 'تصنيف',
-}
-
-function airankHeaderSubject(subjectOrParam: string, locale: LeagueLocale): string {
-  const norm = subjectOrParam.trim()
-  if (locale === 'ko') {
-    if (norm.toLowerCase() === 'anthropic') return '앤트로픽'
-    if (norm.toLowerCase() === 'openai') return '오픈AI'
-    if (norm.toLowerCase() === 'google') return '구글'
-    if (norm.toLowerCase() === 'meta') return '메타'
-  }
-  return norm
-}
-
 export function airankInstrumentDisplay(
   instrument: string,
   locale: LeagueLocale = 'en',
@@ -187,32 +162,8 @@ export function airankInstrumentDisplay(
   if (!isAirankInstrument(instrument)) return null
   const parts = decodeAirankInstrument(instrument)
   if (!parts) return null
-
-  const subject = airankHeaderSubject(parts.subject, locale)
-  const field = fieldLabel(parts, locale)
-  const horizonLabel = formatAirankHorizonLabel(horizon ?? parts.horizon ?? '1m', locale, t)
-  const rankWord = RANK_WORD[locale] ?? RANK_WORD.en
-
-  if (isBrandTableParts(parts)) {
-    return brandTableHeader(parts, horizon ?? '1m', locale)
-  }
-
-  if (parts.kind === 'brand_above') {
-    const other = airankHeaderSubject(parts.param ?? '', locale)
-    return `${subject} vs ${other} · ${field} ${rankWord} · ${horizonLabel}`
-  }
-  if (parts.kind === 'brand_topn' || parts.kind === 'camp_topn') {
-    const n = parts.param ?? '3'
-    if (locale === 'ko') return `${subject} · ${field} ${n}위 안 · ${horizonLabel}`
-    if (locale === 'ja') return `${subject} · ${field} ${n}位以内 · ${horizonLabel}`
-    if (locale === 'zh-TW') return `${subject} · ${field} 前${n}名 · ${horizonLabel}`
-    return `${subject} · ${field} top ${n} · ${horizonLabel}`
-  }
-  // brand_rank1 / model_rank1 / camp_rank1
-  if (locale === 'ko') return `${subject} · ${field} 1위 · ${horizonLabel}`
-  if (locale === 'ja') return `${subject} · ${field} 1位 · ${horizonLabel}`
-  if (locale === 'zh-TW') return `${subject} · ${field} 第1名 · ${horizonLabel}`
-  return `${subject} · ${field} #1 · ${horizonLabel}`
+  void t
+  return airankDisplayProposition(parts, locale, horizon)
 }
 
 export function nonPriceInstrumentDisplay(
@@ -238,15 +189,16 @@ export function rankedPropositionDisplay(
   stored: string,
   locale: LeagueLocale,
   propositions?: Record<string, string> | null,
+  horizon?: string | null,
 ): string {
+  if (isAirankInstrument(instrument)) {
+    const parts = decodeAirankInstrument(instrument)
+    if (parts) return airankDisplayProposition(parts, locale, horizon)
+  }
   if (propositions && typeof propositions === 'object') {
     if (propositions[locale]?.trim()) return publicFacingLabel(propositions[locale].trim(), stored)
     if (propositions.en?.trim()) return publicFacingLabel(propositions.en.trim(), stored)
     if (propositions.ko?.trim()) return publicFacingLabel(propositions.ko.trim(), stored)
-  }
-  if (isAirankInstrument(instrument)) {
-    const parts = decodeAirankInstrument(instrument)
-    if (parts) return airankPropositionText(parts, locale)
   }
   if (decodeSportsInstrument(instrument)) {
     return publicFacingLabel(sportsPropositionDisplay(instrument, stored, locale), stored)

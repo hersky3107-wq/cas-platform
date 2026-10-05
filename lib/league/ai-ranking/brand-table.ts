@@ -1,10 +1,11 @@
 /**
- * AIRANK brand_table — weekly/monthly top-5 ranking product.
+ * AIRANK brand_table — weekly (overall only) / monthly (all 6 fields) top-10 ranking product.
  * Pure: codec helpers, answer parse/validate, Borda, grading, KST deadlines.
  */
 
 import { formatInTimeZone } from 'date-fns-tz'
 import {
+  airankDisplayProposition,
   encodeAirankInstrument,
   fieldLabel,
   isAirankInstrument,
@@ -19,9 +20,9 @@ import { addUtcDaysYmd, type SnapshotBrandRow } from './grade'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
 export const BRAND_TABLE_KIND = 'brand_table' as const
-export const BRAND_TABLE_SUBJECT = 'top5' as const
-export const BRAND_TABLE_SIZE = 5
-export const BRAND_TABLE_CANDIDATE_TOP = 12
+export const BRAND_TABLE_SUBJECT = 'top10' as const
+export const BRAND_TABLE_SIZE = 10
+export const BRAND_TABLE_CANDIDATE_TOP = 15
 export const BRAND_TABLE_OTHER = '기타·신규'
 export const BRAND_TABLE_HORIZONS = ['1w', '1m'] as const
 export type BrandTableHorizon = (typeof BRAND_TABLE_HORIZONS)[number]
@@ -88,7 +89,7 @@ const BRAND_SLUG: Record<string, string> = {
 const SLUG_TO_BRAND = new Map(Object.entries(BRAND_SLUG).map(([brand, slug]) => [slug.toLowerCase(), brand]))
 
 export function isBrandTableInstrument(raw: string | null | undefined): boolean {
-  if (!isAirankInstrument(raw)) return false
+  if (typeof raw !== 'string' || !isAirankInstrument(raw)) return false
   const parsed = parseAirankInstrument(raw)
   return parsed.ok && parsed.parts.kind === BRAND_TABLE_KIND
 }
@@ -134,6 +135,21 @@ export function thisWeekSundayKst(now: Date): string {
   return addUtcDaysYmd(ymd, add)
 }
 
+export function calendarDaysBetweenYmd(fromYmd: string, toYmd: string): number {
+  return Math.round(
+    (Date.parse(`${toYmd}T00:00:00.000Z`) - Date.parse(`${fromYmd}T00:00:00.000Z`)) / 86_400_000,
+  )
+}
+
+/** Next Sunday at least `minDays` after the KST open date (Sunday open → following Sunday). */
+export function nextSundayDeadlineKst(now: Date, minDays = 6): string {
+  const { ymd, dow } = kstParts(now)
+  const toThisSunday = dow === 0 ? 0 : 7 - dow
+  const thisSunday = addUtcDaysYmd(ymd, toThisSunday)
+  if (calendarDaysBetweenYmd(ymd, thisSunday) >= minDays) return thisSunday
+  return addUtcDaysYmd(thisSunday, 7)
+}
+
 /** Last civil day of the current KST month. */
 export function lastDayOfMonthKst(now: Date): string {
   const { y, m } = kstParts(now)
@@ -143,17 +159,15 @@ export function lastDayOfMonthKst(now: Date): string {
 }
 
 export function brandTableDeadlineYmd(horizon: BrandTableHorizon, now: Date = new Date()): string {
-  return horizon === '1w' ? thisWeekSundayKst(now) : lastDayOfMonthKst(now)
+  return horizon === '1w' ? nextSundayDeadlineKst(now) : lastDayOfMonthKst(now)
 }
 
-/** Monday 09:00 KST of the current KST week has passed (ISO week starting Monday). */
+/** Monday 09:00 KST of the current KST week has passed. Sunday is still the previous week. */
 export function weekTableOpenPassed(now: Date): boolean {
-  const { dow, hour, ymd } = kstParts(now)
-  if (dow === 0) return true
+  const { dow, hour } = kstParts(now)
+  if (dow === 0) return false
   if (dow > 1) return true
-  if (dow === 1 && hour >= 9) return true
-  void ymd
-  return false
+  return hour >= 9
 }
 
 /** 1st 09:00 KST of the current KST month has passed. */
@@ -174,17 +188,16 @@ export type BrandTableSlot = {
 export function planAirankTableSlots(now: Date = new Date()): BrandTableSlot[] {
   const out: BrandTableSlot[] = []
   if (weekTableOpenPassed(now)) {
+    const field = BRAND_TABLE_FIELDS[0]
     const deadlineYmd = brandTableDeadlineYmd('1w', now)
-    for (const field of BRAND_TABLE_FIELDS) {
-      const instrument = encodeBrandTableInstrument(field, deadlineYmd)
-      out.push({
-        field,
-        horizon: '1w',
-        deadlineYmd,
-        instrument,
-        cacheKey: `airank|${instrument}|1w`,
-      })
-    }
+    const instrument = encodeBrandTableInstrument(field, deadlineYmd)
+    out.push({
+      field,
+      horizon: '1w',
+      deadlineYmd,
+      instrument,
+      cacheKey: `airank|${instrument}|1w`,
+    })
   }
   if (monthTableOpenPassed(now)) {
     const deadlineYmd = brandTableDeadlineYmd('1m', now)
@@ -202,20 +215,28 @@ export function planAirankTableSlots(now: Date = new Date()): BrandTableSlot[] {
   return out
 }
 
+export function coerceBrandTableHorizon(
+  fieldId: BrandTableFieldId,
+  horizon: BrandTableHorizon,
+): BrandTableHorizon {
+  return fieldId === 'overall' ? horizon : '1m'
+}
+
 export function currentBrandTableSlot(
   fieldId: BrandTableFieldId,
   horizon: BrandTableHorizon,
   now: Date = new Date(),
 ): BrandTableSlot {
   const field = BRAND_TABLE_FIELDS.find((f) => f.id === fieldId) ?? BRAND_TABLE_FIELDS[0]
-  const deadlineYmd = brandTableDeadlineYmd(horizon, now)
+  const hz = coerceBrandTableHorizon(field.id, horizon)
+  const deadlineYmd = brandTableDeadlineYmd(hz, now)
   const instrument = encodeBrandTableInstrument(field, deadlineYmd)
   return {
     field,
-    horizon,
+    horizon: hz,
     deadlineYmd,
     instrument,
-    cacheKey: `airank|${instrument}|${horizon}`,
+    cacheKey: `airank|${instrument}|${hz}`,
   }
 }
 
@@ -271,7 +292,7 @@ export type BrandTableAnswer = {
 
 export type BrandTableParse =
   | { ok: true; answer: BrandTableAnswer }
-  | { ok: false; reason: 'unparseable' | 'not_five' | 'not_distinct' | 'not_candidate' }
+  | { ok: false; reason: 'unparseable' | 'wrong_size' | 'not_distinct' | 'not_candidate' }
 
 function extractJsonObject(text: string): Record<string, unknown> | null {
   const trimmed = text.trim()
@@ -321,8 +342,8 @@ export function parseBrandTableAnswer(
   if (!text) return { ok: false, reason: 'unparseable' }
   const obj = extractJsonObject(text)
   if (!obj) return { ok: false, reason: 'unparseable' }
-  const rankingRaw = asStringList(obj.ranking ?? obj.top5 ?? obj.table)
-  if (rankingRaw.length !== BRAND_TABLE_SIZE) return { ok: false, reason: 'not_five' }
+  const rankingRaw = asStringList(obj.ranking ?? obj.top10 ?? obj.top5 ?? obj.table)
+  if (rankingRaw.length !== BRAND_TABLE_SIZE) return { ok: false, reason: 'wrong_size' }
   const resolved: string[] = []
   for (const item of rankingRaw) {
     const hit = resolveBrandTableCandidate(item, candidates)
@@ -368,7 +389,7 @@ export function extractBrandTableCandidates(injection: string | null | undefined
 
 export function extractBrandTableBaseline(injection: string | null | undefined): string[] {
   if (!injection) return []
-  const block = injection.match(/BASELINE TOP5[^:]*:\s*([^\n]+)/i)
+  const block = injection.match(/BASELINE TOP(?:10|5)[^:]*:\s*([^\n]+)/i)
   if (!block?.[1]) return []
   return block[1]
     .split('|')
@@ -583,17 +604,12 @@ export function buildBrandTableView(args: {
   }
 }
 
-export function brandTableProposition(parts: AirankParts, locale: LeagueLocale = 'en'): string {
-  const field = fieldLabel(parts, locale)
-  const deadline = parts.deadlineYmd
-  if (locale === 'ko') return `${deadline} 이후 처음 발표되는 LMArena ${field} 순위의 상위 5개 브랜드는?`
-  if (locale === 'ja') return `${deadline}以降に最初に発表されるLMArena ${field}ランキングの上位5ブランドは？`
-  if (locale === 'zh-TW') return `${deadline}之後首次發布的LMArena ${field}排名前5品牌是哪些？`
-  if (locale === 'fr') return `Quelles seront les 5 premières marques du premier classement LMArena ${field} publié à partir du ${deadline} ?`
-  if (locale === 'es') return `¿Cuáles serán las 5 primeras marcas del primer ranking LMArena de ${field} publicado a partir del ${deadline}?`
-  if (locale === 'pt') return `Quais serão as 5 primeiras marcas do primeiro ranking LMArena de ${field} publicado a partir de ${deadline}?`
-  if (locale === 'ar') return `ما هي أفضل 5 علامات في أول تصنيف LMArena لـ ${field} يصدر في أو بعد ${deadline}؟`
-  return `What are the top 5 brands on the first LMArena ${field} ranking published on or after ${deadline}?`
+export function brandTableProposition(
+  parts: AirankParts,
+  locale: LeagueLocale = 'en',
+  horizon?: AirankHorizon | string | null,
+): string {
+  return airankDisplayProposition(parts, locale, horizon)
 }
 
 export function brandTableHeader(parts: AirankParts, horizon: string, locale: LeagueLocale): string {

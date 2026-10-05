@@ -3,10 +3,10 @@
  * supabase server clients, and any other server-only module.
  */
 import {
+  decodeAirankInstrument,
   isAirankInstrument,
   parseAirankInstrument,
-  decodeAirankInstrument,
-  airankPropositionText,
+  airankDisplayProposition,
   airankAllPropositions,
 } from './ai-ranking/instrument'
 import type { LeagueLocale } from './i18n/locales'
@@ -18,14 +18,15 @@ export type LocalizedPropositionTarget = {
   category?: string | null
   instrument?: string | null
   propositions?: Record<string, string> | null
+  horizon?: string | null
 }
 
 /**
  * Resolves the proposition text for the viewer's locale.
  *
  * Priority:
- * 1. Viewer's locale from `propositions[locale]` if present.
- * 2. AIRANK: deterministic template from codec in all 8 locales (no LLM).
+ * 1. AIRANK: short display template from the codec (never names the source; stored audit text is skipped).
+ * 2. Viewer's locale from `propositions[locale]` if present.
  * 3. Fallback to `en` then `ko` from `propositions`.
  * 4. Stored `proposition_text`.
  */
@@ -33,19 +34,15 @@ export function resolveLocalizedProposition(
   round: LocalizedPropositionTarget,
   locale: LeagueLocale = 'en',
 ): string {
+  if (round.category === 'ai_models' || (round.instrument && isAirankInstrument(round.instrument))) {
+    const parsed = round.instrument ? parseAirankInstrument(round.instrument) : null
+    const parts = parsed && parsed.ok ? parsed.parts : round.instrument ? decodeAirankInstrument(round.instrument) : null
+    if (parts) return airankDisplayProposition(parts, locale, round.horizon)
+  }
+
   if (round.propositions && typeof round.propositions === 'object') {
     const direct = round.propositions[locale]
     if (typeof direct === 'string' && direct.trim()) return direct.trim()
-  }
-
-  // AIRANK: render from the codec with templates in all 8 locales (no LLM)
-  if (round.category === 'ai_models' || (round.instrument && isAirankInstrument(round.instrument))) {
-    const parts =
-      (round.instrument ? decodeAirankInstrument(round.instrument) : null) ??
-      (round.instrument ? parseAirankInstrument(round.instrument) : null)
-    if (parts) {
-      return airankPropositionText(parts, locale)
-    }
   }
 
   // Fallback order: viewer's locale -> en -> ko -> stored proposition_text

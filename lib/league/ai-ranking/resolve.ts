@@ -319,8 +319,10 @@ function parseDeadline(text: string, now: Date): string | null {
   if (months) return addMonths(today.ymd, Number(months[1]))
 
   if (/이번\s*주\s*말|this sunday|end of (?:this )?week/i.test(text)) {
-    const add = (7 - today.dow) % 7
-    return addDays(today.ymd, add)
+    const toThisSunday = today.dow === 0 ? 0 : 7 - today.dow
+    const thisSunday = addDays(today.ymd, toThisSunday)
+    if (calendarDays(today.ymd, thisSunday) >= 6) return thisSunday
+    return addDays(thisSunday, 7)
   }
   if (/다음\s*주(?:\s*말)?|next sunday|next week/i.test(text)) {
     const add = ((7 - today.dow) % 7) + 7

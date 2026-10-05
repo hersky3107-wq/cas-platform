@@ -14,7 +14,6 @@ import { readFixtureCache } from './sports/cache'
 import type { VerdictCrossRoundGrade } from './verdict-aggregate'
 import {
   isAirankInstrument,
-  parseAirankInstrument,
   decodeAirankInstrument,
   airankAllPropositions,
 } from './ai-ranking/instrument'
@@ -26,6 +25,7 @@ import {
   gradeBrandTableRanking,
   isBrandTableInstrument,
   mapActualBrandsToCandidates,
+  BRAND_TABLE_SIZE,
 } from './ai-ranking/brand-table'
 import { nearestOnOrBefore } from './ai-ranking/grade'
 import { brandRankingFromStore, listLeaderboardPublishDates, LMARENA_SOURCE } from './ai-ranking/ingest'
@@ -230,6 +230,7 @@ async function loadOptionalColumns(roundId: string): Promise<OptionalRoundColumn
       resolution_price: data.resolution_price ?? null,
       proposition_kind: data.proposition_kind ?? null,
       subject_label: data.subject_label ?? null,
+      propositions: (data.propositions as Record<string, string> | null) ?? null,
     }
   } catch {
     return EMPTY_OPTIONAL_COLUMNS
@@ -256,21 +257,20 @@ async function loadOperatorEvidence(
 }
 
 async function loadPredictions(roundId: string, includeFailReasons = false): Promise<PredictionRow[]> {
-  const columns = includeFailReasons ? PREDICTION_COLUMNS_ADMIN : PREDICTION_COLUMNS
-  const { data, error } = await supabaseAdmin
-    .from('model_predictions')
-    .select(columns)
-    .eq('round_id', roundId)
-    .order('predicted_at', { ascending: true })
-  if (!error) return (data ?? []) as PredictionRow[]
   if (includeFailReasons) {
-    const withoutFail = await supabaseAdmin
+    const admin = await supabaseAdmin
       .from('model_predictions')
-      .select(PREDICTION_COLUMNS)
+      .select(PREDICTION_COLUMNS_ADMIN)
       .eq('round_id', roundId)
       .order('predicted_at', { ascending: true })
-    if (!withoutFail.error) return (withoutFail.data ?? []) as PredictionRow[]
+    if (!admin.error) return (admin.data ?? []) as unknown as PredictionRow[]
   }
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select(PREDICTION_COLUMNS)
+    .eq('round_id', roundId)
+    .order('predicted_at', { ascending: true })
+  if (!error) return (data ?? []) as unknown as PredictionRow[]
   // Same degrade-not-break stance as `loadOptionalColumns`: a DB that
   // predates 20260829000002 renders qualifiers as null, not a broken card.
   const fallback = await supabaseAdmin
@@ -279,7 +279,7 @@ async function loadPredictions(roundId: string, includeFailReasons = false): Pro
     .eq('round_id', roundId)
     .order('predicted_at', { ascending: true })
   if (fallback.error) throw new Error(`league card: predictions lookup failed (${error.message})`)
-  return (fallback.data ?? []) as PredictionRow[]
+  return (fallback.data ?? []) as unknown as PredictionRow[]
 }
 
 type CrossRoundQueryRow = {
@@ -363,7 +363,7 @@ export async function fetchCardData(
   if (isOpen && (isAiModels || isTech)) {
     if (!optional.propositions || Object.keys(optional.propositions).length === 0) {
       if (isAiModels) {
-        const parts = decodeAirankInstrument(round.instrument) ?? parseAirankInstrument(round.instrument)
+        const parts = decodeAirankInstrument(round.instrument)
         if (parts) {
           optional.propositions = airankAllPropositions(parts)
           void supabaseAdmin
@@ -443,7 +443,7 @@ async function loadBrandTableCardView(
     : []
   const official = officialRowsForConsensus(models)
     .map((m) => decodeBrandTableRanking(m.qualifierText))
-    .filter((r) => r.length >= 5)
+    .filter((r) => r.length >= BRAND_TABLE_SIZE)
   const decodedActual = decodeActualTableOutcome(round.actual_outcome)
   const candidates = baseline.length ? candidateListFromRanking(baseline) : candidateListFromRanking(current)
   const actualNames = decodedActual.ranking.length

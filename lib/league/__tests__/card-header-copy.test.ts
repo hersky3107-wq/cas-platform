@@ -356,6 +356,7 @@ describe('header honesty', () => {
         locale: 'ko',
       }),
     )
+    expect(html).toContain('채점 기준: 마감일 이후 처음 발표되는 LMArena 공개 순위')
     expect(html).toContain('순위 데이터: LMArena (CC BY 4.0)')
     expect(html).not.toContain('AIRANK:')
   })

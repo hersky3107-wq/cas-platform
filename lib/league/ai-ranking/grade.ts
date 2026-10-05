@@ -55,7 +55,7 @@ export function gradeAirankSnapshot(parts: AirankParts, input: {
     const top = [...input.brands]
       .sort((a, b) => a.rank - b.rank || a.brand.localeCompare(b.brand))
       .filter((row, i, all) => all.findIndex((r) => r.brand === row.brand) === i)
-      .slice(0, 5)
+      .slice(0, 10)
     const names = top.map((r) => r.brand)
     return {
       verdict: 'YES',

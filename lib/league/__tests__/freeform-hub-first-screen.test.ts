@@ -100,10 +100,11 @@ describe('free-prompt first screen', () => {
 
   it('list labels are proposition text, never the instrument code', () => {
     const instrument = 'AIRANK:text:coding:brand_above:Anthropic:OpenAI:20261031'
-    const proposition = '클로드가 2026-10-31 이후 처음 발표되는 LMArena 코딩 순위에서 오픈AI보다 위일까?'
-    const label = publicFacingLabel(rankedPropositionDisplay(instrument, proposition, 'ko'), proposition)
+    const proposition = '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?'
+    const label = publicFacingLabel(rankedPropositionDisplay(instrument, 'stored LMArena audit', 'ko', null, '1m'), 'stored')
     expect(label).toBe(proposition)
     expect(label).not.toContain('AIRANK:')
+    expect(label).not.toContain('LMArena')
     expect(HUB).toContain('publicFacingLabel')
     expect(HUB).toContain('selectRecentRound')
     expect(HUB).toContain('round_id')
