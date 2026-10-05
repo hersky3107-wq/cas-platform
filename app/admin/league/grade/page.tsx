@@ -213,10 +213,10 @@ export default function LeagueManualGradePage() {
   }
 
   if (authState === 'checking') {
-    return <main className="min-h-screen bg-[#0a0f1e] p-6 text-sm text-slate-300">Checking access…</main>
+    return <main className="min-h-screen bg-[#0a0f1e] p-6 text-sm text-slate-300">접근 확인 중…</main>
   }
   if (authState === 'denied') {
-    return <main className="min-h-screen bg-[#0a0f1e] p-6 text-sm text-red-300">Forbidden.</main>
+    return <main className="min-h-screen bg-[#0a0f1e] p-6 text-sm text-red-300">권한이 없습니다.</main>
   }
 
   const selectedDraft = selected ? draftFor(selected.id) : EMPTY_DRAFT
@@ -298,7 +298,7 @@ export default function LeagueManualGradePage() {
 
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
-            <h1 className="text-2xl font-bold tracking-tight">League — 수동 채점</h1>
+            <h1 className="text-2xl font-bold tracking-tight">리그 — 수동 채점</h1>
             <p className="mt-1 text-sm text-slate-400">
               스포츠·정치·엔터 등 자동 시세가 없는 라운드만 여기로 옵니다. 시세 종목은 Twelve Data가 자동 채점합니다.
             </p>
@@ -312,7 +312,7 @@ export default function LeagueManualGradePage() {
             onClick={() => void load()}
             className="rounded-xl border border-white/12 bg-white/6 px-3 py-1.5 text-sm font-semibold hover:bg-white/8"
           >
-            Refresh
+            새로고침
           </button>
           <button
             type="button"
@@ -328,7 +328,7 @@ export default function LeagueManualGradePage() {
           )}
         </div>
 
-        {loading ? <p className="text-sm text-slate-400">Loading…</p> : null}
+        {loading ? <p className="text-sm text-slate-400">불러오는 중…</p> : null}
         {error ? <p className="rounded-xl border border-rose-400/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-100">{error}</p> : null}
 
         {bulkMode ? (
@@ -346,7 +346,12 @@ export default function LeagueManualGradePage() {
                   const draft = draftFor(round.id)
                   return (
                     <tr key={round.id}>
-                      <td className="px-3 py-2 text-slate-100">{round.proposition_text}</td>
+                      <td className="px-3 py-2 text-slate-100">
+                        <p>{round.proposition_ko || round.proposition_text}</p>
+                        {round.proposition_en && round.proposition_en !== (round.proposition_ko || round.proposition_text) ? (
+                          <p className="mt-0.5 text-[11px] text-slate-500">{round.proposition_en}</p>
+                        ) : null}
+                      </td>
                       <td className="px-3 py-2 text-slate-400">{round.category}</td>
                       <td className="px-3 py-2">
                         <div className="flex flex-col gap-1">
@@ -359,7 +364,7 @@ export default function LeagueManualGradePage() {
                                   checked={draft.verdict === v}
                                   onChange={() => patchDraft(round.id, { verdict: v })}
                                 />
-                                {v === 'yes' ? 'YES' : v === 'no' ? 'NO' : 'VOID'}
+                                {v === 'yes' ? 'YES / 승리' : v === 'no' ? 'NO / 패배' : '무효 / VOID'}
                               </label>
                             ))}
                           </div>
@@ -404,7 +409,10 @@ export default function LeagueManualGradePage() {
                           selected?.id === round.id ? 'bg-cyan-500/15' : 'hover:bg-white/5'
                         }`}
                       >
-                        <p className="font-semibold leading-snug text-white">{round.proposition_text}</p>
+                        <p className="font-semibold leading-snug text-white">{round.proposition_ko || round.proposition_text}</p>
+                        {round.proposition_en && round.proposition_en !== (round.proposition_ko || round.proposition_text) ? (
+                          <p className="mt-0.5 text-[10px] font-normal text-slate-500">{round.proposition_en}</p>
+                        ) : null}
                         <p className="mt-1 text-[11px] text-slate-400">
                           {round.category} · {round.resolves_at.slice(0, 16).replace('T', ' ')} UTC
                           {' · '}
@@ -420,10 +428,18 @@ export default function LeagueManualGradePage() {
             {selected ? (
               <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-5">
                 <p className="text-xs uppercase tracking-wide text-slate-500">명제</p>
-                <h2 className="mt-1 text-lg font-semibold leading-snug">{selected.proposition_text}</h2>
+                <h2 className="mt-1 text-lg font-semibold leading-snug">{selected.proposition_ko || selected.proposition_text}</h2>
+                {selected.proposition_en && selected.proposition_en !== (selected.proposition_ko || selected.proposition_text) ? (
+                  <p className="mt-1 text-xs text-slate-500">{selected.proposition_en}</p>
+                ) : null}
                 <p className="mt-3 text-sm text-slate-300">
-                  <span className="text-slate-500">판정 기준:</span> {selected.resolution_rule || '—'}
+                  <span className="text-slate-500">판정 기준:</span> {selected.resolution_rule_ko || selected.resolution_rule || '—'}
                 </p>
+                {selected.resolution_rule &&
+                selected.resolution_rule_ko &&
+                selected.resolution_rule !== selected.resolution_rule_ko ? (
+                  <p className="mt-1 text-xs text-slate-500">{selected.resolution_rule}</p>
+                ) : null}
                 <p className="mt-2 text-xs text-slate-400">
                   {selected.category} · {selected.instrument} · {selected.horizon}
                   {' · '}
@@ -434,12 +450,12 @@ export default function LeagueManualGradePage() {
                   청구 {selected.charged_credits} cr
                 </p>
                 <p className="mt-2 text-xs text-slate-400">
-                  Side A / YES: {selected.side_a} · Side B / NO: {selected.side_b}
+                  A측: {selected.side_a} · B측: {selected.side_b}
                 </p>
 
                 {selected.null_seats.length > 0 ? (
                   <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">미응답 좌석 (admin)</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">미응답 좌석 (관리자)</p>
                     <ul className="mt-2 space-y-1">
                       {selected.null_seats.map((seat) => (
                         <li key={seat.model_id} className="flex flex-wrap items-center gap-2 text-xs">
@@ -456,7 +472,7 @@ export default function LeagueManualGradePage() {
 
                 {selected.seat_counters.length > 0 ? (
                   <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">strongest_counter (admin)</p>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">가장 강한 반론 (관리자)</p>
                     <ul className="mt-2 space-y-1">
                       {selected.seat_counters.map((seat) => (
                         <li key={seat.model_id} className="text-xs text-slate-300">
@@ -489,7 +505,7 @@ export default function LeagueManualGradePage() {
                 </div>
 
                 <label className="mt-4 block text-xs font-semibold text-slate-400">
-                  Evidence URL
+                  근거 URL
                   <input
                     type="url"
                     value={selectedDraft.evidenceUrl}
@@ -499,7 +515,7 @@ export default function LeagueManualGradePage() {
                   />
                 </label>
                 <label className="mt-3 block text-xs font-semibold text-slate-400">
-                  Admin note
+                  관리자 메모
                   <input
                     type="text"
                     value={selectedDraft.note}

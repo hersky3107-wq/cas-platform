@@ -387,11 +387,11 @@ describe('catalog i18n', () => {
     expect(input!.proposition_text).not.toMatch(/next 1 month/i)
   })
 
-  it('surfaces the weekday-approximation disclosure on the proposition for a trading-session horizon beyond 1d', () => {
+  it('does not append a weekday-approximation disclosure once NYSE holidays are counted', () => {
     const now = new Date('2026-08-21T20:00:00.000Z')
     const oneMonth = buildCatalogRankedRoundInput('AAPL', '1m', now)
-    expect(oneMonth!.proposition_text).toMatch(/weekday/)
-    expect(oneMonth!.proposition_text).toMatch(/holiday calendar/)
+    expect(oneMonth!.proposition_text).not.toMatch(/weekday/)
+    expect(oneMonth!.proposition_text).not.toMatch(/holiday calendar/)
 
     // 1d: no disclosure (an off-by-one-holiday shift is immaterial to a next-session round).
     const oneDay = buildCatalogRankedRoundInput('AAPL', '1d', now)
@@ -403,13 +403,13 @@ describe('catalog i18n', () => {
 
     // REIT ETFs share the equity session clock — same disclosure as AAPL.
     const reit = buildCatalogRankedRoundInput('VNQ', '1m', now)
-    expect(reit!.proposition_text).toMatch(/weekday/)
+    expect(reit!.proposition_text).not.toMatch(/weekday/)
 
     // GLD/SLV share the equity session clock; XAU/XAG stay on calendar days.
     const gld = buildCatalogRankedRoundInput('GLD', '1m', now)
-    expect(gld!.proposition_text).toMatch(/weekday/)
+    expect(gld!.proposition_text).not.toMatch(/weekday/)
     const slv = buildCatalogRankedRoundInput('SLV', '1m', now)
-    expect(slv!.proposition_text).toMatch(/weekday/)
+    expect(slv!.proposition_text).not.toMatch(/weekday/)
     const xau = buildCatalogRankedRoundInput('XAU/USD', '1m', now)
     expect(xau!.proposition_text).not.toMatch(/weekday/)
     const xag = buildCatalogRankedRoundInput('XAG/USD', '1m', now)
@@ -417,7 +417,7 @@ describe('catalog i18n', () => {
     const xpt = buildCatalogRankedRoundInput('XPT/USD', '1m', now)
     expect(xpt!.proposition_text).not.toMatch(/weekday/)
     const ung = buildCatalogRankedRoundInput('UNG', '1m', now)
-    expect(ung!.proposition_text).toMatch(/weekday/)
+    expect(ung!.proposition_text).not.toMatch(/weekday/)
     const wti = buildCatalogRankedRoundInput('WTI/USD', '1m', now)
     expect(wti!.proposition_text).not.toMatch(/weekday/)
   })

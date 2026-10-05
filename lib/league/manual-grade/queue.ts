@@ -7,9 +7,10 @@ import { sideLabelsFor } from '@/lib/league/side-labels'
 import { LEAGUE_UI } from '@/lib/league/i18n/dictionary'
 import type { ManualQueueItem } from './types'
 import { notifyManualGradeQueued } from './telegram'
+import { koreanAdminCopyForRounds } from '@/lib/league/admin-proposition-ko'
 
 const QUEUE_COLUMNS =
-  'id, proposition_text, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status'
+  'id, proposition_text, propositions, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status'
 
 export async function countNeedsGrading(): Promise<number> {
   const { count, error } = await supabaseAdmin
@@ -40,6 +41,14 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
   const nullSeatsByRound = await loadNullSeats(ids)
   const countersByRound = await loadSeatCounters(ids)
   const t = LEAGUE_UI.ko
+  const korean = await koreanAdminCopyForRounds(
+    rows.map((row) => ({
+      id: String(row.id),
+      proposition_text: String(row.proposition_text ?? ''),
+      resolution_rule: String(row.resolution_rule ?? ''),
+      propositions: row.propositions,
+    })),
+  )
 
   return rows.map((row) => {
     const labels = sideLabelsFor(
@@ -47,16 +56,22 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
         proposition_kind: row.proposition_kind as string | null,
         subject_label: row.subject_label as string | null,
         category: row.category as string,
+        instrument: row.instrument as string,
       },
-      t
+      t,
+      'ko',
     )
+    const copy = korean.get(String(row.id))
     const jobs = jobsByRound.get(String(row.id)) ?? []
     const charged = jobs.reduce((sum, j) => sum + (j.charged_cost > 0 && !j.refunded ? j.charged_cost : 0), 0)
     const creator = jobs.find((j) => j.user_id)?.user_id ?? null
     return {
       id: String(row.id),
-      proposition_text: String(row.proposition_text ?? ''),
+      proposition_text: copy?.propositionKo || String(row.proposition_text ?? ''),
+      proposition_ko: copy?.propositionKo,
+      proposition_en: copy?.propositionEn,
       resolution_rule: String(row.resolution_rule ?? ''),
+      resolution_rule_ko: copy?.resolutionRuleKo,
       category: String(row.category ?? ''),
       instrument: String(row.instrument ?? ''),
       horizon: String(row.horizon ?? ''),

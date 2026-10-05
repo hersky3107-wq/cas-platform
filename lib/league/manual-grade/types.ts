@@ -48,7 +48,12 @@ export function formatManualOutcome(args: {
 export type ManualQueueItem = {
   id: string
   proposition_text: string
+  /** Korean display line. Falls back to proposition_text. */
+  proposition_ko?: string
+  /** Original stored English, shown under the Korean line when they differ. */
+  proposition_en?: string
   resolution_rule: string
+  resolution_rule_ko?: string
   category: string
   instrument: string
   horizon: string

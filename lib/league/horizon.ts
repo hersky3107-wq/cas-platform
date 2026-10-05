@@ -5,6 +5,7 @@ import {
   lastCompletedKrxSession,
   nthFutureKrxSessionDate,
 } from '@/lib/league/krx-calendar'
+import { isUsEquityTradingDay, US_EQUITY_CALENDAR_VALID_THROUGH } from '@/lib/league/us-equity-calendar'
 
 /**
  * AI Prediction League — HORIZON SELECTION (pure).
@@ -210,8 +211,8 @@ function addCivilDays(year: number, month: number, day: number, n: number): { ye
 
 /**
  * YYYY-MM-DD of the Nth US-equity session whose 16:00 ET close is strictly
- * after `anchorIso`. Weekends skipped; no holiday calendar (same
- * approximation as `addTradingDays`).
+ * after `anchorIso`. Weekends and NYSE full-day holidays are skipped.
+ * Throws `us_calendar_unverified` past the published holiday list.
  */
 export function nthFutureUsEquitySessionDate(anchorIso: string, n: number): string {
   const anchorMs = Date.parse(anchorIso)
@@ -219,8 +220,11 @@ export function nthFutureUsEquitySessionDate(anchorIso: string, n: number): stri
   let counted = 0
   const maxSteps = n * 3 + 21
   for (let i = 0; i < maxSteps; i++) {
-    const weekday = new Date(Date.UTC(year, month - 1, day)).getUTCDay()
-    if (weekday !== 0 && weekday !== 6) {
+    const ymd = `${year}-${pad2(month)}-${pad2(day)}`
+    if (ymd > US_EQUITY_CALENDAR_VALID_THROUGH) {
+      throw new Error('us_calendar_unverified')
+    }
+    if (isUsEquityTradingDay(ymd)) {
       const closeMs = utcMsFromZonedLocal(
         US_EQUITY_TIME_ZONE,
         year,
@@ -267,7 +271,7 @@ export function addTradingDays(fromMs: number, n: number): number {
 
 export type ComputeResolvesAtResult =
   | { ok: true; resolvesAt: string }
-  | { ok: false; reason: 'krx_calendar_unverified' }
+  | { ok: false; reason: 'krx_calendar_unverified' | 'us_calendar_unverified' }
 
 /**
  * `resolves_at` for a NEW round, from its anchor observation time.
@@ -305,32 +309,28 @@ export function computeResolvesAt(
   if (!usesTradingSessions(category, instrument)) {
     return { ok: true, resolvesAt: new Date(anchorMs + CALENDAR_DAY_COUNT[horizon] * DAY_MS).toISOString() }
   }
-  const sessionDate = nthFutureUsEquitySessionDate(anchorIso, TRADING_SESSION_COUNT[horizon])
-  return { ok: true, resolvesAt: `${sessionDate}${EQUITY_SESSION_RESOLVES_AT_SUFFIX}` }
+  try {
+    const sessionDate = nthFutureUsEquitySessionDate(anchorIso, TRADING_SESSION_COUNT[horizon])
+    return { ok: true, resolvesAt: `${sessionDate}${EQUITY_SESSION_RESOLVES_AT_SUFFIX}` }
+  } catch (e: unknown) {
+    if (e instanceof Error && e.message === 'us_calendar_unverified') {
+      return { ok: false, reason: 'us_calendar_unverified' }
+    }
+    throw e
+  }
 }
 
 /**
- * Compliance-facing disclosure for the WEEKDAY-COUNT APPROXIMATION behind
- * equity `resolves_at` (see `nthFutureUsEquitySessionDate`): no exchange
- * holiday calendar is wired into this codebase, so "N trading sessions out"
- * is really "N weekdays out". This must be surfaced ON THE PROPOSITION
- * ITSELF, not only in a code comment nobody reading the card ever sees — a
- * reader is never told a precision ("21 trading sessions") the app cannot
- * actually back.
- *
- * Null for `'1d'` (an off-by-one-holiday deadline shift is immaterial to a
- * next-session round) and for calendar-day categories (crypto/FX trade,
- * and are graded, every day — no approximation is made there at all).
+ * NYSE holidays are now on the session clock (see `us-equity-calendar.ts`),
+ * so the old weekday-approximation sentence is no longer appended.
+ * Kept as a function so catalog call sites stay stable; always null.
  */
 export function tradingApproximationNote(
-  category: PredictionCategory | string,
-  horizon: UiHorizon,
-  instrument?: string | null,
+  _category: PredictionCategory | string,
+  _horizon: UiHorizon,
+  _instrument?: string | null,
 ): string | null {
-  if (instrument && isKrStockInstrument(instrument)) return null
-  if (horizon === '1d') return null
-  if (!usesTradingSessions(category, instrument)) return null
-  return 'this date is estimated by counting weekdays, not an exchange holiday calendar'
+  return null
 }
 
 function isoWeekStart(date: Date): string {

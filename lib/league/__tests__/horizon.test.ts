@@ -15,6 +15,7 @@ import {
   usesTradingSessions,
   type UiHorizon,
 } from '../horizon'
+import { isUsEquityTradingDay } from '../us-equity-calendar'
 
 function at(
   category: Parameters<typeof computeResolvesAt>[0],
@@ -211,18 +212,13 @@ describe('tradingApproximationNote', () => {
     }
   })
 
-  it('discloses the weekday-count approximation for equities/ETF/REITs at 1w/1m/3m', () => {
+  it('is null once the NYSE holiday calendar is on the session clock', () => {
     for (const h of ['1w', '1m', '3m'] as const) {
-      expect(tradingApproximationNote('stock', h)).toMatch(/weekday/)
-      expect(tradingApproximationNote('etf_index', h)).toMatch(/holiday calendar/)
-      expect(tradingApproximationNote('etf_index', h, 'VNQ')).toMatch(/weekday/)
-      expect(tradingApproximationNote('real_estate', h)).toBeNull()
-      expect(tradingApproximationNote('gold_metal', h, 'GLD')).toMatch(/weekday/)
-      expect(tradingApproximationNote('gold_metal', h, 'SLV')).toMatch(/weekday/)
-      expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toMatch(/weekday/)
-      expect(tradingApproximationNote('gold_metal', h, 'XAG/USD')).toBeNull()
-      expect(tradingApproximationNote('gold_metal', h, 'XPT/USD')).toBeNull()
-      expect(tradingApproximationNote('stock', h, 'KRSTOCK:KOSPI:005930')).toBeNull()
+      expect(tradingApproximationNote('stock', h)).toBeNull()
+      expect(tradingApproximationNote('etf_index', h)).toBeNull()
+      expect(tradingApproximationNote('etf_index', h, 'VNQ')).toBeNull()
+      expect(tradingApproximationNote('gold_metal', h, 'GLD')).toBeNull()
+      expect(tradingApproximationNote('commodity_energy', h, 'UNG')).toBeNull()
     }
   })
 })
@@ -266,7 +262,7 @@ function barsAroundAnchor(anchorIso: string): DailyBar[] {
  * Independent of `horizon.ts`: count N Mon–Fri civil dates whose 16:00
  * America/New_York close (via date-fns-tz) is strictly after the anchor.
  */
-function independentNthUsSessionDate(anchorIso: string, n: number): string {
+function nthUsSessionDate(anchorIso: string, n: number, tradingDay: (ymd: string) => boolean): string {
   const anchorMs = Date.parse(anchorIso)
   const start = new Date(
     Date.UTC(new Date(anchorMs).getUTCFullYear(), new Date(anchorMs).getUTCMonth(), new Date(anchorMs).getUTCDate() - 1)
@@ -274,15 +270,27 @@ function independentNthUsSessionDate(anchorIso: string, n: number): string {
   let counted = 0
   for (let i = 0; i < n * 3 + 21; i++) {
     const ymd = `${start.getUTCFullYear()}-${pad2(start.getUTCMonth() + 1)}-${pad2(start.getUTCDate())}`
-    const weekday = start.getUTCDay()
     const closeMs = fromZonedTime(`${ymd}T16:00:00`, 'America/New_York').getTime()
-    if (weekday !== 0 && weekday !== 6 && closeMs > anchorMs) {
+    if (tradingDay(ymd) && closeMs > anchorMs) {
       counted += 1
       if (counted === n) return ymd
     }
     start.setUTCDate(start.getUTCDate() + 1)
   }
-  throw new Error(`independentNthUsSessionDate: could not find session ${n} after ${anchorIso}`)
+  throw new Error(`nthUsSessionDate: could not find session ${n} after ${anchorIso}`)
+}
+
+/** NYSE sessions, holidays included. Independent of horizon.ts. */
+function independentNthUsSessionDate(anchorIso: string, n: number): string {
+  return nthUsSessionDate(anchorIso, n, isUsEquityTradingDay)
+}
+
+/** Weekday-only count used to document the pre-holiday same-clock bug. */
+function weekdayNthUsSessionDate(anchorIso: string, n: number): string {
+  return nthUsSessionDate(anchorIso, n, (ymd) => {
+    const day = new Date(`${ymd}T12:00:00.000Z`).getUTCDay()
+    return day !== 0 && day !== 6
+  })
 }
 
 function inGradingWindow(sessionDate: string, anchorMs: number, resolvesMs: number): boolean {
@@ -352,6 +360,17 @@ describe('computeResolvesAt — session-counted equities pin past the target clo
     console.log('\n=== equity computeResolvesAt matrix (session close must fall in window) ===\n' + lines.join('\n') + '\n')
   })
 
+  it('Saturday and Sunday opens land on the next NYSE session close', () => {
+    expect(at('stock', '1d', '2026-08-29T09:43:16.752Z')).toBe('2026-08-31T23:59:59.999Z')
+    expect(at('etf_index', '1d', '2026-08-30T15:00:00.000Z', 'SPY')).toBe('2026-08-31T23:59:59.999Z')
+  })
+
+  it('skips Labor Day 2026-09-07 (Monday) for a Friday-after-close and a weekend open', () => {
+    expect(at('stock', '1d', '2026-09-04T21:00:00.000Z')).toBe('2026-09-08T23:59:59.999Z')
+    expect(at('stock', '1d', '2026-09-05T15:00:00.000Z')).toBe('2026-09-08T23:59:59.999Z')
+    expect(at('etf_index', '1d', '2026-09-06T18:00:00.000Z', 'QQQ')).toBe('2026-09-08T23:59:59.999Z')
+  })
+
   it("round 65192045 clock (Sat 2026-08-29 09:43 UTC, 1d) now includes Monday's graded close", () => {
     const anchorIso = '2026-08-29T09:43:16.752Z'
     const resolvesAt = at('stock', '1d', anchorIso)
@@ -389,7 +408,7 @@ describe('legacy same-clock deadline — fraction of open times in the broken wi
     let ok = 0
     for (const anchorIso of samples) {
       const n = TRADING_SESSION_COUNT[horizon]
-      const intended = independentNthUsSessionDate(anchorIso, n)
+      const intended = weekdayNthUsSessionDate(anchorIso, n)
       const bars = barsAroundAnchor(anchorIso)
       const oldResolves = legacySameClockResolvesAt(horizon, anchorIso)
       const selected = selectResolutionSession(bars, Date.parse(anchorIso), Date.parse(oldResolves))

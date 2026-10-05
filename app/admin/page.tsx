@@ -541,12 +541,12 @@ export default function AdminPage() {
 
         <section className="border-t border-white/10 pt-10">
           <h2 className="mb-1 text-sm font-semibold uppercase tracking-wide text-slate-400">
-            Prediction league — grading
+            예측 리그 — 채점
           </h2>
           <p className="mb-3 text-sm text-slate-500">
-            Grades every due, ungraded round in one pass. There is nothing to choose: no batch size, no round
-            picker, and a round that is already graded is never re-graded. Rounds are also graded automatically
-            when someone opens them — this button is for rounds nobody has read yet.
+            기한이 지난 미채점 라운드를 한 번에 채점합니다. 고를 항목은 없습니다. 배치 크기나 라운드 선택이
+            없고, 이미 채점된 라운드는 다시 채점하지 않습니다. 카드를 열면 자동 채점도 됩니다. 이 버튼은
+            아직 아무도 열지 않은 라운드용입니다.
           </p>
           <div className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-4">
             <div className="flex flex-wrap items-center gap-3">
@@ -556,15 +556,14 @@ export default function AdminPage() {
                 disabled={gradingBusy}
                 className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
               >
-                {gradingBusy ? "Grading due rounds…" : "Grade all due rounds"}
+                {gradingBusy ? "기한 지난 라운드 채점 중…" : "기한 지난 라운드 모두 채점"}
               </button>
               {gradingReport ? (
                 <span className="text-xs text-slate-400">
-                  {gradingReport.scanned} scanned · {gradingReport.graded} graded ({gradingReport.childrenGraded}{" "}
-                  predictions) · {gradingReport.unresolvable} unresolvable · {gradingReport.queuedManual ?? 0} queued
-                  manual · {gradingReport.rejected} rejected · {gradingReport.failed} failed ·{" "}
-                  {gradingReport.seriesCalls} price call(s)
-                  {gradingReport.truncated ? " · more remain, run again" : ""}
+                  조회 {gradingReport.scanned} · 채점 {gradingReport.graded} (예측 {gradingReport.childrenGraded}
+                  건) · 채점 불가 {gradingReport.unresolvable} · 수동 대기 {gradingReport.queuedManual ?? 0} · 거절{" "}
+                  {gradingReport.rejected} · 실패 {gradingReport.failed} · 시세 호출 {gradingReport.seriesCalls}
+                  {gradingReport.truncated ? " · 남은 라운드가 있습니다. 한 번 더 실행하세요" : ""}
                 </span>
               ) : null}
             </div>
@@ -577,7 +576,7 @@ export default function AdminPage() {
 
             {gradingReport ? (
               gradingReport.rounds.length === 0 ? (
-                <p className="mt-3 text-xs text-slate-400">No due, ungraded rounds — nothing to grade.</p>
+                <p className="mt-3 text-xs text-slate-400">기한이 지난 미채점 라운드가 없습니다.</p>
               ) : (
                 <ul className="mt-3 space-y-1.5 text-xs">
                   {gradingReport.rounds.map((r) => (
@@ -593,13 +592,21 @@ export default function AdminPage() {
                                 : "bg-rose-500/15 text-rose-200"
                         }`}
                       >
-                        {r.outcome}
+                        {r.outcome === "graded"
+                          ? "채점됨"
+                          : r.outcome === "unresolvable"
+                            ? "채점 불가"
+                            : r.outcome === "rejected"
+                              ? "거절"
+                              : r.outcome === "queued_manual"
+                                ? "수동 대기"
+                                : "오류"}
                       </span>
                       <span className="font-semibold text-white">{r.instrument ?? "—"}</span>
                       <span className="font-mono text-[10px] text-slate-500">{r.roundId}</span>
                       <span className="text-slate-400">
                         {r.outcome === "graded"
-                          ? `${r.direction} · ${r.resolutionSessionDate} close ${r.resolutionPrice} · ${r.childrenGraded} graded`
+                          ? `${r.direction} · ${r.resolutionSessionDate} 종가 ${r.resolutionPrice} · 예측 ${r.childrenGraded}건 채점`
                           : r.outcome === "error"
                             ? r.error
                             : `${r.reason}${r.detail ? ` — ${r.detail}` : ""}`}
@@ -612,10 +619,10 @@ export default function AdminPage() {
 
             <div className="mt-5 border-t border-white/10 pt-4">
               <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
-                AI 종합 vs pooled model hit rate
+                AI 종합 vs 모델 평균 적중률
               </h3>
               <p className="mt-1 text-xs text-slate-500">
-                Admin only. AI 종합 is consensus_is_correct on graded rounds; pooled is official seats with is_correct.
+                관리자 전용. AI 종합은 채점된 라운드의 consensus_is_correct이고, 모델 평균은 공식 좌석의 is_correct입니다.
               </p>
               {trackRecordError ? (
                 <p className="mt-2 text-xs text-amber-200">{trackRecordError}</p>
@@ -623,11 +630,11 @@ export default function AdminPage() {
                 <table className="mt-3 w-full text-left text-xs">
                   <thead className="text-slate-500">
                     <tr>
-                      <th className="py-1 pr-2">category</th>
-                      <th className="py-1 pr-2">horizon</th>
+                      <th className="py-1 pr-2">카테고리</th>
+                      <th className="py-1 pr-2">기간</th>
                       <th className="py-1 pr-2">AI 종합</th>
                       <th className="py-1 pr-2">n</th>
-                      <th className="py-1 pr-2">pooled models</th>
+                      <th className="py-1 pr-2">모델 평균</th>
                       <th className="py-1">n</th>
                     </tr>
                   </thead>
@@ -649,7 +656,7 @@ export default function AdminPage() {
                   </tbody>
                 </table>
               ) : (
-                <p className="mt-2 text-xs text-slate-500">No graded rounds yet, or SQL not applied.</p>
+                <p className="mt-2 text-xs text-slate-500">채점된 라운드가 없거나 SQL이 아직 적용되지 않았습니다.</p>
               )}
             </div>
           </div>

@@ -31,7 +31,7 @@ export function AdminNav() {
   return (
     <nav className="flex flex-wrap items-center gap-2 text-sm">
       <Link href="/admin" className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-slate-200 hover:bg-white/8">
-        Dashboard
+        대시보드
       </Link>
       <Link
         href="/admin/league/grade"
@@ -55,7 +55,7 @@ export function AdminNav() {
         )}
       </Link>
       <Link href="/admin/platform-health" className="rounded-lg border border-white/12 bg-white/5 px-3 py-1.5 text-slate-200 hover:bg-white/8">
-        Health
+        상태
       </Link>
     </nav>
   )
