@@ -34,7 +34,7 @@ export const ENTERTAINMENT_SLATE: readonly ShowMetric[] = [
     event: 'opening_1',
     subject: '치이카와',
     resolvesAtIso: '2026-10-04T15:00:00.000Z',
-    aliases: ['치이카와', 'chiikawa', '인어섬'],
+    aliases: ['치이카와', 'chiikawa', 'ちいかわ', '인어섬'],
     marketPct: null,
   }),
   row({
@@ -43,7 +43,7 @@ export const ENTERTAINMENT_SLATE: readonly ShowMetric[] = [
     event: 'admissions_3000000',
     subject: '치이카와',
     resolvesAtIso: '2026-10-21T15:00:00.000Z',
-    aliases: ['치이카와', 'chiikawa', '인어섬'],
+    aliases: ['치이카와', 'chiikawa', 'ちいかわ', '인어섬'],
     marketPct: null,
   }),
   row({

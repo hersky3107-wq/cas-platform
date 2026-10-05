@@ -215,6 +215,14 @@ export function formatBothSides(
     lines.push(
       'Single-game variance (NBA): one game compresses a season net-rating edge. Rest and back-to-backs matter only when the news section states them.',
     )
+  } else if (parts.league === 'americanfootball_nfl') {
+    lines.push(
+      'Single-game variance (NFL): one game is one quarterback and one injury report. A tie on a win proposition is No.',
+    )
+  } else if (parts.league === 'icehockey_nhl') {
+    lines.push(
+      'Single-game variance (NHL): the official result includes overtime and the shootout unless the proposition names regulation.',
+    )
   } else {
     lines.push(
       'Single-game variance: one match compresses a season edge. A draw is a live result.',

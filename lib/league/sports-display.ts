@@ -7,6 +7,8 @@
 import type { LeagueLocale } from './i18n/locales'
 import {
   decodeSportsInstrument,
+  isNflLeague,
+  isNhlLeague,
   isSoccerLeague,
   leagueLabelEn,
   opponentTeamOf,
@@ -93,6 +95,8 @@ const LEAGUE_KO: Record<SportsLeagueKey, string> = {
   soccer_uefa_nations_league: '네이션스리그',
   baseball_mlb: 'MLB',
   basketball_nba: 'NBA',
+  americanfootball_nfl: 'NFL',
+  icehockey_nhl: 'NHL',
   mma_mixed_martial_arts: 'UFC',
 }
 
@@ -135,10 +139,22 @@ export function formatSportsPropositionLocalized(parts: SportsInstrumentParts, l
     if (isSoccerLeague(parts.league)) {
       return `${subject}가 ${opponent}와의 ${competition} 경기에서 정규시간(90분+추가시간, 무승부는 패)에 이길까?`
     }
+    if (isNflLeague(parts.league)) {
+      return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 무승부는 패.`
+    }
+    if (isNhlLeague(parts.league)) {
+      return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장·승부치기 포함 최종 결과.`
+    }
     return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까?`
   }
   if (isSoccerLeague(parts.league)) {
     return `Will ${subject} win the ${competition} match against ${opponent} in regular time (90 minutes plus stoppage; a draw is No)?`
+  }
+  if (isNflLeague(parts.league)) {
+    return `Will ${subject} win the ${competition} game against ${opponent}? A tie is No.`
+  }
+  if (isNhlLeague(parts.league)) {
+    return `Will ${subject} win the ${competition} game against ${opponent} (final result, including overtime and the shootout)?`
   }
   return `Will ${subject} win the ${competition} game against ${opponent}?`
 }

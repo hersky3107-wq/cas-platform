@@ -23,6 +23,8 @@ export const LAUNCH_SPORTS_LEAGUES = [
   'soccer_uefa_nations_league',
   'baseball_mlb',
   'basketball_nba',
+  'americanfootball_nfl',
+  'icehockey_nhl',
   'mma_mixed_martial_arts',
 ] as const
 export type SportsLeagueKey = (typeof LAUNCH_SPORTS_LEAGUES)[number]

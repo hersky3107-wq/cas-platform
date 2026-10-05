@@ -53,6 +53,14 @@ export function isMmaLeague(league: string): boolean {
   return (MMA_LEAGUES as readonly string[]).includes(league)
 }
 
+export function isNflLeague(league: string): boolean {
+  return league === 'americanfootball_nfl'
+}
+
+export function isNhlLeague(league: string): boolean {
+  return league === 'icehockey_nhl'
+}
+
 const LEAGUE_LABEL_EN: Record<SportsLeagueKey, string> = {
   soccer_epl: 'Premier League',
   soccer_uefa_champs_league: 'UEFA Champions League',
@@ -61,6 +69,8 @@ const LEAGUE_LABEL_EN: Record<SportsLeagueKey, string> = {
   soccer_uefa_nations_league: 'UEFA Nations League',
   baseball_mlb: 'MLB',
   basketball_nba: 'NBA',
+  americanfootball_nfl: 'NFL',
+  icehockey_nhl: 'NHL',
   mma_mixed_martial_arts: 'UFC',
 }
 
@@ -80,7 +90,7 @@ type AliasRow = { aliases: readonly string[]; canonical: string }
 
 const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['tottenham hotspur', 'tottenham', 'spurs', '토트넘', '토튼햄'], canonical: 'Tottenham Hotspur' },
-  { aliases: ['arsenal', '아스날', '아스널'], canonical: 'Arsenal' },
+  { aliases: ['arsenal', '아스날', '아스널', 'アーセナル', '阿森納', 'أرسنال'], canonical: 'Arsenal' },
   { aliases: ['manchester city', 'man city', 'mcfc', '맨시티', '맨체스터 시티'], canonical: 'Manchester City' },
   { aliases: ['manchester united', 'man united', 'man utd', 'mufc', '맨유', '맨체스터 유나이티드'], canonical: 'Manchester United' },
   { aliases: ['liverpool', 'lfc', '리버풀'], canonical: 'Liverpool' },
@@ -127,13 +137,13 @@ const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['serbia', '세르비아'], canonical: 'Serbia' },
   { aliases: ['denmark', '덴마크'], canonical: 'Denmark' },
   { aliases: ['san francisco giants', 'giants', '자이언츠'], canonical: 'San Francisco Giants' },
-  { aliases: ['los angeles dodgers', 'dodgers', '다저스'], canonical: 'Los Angeles Dodgers' },
+  { aliases: ['los angeles dodgers', 'dodgers', '다저스', 'ドジャース', '道奇', 'الدودجرز'], canonical: 'Los Angeles Dodgers' },
   { aliases: ['new york yankees', 'yankees', '양키스'], canonical: 'New York Yankees' },
   { aliases: ['boston red sox', 'red sox', '레드삭스'], canonical: 'Boston Red Sox' },
   { aliases: ['los angeles lakers', 'lakers', '레이커스'], canonical: 'Los Angeles Lakers' },
   { aliases: ['boston celtics', 'celtics', '셀틱스'], canonical: 'Boston Celtics' },
   { aliases: ['golden state warriors', 'warriors', '워리어스'], canonical: 'Golden State Warriors' },
-  { aliases: ['울산 hd', '울산 현대', '울산', 'ulsan hyundai', 'ulsan hd', 'ulsan'], canonical: 'Ulsan HD' },
+  { aliases: ['울산 hd', '울산 현대', '울산', 'ulsan hyundai', 'ulsan hd', 'ulsan', 'ウルサン', '蔚山', 'أولسان'], canonical: 'Ulsan HD' },
   { aliases: ['전북 현대', '전북', 'jeonbuk hyundai', 'jeonbuk motors', 'jeonbuk'], canonical: 'Jeonbuk Motors' },
   { aliases: ['포항 스틸러스', '포항', 'pohang steelers', 'pohang'], canonical: 'Pohang Steelers' },
   { aliases: ['fc서울', 'fc 서울', '서울', 'fc seoul'], canonical: 'FC Seoul' },
@@ -151,6 +161,10 @@ const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['가와사키 프론탈레', '가와사키', 'kawasaki frontale', 'kawasaki'], canonical: 'Kawasaki Frontale' },
   { aliases: ['비셀 고베', 'vissel kobe'], canonical: 'Vissel Kobe' },
   { aliases: ['산프레체 히로시마', 'sanfrecce hiroshima'], canonical: 'Sanfrecce Hiroshima' },
+  { aliases: ['kansas city chiefs', 'kansas city', 'chiefs', '캔자스시티 치프스', '캔자스시티', '치프스'], canonical: 'Kansas City Chiefs' },
+  { aliases: ['philadelphia eagles', 'eagles', '필라델피아 이글스'], canonical: 'Philadelphia Eagles' },
+  { aliases: ['dallas cowboys', 'cowboys', '댈러스 카우보이스'], canonical: 'Dallas Cowboys' },
+  { aliases: ['toronto maple leafs', 'maple leafs', '토론토 메이플리프스', '메이플리프스'], canonical: 'Toronto Maple Leafs' },
 ]
 
 const ATHLETES: readonly AliasRow[] = [

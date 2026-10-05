@@ -277,6 +277,28 @@ function boundDeadline(
   return { ok: true, deadline, horizon: horizonForResolveDate(deadline, now) }
 }
 
+function englishDeadline(text: string, now: Date, exclusive: boolean): string | null {
+  const tail = text.trim().replace(/[?.!]+$/g, '')
+  if (/^year[-\s]?end$|^end of (?:the )?year$/i.test(tail)) {
+    return isoDate(now.getUTCFullYear(), 12, 31)
+  }
+  if (/^end of (?:this )?month$/i.test(tail)) {
+    return endOfMonth(now.getUTCFullYear(), now.getUTCMonth() + 1)
+  }
+  const dated = monthDay(tail, now, exclusive)
+  if (dated) return dated
+  const monthOnly = tail.match(
+    /^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)$/i,
+  )
+  if (!monthOnly) return null
+  const month = MONTHS[monthOnly[1].toLowerCase()]
+  if (!month) return null
+  let year = now.getUTCFullYear()
+  let end = endOfMonth(year, month)
+  if (end && end < todayYmd(now)) end = endOfMonth(year + 1, month)
+  return exclusive && end ? addDays(end, -1) : end
+}
+
 function monthDay(text: string, now: Date, exclusive: boolean): string | null {
   const iso = text.match(/\b(20\d{2})-(\d{2})-(\d{2})\b/)
   if (iso) {
@@ -396,11 +418,11 @@ function parseKorean(raw: string, now: Date): TechParseResult | null {
 
 function parseEnglish(raw: string, now: Date): TechParseResult | null {
   const m = raw.match(
-    /^will\s+(.+?)\s+(launch|announce|ship|release|approve|file|acquire|publish)\s+(.+?)\s+(before|by)\s+(.+?)\s*\??$/i,
+    /^will\s+(.+?)\s+(launch|announce|ship|release|approve|file|acquire|publish)\s+(.+?)\s+(before|by|in)\s+(.+?)\s*\??$/i,
   )
   if (!m) return null
   const exclusive = m[4].toLowerCase() === 'before'
-  const deadline = monthDay(m[5], now, exclusive)
+  const deadline = englishDeadline(m[5], now, exclusive)
   if (!deadline) return null
   const event = m[2].toLowerCase() as TechEventId
   return finish(raw, m[1].trim(), event, m[3], deadline, now, false)

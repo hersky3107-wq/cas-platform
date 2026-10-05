@@ -1048,7 +1048,11 @@ const en: LeagueUiPack = {
       sports: {
         title: 'Sports',
         body: 'Ask which side wins a public match. 40 AIs predict; the official result grades them.',
-        examples: ['Will Tottenham beat Arsenal?', 'Will the Yankees beat the Red Sox?'],
+        examples: [
+          'Will Arsenal win their next match?',
+          'Will Ulsan win their next match?',
+          'Will the Dodgers win their next game?',
+        ],
       },
       politics_election: {
         title: 'Elections',
@@ -1668,7 +1672,7 @@ const ko: LeagueUiPack = {
       sports: {
         title: '스포츠',
         body: '공개 경기의 승패를 예/아니오로 물어보세요. 40개 AI가 예측하고, 공식 결과로 채점합니다.',
-        examples: ['토트넘이 아스날을 이길까?', '양키스가 레드삭스를 이길까?', '울산이 다음 경기에서 이길까?'],
+        examples: ['아스날이 다음 경기에서 이길까?', '울산이 다음 경기에서 이길까?', '다저스가 다음 경기에서 이길까?'],
       },
       politics_election: {
         title: '선거',
@@ -2284,7 +2288,7 @@ const ja: LeagueUiPack = {
       sports: {
         title: 'スポーツ',
         body: '公開試合の勝敗をはい/いいえで聞いてください。40のAIが予測し、公式結果で採点します。',
-        examples: ['トッテナムはアーセナルに勝つ？', 'ヤンキースはレッドソックスに勝つ？'],
+        examples: ['アーセナルは次の試合に勝つ？', 'ウルサンは次の試合に勝つ？', 'ドジャースは次の試合に勝つ？'],
       },
       politics_election: {
         title: '選挙',
@@ -2897,7 +2901,7 @@ const zhTW: LeagueUiPack = {
       sports: {
         title: '運動',
         body: '用是／否問公開比賽誰贏。40 個 AI 預測，官方結果計分。',
-        examples: ['熱刺會贏阿森納嗎？', '洋基會贏紅襪嗎？'],
+        examples: ['阿森納下一場會贏嗎？', '蔚山下一場會贏嗎？', '道奇下一場會贏嗎？'],
       },
       politics_election: {
         title: '選舉',
@@ -3509,7 +3513,11 @@ const fr: LeagueUiPack = {
       sports: {
         title: 'Sports',
         body: 'Demandez qui gagne un match public. 40 IA prédisent ; le résultat officiel les note.',
-        examples: ['Tottenham battra-t-il Arsenal ?', 'Les Yankees battront-ils les Red Sox ?'],
+        examples: [
+          'Arsenal gagnera-t-il son prochain match ?',
+          'Ulsan gagnera-t-il son prochain match ?',
+          'Les Dodgers gagneront-ils leur prochain match ?',
+        ],
       },
       politics_election: {
         title: 'Élections',
@@ -4137,7 +4145,11 @@ const es: LeagueUiPack = {
       sports: {
         title: 'Deportes',
         body: 'Pregunta quién gana un partido público. 40 IA predicen; el resultado oficial las puntúa.',
-        examples: ['¿Ganará el Tottenham al Arsenal?', '¿Ganarán los Yankees a los Red Sox?'],
+        examples: [
+          '¿Ganará el Arsenal su próximo partido?',
+          '¿Ganará el Ulsan su próximo partido?',
+          '¿Ganarán los Dodgers su próximo partido?',
+        ],
       },
       politics_election: {
         title: 'Elecciones',
@@ -4764,7 +4776,7 @@ const ar: LeagueUiPack = {
       sports: {
         title: 'الرياضة',
         body: 'اسأل من يفوز في مباراة عامة. 40 نموذجًا يتنبأ والنتيجة الرسمية تُقيّمهم.',
-        examples: ['هل يهزم توتنهام أرسنال؟', 'هل يهزم اليانكيز رد سوكس؟'],
+        examples: ['هل يفوز أرسنال في مباراته القادمة؟', 'هل تفوز أولسان في مباراتها القادمة؟', 'هل يفوز الدودجرز في مباراتهم القادمة؟'],
       },
       politics_election: {
         title: 'الانتخابات',
@@ -5386,7 +5398,7 @@ const pt: LeagueUiPack = {
       sports: {
         title: 'Esportes',
         body: 'Pergunte quem vence um jogo público. 40 IAs preveem; o resultado oficial as pontua.',
-        examples: ['O Tottenham vence o Arsenal?', 'Os Yankees vencem os Red Sox?'],
+        examples: ['O Arsenal vence o próximo jogo?', 'O Ulsan vence o próximo jogo?', 'Os Dodgers vencem o próximo jogo?'],
       },
       politics_election: {
         title: 'Eleições',

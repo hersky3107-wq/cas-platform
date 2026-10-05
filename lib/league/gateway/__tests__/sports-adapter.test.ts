@@ -597,9 +597,9 @@ describe('sports scope copy', () => {
       expect(msg.toLowerCase()).toMatch(/nba/)
     }
     expect(getLeagueUiPack('ko').catalog.freeformPanel.sports.examples).toEqual([
-      '토트넘이 아스날을 이길까?',
-      '양키스가 레드삭스를 이길까?',
+      '아스날이 다음 경기에서 이길까?',
       '울산이 다음 경기에서 이길까?',
+      '다저스가 다음 경기에서 이길까?',
     ])
     for (const locale of LEAGUE_LOCALES) {
       expect(refusalMessageForKey('league.gateway.refusal.sports_lookup_failed', locale).length).toBeGreaterThan(4)

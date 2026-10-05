@@ -38,7 +38,7 @@ export type AirankParseResult = AirankParseOk | { ok: false; code: RefusalCode }
 
 const RANK_HARD =
   /순위|랭킹|리더보드|leaderboard|lmarena|chatbot arena|arena rank|#\s*1|1\s*위|1\s*등|상위\s*\d+|탑\s*\d+|\d+\s*위\s*안|top\s*-?\s*\d+|보다\s*위|best ai model|최고.{0,12}(?:ai|모델)/i
-const RANK_SOFT = /이길|위일|앞설|beat|outrank|overtake|ahead of/i
+const RANK_SOFT = /이길|위일|앞설|beat|outrank|overtake|ahead of|rank(?:s|ed|ing)?\s+above/i
 const COMPARE = /보다\s*위|보다\s*앞|앞설|이길|above|outrank|overtake|ahead of|\bvs\.?\b|versus|\bbeat\b/i
 
 const SUPPORTED_FIELDS: Array<{ re: RegExp; arena: AirankArena; category: string }> = [

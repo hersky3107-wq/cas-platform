@@ -2,7 +2,9 @@
  * Sports proposition template — server-authored, zero user substrings.
  *
  * Soccer: named team WINS in 90 minutes + stoppage; a draw is No.
- * MLB / NBA: named team wins the official result (regulation + extras).
+ * NFL: named team wins; a tie is No.
+ * NHL: official final including OT/shootout unless the proposition says regulation.
+ * MLB / NBA / UFC: named team wins the official result (regulation + extras).
  */
 
 import { isUiHorizon, type UiHorizon } from '../../horizon'
@@ -12,6 +14,8 @@ import {
   decodeSportsInstrument,
   encodeSportsInstrument,
   FOOTBALL_RESOLVES_AFTER_KICKOFF_MS,
+  isNflLeague,
+  isNhlLeague,
   isSoccerLeague,
   leagueLabelEn,
   opponentTeamOf,
@@ -42,6 +46,12 @@ export function formatSportsProposition(parts: SportsInstrumentParts): string {
   if (isSoccerLeague(parts.league)) {
     return `Will ${subject} win the ${competition} match against ${opponent} in regular time (90 minutes plus stoppage; a draw is No)?`
   }
+  if (isNflLeague(parts.league)) {
+    return `Will ${subject} win the ${competition} game against ${opponent}? A tie is No.`
+  }
+  if (isNhlLeague(parts.league)) {
+    return `Will ${subject} win the ${competition} game against ${opponent} (final result, including overtime and the shootout)?`
+  }
   return `Will ${subject} win the ${competition} game against ${opponent}?`
 }
 
@@ -53,6 +63,20 @@ export function sportsResolutionRule(parts: SportsInstrumentParts): string {
       `${subject} wins in regular time (90 minutes plus stoppage) = Yes. ` +
       `A draw, extra time, penalties, or an opponent win = No. ` +
       `Graded from a published match report URL.`
+    )
+  }
+  if (isNflLeague(parts.league)) {
+    return (
+      `Official final result of the ${leagueLabelEn(parts.league)} game ${parts.home} vs ${parts.away}. ` +
+      `${subject} wins = Yes. A tie or an opponent win = No. ` +
+      `Graded from a published box-score URL.`
+    )
+  }
+  if (isNhlLeague(parts.league)) {
+    return (
+      `Official final result of the ${leagueLabelEn(parts.league)} game ${parts.home} vs ${parts.away}. ` +
+      `${subject} wins the final (including overtime and the shootout, unless the proposition names regulation) = Yes. ` +
+      `Otherwise No. Graded from a published box-score URL.`
     )
   }
   return (

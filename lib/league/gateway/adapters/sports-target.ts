@@ -26,7 +26,8 @@ const STALE_MS = 3 * 60 * 60 * 1000
 
 const VAGUE_QUESTION =
   /이길까|누가\s*이겨|오늘\s*경기|내일\s*경기|오늘밤|tonight'?s?\s+game|who\s+wins|will\s+.+\s+win/i
-const SCHEDULE_HINT = /다음\s*경기|다음경기|일정|schedule|next\s+game|fixtures?/i
+const SCHEDULE_HINT =
+  /다음\s*경기|다음경기|일정|schedule|next\s+(?:game|match)|fixtures?|prochain\s+match|pr[oó]ximo\s+(?:jogo|partido)|次の試合|下一場|القادم/i
 
 const MONTHS: Record<string, number> = {
   jan: 1,

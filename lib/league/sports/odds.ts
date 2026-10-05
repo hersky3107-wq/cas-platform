@@ -15,6 +15,8 @@ const REGION: Record<SportsLeagueKey, string> = {
   soccer_uefa_nations_league: 'eu',
   baseball_mlb: 'us',
   basketball_nba: 'us',
+  americanfootball_nfl: 'us',
+  icehockey_nhl: 'us',
   mma_mixed_martial_arts: 'us',
 }
 

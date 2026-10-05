@@ -55,7 +55,9 @@ export async function fetchFixtureStats(
 }
 
 function sportOf(league: string): FixtureStats['sport'] | null {
-  if (league === 'mma_mixed_martial_arts') return null
+  if (league === 'mma_mixed_martial_arts' || league === 'americanfootball_nfl' || league === 'icehockey_nhl') {
+    return null
+  }
   if (league === 'baseball_mlb') return 'baseball'
   if (league === 'basketball_nba') return 'basketball'
   return 'football'
