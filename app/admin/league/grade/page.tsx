@@ -479,6 +479,11 @@ export default function LeagueManualGradePage() {
                     API-Football evidence: {footballEvidenceFromInstrument(selected.instrument)}
                   </p>
                 ) : null}
+                {selected.housing_evidence ? (
+                  <p className="mt-2 text-xs text-cyan-200/90" data-testid="housing-grade-evidence">
+                    Housing index evidence: {selected.housing_evidence}
+                  </p>
+                ) : null}
 
                 {selected.null_seats.length > 0 ? (
                   <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">

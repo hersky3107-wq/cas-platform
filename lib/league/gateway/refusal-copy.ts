@@ -139,6 +139,10 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     ko: '결과를 확인할 공식 출처가 없어 이 질문은 열 수 없습니다.',
     en: 'No official source exists to verify the result, so this question cannot be opened.',
   },
+  index_discontinued: {
+    ko: '호주 주거용 부동산가격지수(RPPI)는 2021년 4분기 공표 이후 중단되었습니다. 같은 지수를 이어서 내는 무료 공식 지표가 없어 새 질문을 열 수 없습니다.',
+    en: 'Australia’s residential property price index stopped after the December quarter 2021 print. No free official series continues that index, so this question cannot be opened.',
+  },
   unsupported_entity: {
     ko: '이 카테고리에서 지금 열 수 있는 대상은 아래와 같습니다.',
     en: 'That subject is not in this category’s open list. Pick one of the instruments below.',

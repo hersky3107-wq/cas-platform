@@ -18,6 +18,7 @@ import { decodePropertyInstrument, propositionKindForProperty } from './real-est
 import { buildRealEstatePacket, type RealEstatePacketIo } from './real-estate-packet'
 import { propertyPickQuestion, resolvePropertyTarget } from './real-estate-target'
 import { bridgePromptToEnglish } from '../prompt-bridge'
+import { storedIndexMetric } from '../../real-estate/support'
 
 /**
  * Regional house-price INDEX adapter.
@@ -29,6 +30,7 @@ const REFUSALS: readonly RefusalCode[] = [
   'specific_property',
   'brokerage_advice',
   'unsupported_entity',
+  'index_discontinued',
   'past_event',
   'vague_target',
   'jurisdiction_blocked',
@@ -60,6 +62,7 @@ export function createRealEstateAdapter(
       const hit = resolvePropertyTarget(text, nowFn())
       if (hit.kind === 'specific_property') return { ok: false, refuse: refuse('specific_property') }
       if (hit.kind === 'brokerage_advice') return { ok: false, refuse: refuse('brokerage_advice') }
+      if (hit.kind === 'index_discontinued') return { ok: false, refuse: refuse('index_discontinued') }
       if (hit.kind === 'reit') return { ok: false, refuse: refuse('unsupported_entity') }
       if (hit.kind === 'past') return { ok: false, refuse: refuse('past_event') }
       if (hit.kind === 'picks') {
@@ -101,8 +104,17 @@ export function createRealEstateAdapter(
       return built
     },
 
-    gradeSources(): readonly [GradeSource, GradeSource, GradeSource] {
-      return MANUAL
+    gradeSources(slots): readonly [GradeSource, GradeSource, GradeSource] {
+      const decoded = decodePropertyInstrument(slots.entity_id)
+      const metric = decoded ? storedIndexMetric(decoded.region.tier, decoded.metric) : null
+      if (!decoded || !metric || metric === 'apt_jeonse' || decoded.region.country === 'AU' || decoded.region.tier === 'zillow') {
+        return MANUAL
+      }
+      return [
+        { tier: 1, kind: 'official_api', endpoint: `housing:${decoded.country}:${decoded.regionCode}` },
+        { tier: 2, kind: 'perplexity_sourced', require_url: true },
+        { tier: 3, kind: 'operator_manual', require_url: true },
+      ]
     },
 
     isDecidable(slots: NormalizeSlots): boolean {

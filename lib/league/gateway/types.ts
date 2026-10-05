@@ -66,6 +66,7 @@ export type RefusalCode =
   | 'vague_target'
   | 'past_event'
   | 'no_result_source'
+  | 'index_discontinued'
   | 'unsupported_entity'
   | 'korea_listing'
   | 'korea_stock_lane'

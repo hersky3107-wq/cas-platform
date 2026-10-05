@@ -21,6 +21,8 @@ export type LeagueSurfaceCopy = {
   doors: {
     financeTitle: string
     financeBody: string
+    /** Korean lane only. Memecoin is blocked there, so the door must not name it. */
+    financeBodyNoMemecoin?: string
     financeHint: string
     worldTitle: string
     worldBody: string
@@ -82,6 +84,7 @@ const ko: LeagueSurfaceCopy = {
   doors: {
     financeTitle: '금융 예측',
     financeBody: '주식·암호화폐·외환·금·지수/ETF·원자재·밈코인의 방향을 AI 40개가 예측합니다.',
+    financeBodyNoMemecoin: '주식·암호화폐·외환·금·지수/ETF·원자재의 방향을 AI 40개가 예측합니다.',
     financeHint: '종목과 기간 선택',
     worldTitle: '세상 예측',
     worldBody: '정치·선거, 연예, 스포츠, 부동산, 테크·AI 순위를 예/아니오로 물어보세요.',

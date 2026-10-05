@@ -10,6 +10,7 @@ import {
   parseMomThresholdBp,
   propertyClarifyOptions,
 } from './real-estate-catalog'
+import { propertyIndexOpen } from '../../real-estate/support'
 import { broadPickLabel, broadPropertyChildren, type PropertyRegion } from './real-estate-regions'
 
 /** Seoul 구 + 20-city Case-Shiller + 시도. Higher than sports fixture cap. */
@@ -22,29 +23,34 @@ export type PropertyHit =
   | { kind: 'brokerage_advice' }
   | { kind: 'past' }
   | { kind: 'reit' }
+  | { kind: 'index_discontinued' }
 
 const REIT = /^(vnq|schh|뱅가드리츠|슈왑리츠)$/i
 
 export function resolvePropertyTarget(raw: string, now: Date): PropertyHit {
   const text = raw.trim()
-  if (!text) return { kind: 'picks', options: propertyClarifyOptions(now) }
+  if (!text) return { kind: 'picks', options: openClarifyOptions(now) }
   if (isBrokerageAsk(text)) return { kind: 'brokerage_advice' }
   if (isDongOrComplex(text)) return { kind: 'specific_property' }
   if (REIT.test(text.replace(/\s+/g, ''))) return { kind: 'reit' }
 
   const decoded = decodePropertyInstrument(text)
   if (decoded) {
+    if (!propertyIndexOpen(decoded.region)) return { kind: 'index_discontinued' }
     if (decoded.resolvesAtMs <= now.getTime()) return { kind: 'past' }
     return { kind: 'ready', entityId: text, label: decoded.region.nameKo }
   }
 
   const thresholdBp = parseMomThresholdBp(text)
   const matched = matchPropertyRegion(text)
-  if (!matched) return { kind: 'picks', options: propertyClarifyOptions(now) }
+  if (!matched) return { kind: 'picks', options: openClarifyOptions(now) }
+  if (!Array.isArray(matched) && !propertyIndexOpen(matched)) return { kind: 'index_discontinued' }
   if (Array.isArray(matched)) {
+    const open = matched.filter((row) => propertyIndexOpen(row))
+    if (open.length === 0) return { kind: 'index_discontinued' }
     return {
       kind: 'picks',
-      options: matched.map((row) => ({
+      options: open.map((row) => ({
         id: instrumentForRegion(row, text, thresholdBp, now),
         label: row.nameKo,
       })),
@@ -64,6 +70,10 @@ export function resolvePropertyTarget(raw: string, now: Date): PropertyHit {
     }
   }
   return ready(matched, text, thresholdBp, now)
+}
+
+function openClarifyOptions(now: Date) {
+  return propertyClarifyOptions(now).filter((option) => !option.id.startsWith('PROPERTY:AU:'))
 }
 
 function ready(region: PropertyRegion, text: string, thresholdBp: number | null, now: Date): PropertyHit {

@@ -203,7 +203,7 @@ describe('finance and world doors', () => {
     const world = html.split('data-testid="door-world"')[1] ?? ''
     expect(finance).toContain(t.catalog.categories.stocks)
     expect(finance).not.toContain(t.catalog.categories.sports)
-    expect(finance).not.toContain(`>${t.catalog.categories.memecoin}<`)
+    expect(finance).not.toContain('밈코인')
     expect(world).toContain(t.catalog.categories.sports)
     expect(html).toContain('금융 예측')
     expect(html).toContain('종목과 기간 선택')
@@ -211,6 +211,22 @@ describe('finance and world doors', () => {
     expect(html).toContain('질문 입력')
     expect(html).toContain('data-testid="door-show-all"')
     expect(html).toContain('전체 보기')
+  })
+
+  it('keeps 밈코인 in the Korean finance sentence when that chip is offered', () => {
+    const t = getLeagueUiPack('ko')
+    const html = renderToStaticMarkup(
+      createElement(HubDoors, {
+        categories: [...categories, { id: 'memecoin' as const }],
+        door: 'all',
+        locale: 'ko',
+        labelFor: (id) => t.catalog.categories[id],
+        onChooseDoor: () => {},
+        onShowAll: () => {},
+        onSelectCategory: () => {},
+      }),
+    )
+    expect(html).toContain('밈코인')
   })
 })
 

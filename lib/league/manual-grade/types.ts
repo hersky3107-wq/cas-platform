@@ -69,6 +69,8 @@ export type ManualQueueItem = {
   null_seats: Array<{ model_id: string; fail_reason: string | null }>
   /** Admin-only pre-mortem text. Empty when the column is absent or unused. */
   seat_counters: Array<{ model_id: string; strongest_counter: string }>
+  /** Official index evidence for a housing round still in this queue. */
+  housing_evidence?: string | null
 }
 
 export type ManualSuggestion = {

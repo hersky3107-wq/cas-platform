@@ -161,6 +161,8 @@ export type OfficialOutcomeResolution =
   | { status: 'resolved'; outcome: ResolvedOutcome }
   | { status: 'pending'; detail: string }
   | { status: 'voided'; rawOutcome: string }
+  /** Exact index tie. Same rule as an equal close: nobody is graded. */
+  | { status: 'equal'; detail: string }
 
 function asOfficialResolution(
   value: OfficialOutcomeResolution | ResolvedOutcome,
@@ -303,6 +305,9 @@ export function createGradingEngine(deps: GradingDeps) {
           const official = asOfficialResolution(officialRaw)
           if (official.status === 'pending') {
             return recordUnresolvable(round, 'series_unavailable', official.detail)
+          }
+          if (official.status === 'equal') {
+            return recordUnresolvable(round, 'equal_close', official.detail)
           }
           if (official.status === 'voided') {
             if (!deps.store.saveVoided) {

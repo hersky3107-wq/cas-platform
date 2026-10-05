@@ -48,7 +48,10 @@ describe('real estate housing index', () => {
     expect(round?.resolution_rule).toMatch(/first official publication/)
     expect(round?.resolution_rule).toMatch(/통계정정/)
     expect(propertyHeadlineLabel(round!.instrument, 'ko')).toBe('강남구 · 전월 2026-09')
-    expect(gradePlanFor(adapter, round!.instrument)).toEqual({ source: 'operator_manual' })
+    expect(gradePlanFor(adapter, round!.instrument)).toEqual({
+      source: 'housing_index',
+      tier1: { tier: 1, kind: 'official_api', endpoint: 'housing:KR:11680' },
+    })
   })
 
   it('parses a percent threshold and named cities, but country queries become picks', async () => {
@@ -82,7 +85,7 @@ describe('real estate housing index', () => {
       expect(labels).toEqual(expect.arrayContaining(['도쿄도', '오사카부', '아이치현', '일본 전국']))
     }
     const sydney = await adapter.resolveEntity('시드니 집값 오를까', 'ko')
-    expect(sydney).toMatchObject({ ok: true, entity_id: 'PROPERTY:AU:SYD:hpi_qoq:2026-09' })
+    expect(sydney).toMatchObject({ ok: false, refuse: { code: 'index_discontinued' } })
     const tokyo = await adapter.resolveEntity('도쿄 집값 오를까', 'ko')
     expect(tokyo).toMatchObject({ ok: true, entity_id: 'PROPERTY:JP:13:hpi_mom:2026-07' })
     const london = await adapter.resolveEntity('런던 집값 오를까', 'ko')

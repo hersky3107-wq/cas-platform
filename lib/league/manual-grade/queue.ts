@@ -8,6 +8,9 @@ import { LEAGUE_UI } from '@/lib/league/i18n/dictionary'
 import type { ManualQueueItem } from './types'
 import { notifyManualGradeQueued } from './telegram'
 import { koreanAdminCopyForRounds } from '@/lib/league/admin-proposition-ko'
+import { decodePropertyInstrument } from '@/lib/league/gateway/adapters/real-estate-catalog'
+import { housingEvidenceFromInstrument } from '@/lib/league/real-estate/evidence'
+import { storedIndexMetric } from '@/lib/league/real-estate/support'
 
 const QUEUE_COLUMNS =
   'id, proposition_text, propositions, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status'
@@ -41,6 +44,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
   const nullSeatsByRound = await loadNullSeats(ids)
   const countersByRound = await loadSeatCounters(ids)
   const t = LEAGUE_UI.ko
+  const housingEvidence = await loadHousingEvidence(rows.map((row) => String(row.instrument ?? '')))
   const korean = await koreanAdminCopyForRounds(
     rows.map((row) => ({
       id: String(row.id),
@@ -85,8 +89,42 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
       side_b: labels.badge(labels.sides[1]),
       null_seats: nullSeatsByRound.get(String(row.id)) ?? [],
       seat_counters: countersByRound.get(String(row.id)) ?? [],
+      housing_evidence: housingEvidence.get(String(row.instrument ?? '')) ?? null,
     }
   })
+}
+
+async function loadHousingEvidence(instruments: string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>()
+  const property = [...new Set(instruments.filter((id) => id.startsWith('PROPERTY:')))]
+  if (property.length === 0) return map
+  const { data, error } = await supabaseAdmin
+    .from('league_housing_index_prints')
+    .select('country, region_code, metric, ref_period, value, first_published_at')
+    .eq('vintage', 'first')
+  if (error || !data) {
+    for (const id of property) {
+      const line = housingEvidenceFromInstrument(id)
+      if (line) map.set(id, line)
+    }
+    return map
+  }
+  for (const id of property) {
+    const parts = decodePropertyInstrument(id)
+    const metric = parts ? storedIndexMetric(parts.region.tier, parts.metric) : null
+    const prints = parts && metric
+      ? data
+          .filter((row) => row.country === parts.country && row.region_code === parts.regionCode && row.metric === metric)
+          .map((row) => ({
+            refPeriod: String(row.ref_period),
+            value: Number(row.value),
+            firstPublishedAt: typeof row.first_published_at === 'string' ? row.first_published_at : null,
+          }))
+      : []
+    const line = housingEvidenceFromInstrument(id, prints)
+    if (line) map.set(id, line)
+  }
+  return map
 }
 
 async function loadNullSeats(roundIds: string[]) {

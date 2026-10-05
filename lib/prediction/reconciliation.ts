@@ -427,7 +427,8 @@ async function fetchSeriesViaGradePlan(instrument: string, startDate: string, en
     plan.source === 'operator_manual' ||
     plan.source === 'kobis' ||
     plan.source === 'lmarena' ||
-    plan.source === 'api_football'
+    plan.source === 'api_football' ||
+    plan.source === 'housing_index'
   ) {
     return { ok: false as const, error: `${plan.source}: awaiting official snapshot` }
   }
@@ -444,6 +445,10 @@ async function resolveOfficialOutcome(
   }
   if (plan.source === 'api_football') {
     return gradeFootballMatchInstrument(instrument, round.proposition_text ?? '')
+  }
+  if (plan.source === 'housing_index') {
+    const { gradeHousingInstrument } = await import('@/lib/league/real-estate/grade-live.server')
+    return gradeHousingInstrument(instrument)
   }
   if (plan.source !== 'kobis') return null
   const grade = await gradeKrBoxOfficeInstrument(instrument)

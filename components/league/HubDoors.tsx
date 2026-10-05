@@ -23,13 +23,16 @@ export function HubDoors({
   onSelectCategory: (id: PublicCategoryId) => void
 }) {
   const copy = leagueSurfaceCopy(locale).doors
+  const memecoinHidden = !categories.some((row) => row.id === 'memecoin')
+  const financeBody =
+    memecoinHidden && copy.financeBodyNoMemecoin ? copy.financeBodyNoMemecoin : copy.financeBody
   return (
     <div className="flex flex-col gap-2">
       <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
         <DoorCard
           active={door === 'finance'}
           title={copy.financeTitle}
-          body={copy.financeBody}
+          body={financeBody}
           hint={copy.financeHint}
           testId="door-finance"
           chips={chipsForDoor(categories, 'finance')}

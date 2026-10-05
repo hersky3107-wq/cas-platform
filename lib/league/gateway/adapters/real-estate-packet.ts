@@ -5,6 +5,7 @@
 
 import type { CategoryPacket, PacketBuildContext, PacketRound } from '../types'
 import type { ResearchPacket } from '../../research'
+import { formatHousingIndexBlock, type HousingPacketFacts } from '../../real-estate/packet-index'
 import { decodePropertyInstrument, formatPropertyProposition, type PropertyParts } from './real-estate-catalog'
 
 export type RealEstatePacketIo = {
@@ -14,6 +15,7 @@ export type RealEstatePacketIo = {
     tier: 'high'
     forcedQueries: Array<{ q: string; lang: string }>
   }): Promise<ResearchPacket>
+  loadHousingIndex?(parts: PropertyParts): Promise<HousingPacketFacts | null>
 }
 
 export function propertySearchQueries(parts: PropertyParts): Array<{ q: string; lang: string }> {
@@ -64,16 +66,18 @@ export async function buildRealEstatePacket(ctx: PacketBuildContext, io: RealEst
     forcedQueries: queries,
   })
   const findings = research.findings.map((f) => `- ${f.summary}`).join('\n') || '- none'
+  const indexFacts = parts && io.loadHousingIndex ? await io.loadHousingIndex(parts) : null
   const injection = parts
     ? [
         `PROPOSITION: ${formatPropertyProposition(parts)}`,
         formatPropertyCrowBrief(parts),
         '',
+        formatHousingIndexBlock(parts, indexFacts),
+        'SEARCH RESEARCH (secondary context only)',
         'TRANSACTION VOLUME / 실거래가',
         'Use published 거래량 and transacted-price trend as the market-activity input.',
         'POLICY / RATES / SUPPLY',
         findings,
-        'BOTH SIDES — real factors only. Do not invent balance.',
         'Weigh upside drivers (rate cuts, tight supply, rising 거래량) against downside drivers (rate pressure, 입주 supply overhang, falling 거래량, tightening policy, stretched affordability) — only those the findings state. A one-way index trend with no stated counter-factor can still be the call.',
         'Do not cite a named apartment complex or a street address.',
       ].join('\n')
