@@ -75,7 +75,9 @@ export function createEntertainmentAdapter(
     observation_shape: 'name_match',
 
     async resolveEntity(raw: string): Promise<EntityResolution> {
-      if (detectBettingFraming(raw)) return { ok: false, refuse: refuse('betting_framing') }
+      if (detectBettingFraming(raw, { category: 'entertainment_awards' })) {
+        return { ok: false, refuse: refuse('betting_framing') }
+      }
       if (PRIVATE.test(raw)) return { ok: false, refuse: refuse('celebrity_private') }
       if (STREAM.test(raw)) return { ok: false, refuse: refuse('no_result_source') }
       if (SUBJECTIVE.test(raw) && !SUCCESS.test(raw)) return { ok: false, refuse: refuse('subjective_show') }

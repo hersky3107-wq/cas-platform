@@ -100,7 +100,7 @@ export async function applyVoidRound(plan: VoidRoundPlan): Promise<
   if (!data || data.length === 0) {
     return { ok: false, error: 'round was graded or voided by another pass' }
   }
-  const refundedCredits = await refundChargedJobs(plan.roundId)
+  const refundedCredits = await refundChargedJobsForRound(plan.roundId)
   return { ok: true, refundedCredits }
 }
 
@@ -113,7 +113,7 @@ export async function runVoidRound(args: VoidRoundArgs): Promise<VoidRoundResult
   return { ok: true, dryRun: false, plan: planned.plan, refundedCredits: applied.refundedCredits }
 }
 
-async function refundChargedJobs(roundId: string): Promise<number> {
+export async function refundChargedJobsForRound(roundId: string): Promise<number> {
   const jobs: LeagueGenerationJob[] = await listChargedUnrefundedForRound(roundId)
   let total = 0
   for (const job of jobs) {

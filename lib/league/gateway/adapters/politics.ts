@@ -80,7 +80,9 @@ export function createPoliticsAdapter(io: PoliticsPacketIo, nowFn: () => Date = 
     observation_shape: 'name_match',
 
     async resolveEntity(raw: string, _locale: string, viewer?: GatewayViewer): Promise<EntityResolution> {
-      if (detectBettingFraming(raw)) return { ok: false, refuse: refuse('betting_framing') }
+      if (detectBettingFraming(raw, { category: 'politics_election' })) {
+        return { ok: false, refuse: refuse('betting_framing') }
+      }
       const now = nowFn()
 
       const decoded = decodePoliticsInstrument(raw.trim())

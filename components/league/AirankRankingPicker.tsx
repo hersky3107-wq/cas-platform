@@ -60,7 +60,10 @@ export function AirankRankingPicker({
         <div className="mt-2 flex gap-1.5">
           {(['1w', '1m'] as const).map((h) => (
             <button
+              key={h}
+              type="button"
               data-testid={h === '1w' ? 'airank-period-week' : 'airank-period-month'}
+              onClick={() => setPeriod(h)}
               className={`rounded-full px-3 py-1.5 text-xs font-semibold ${
                 period === h ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-800 hover:bg-slate-200'
               }`}

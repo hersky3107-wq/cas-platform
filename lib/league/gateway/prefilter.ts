@@ -7,12 +7,12 @@
 export const MIN_WORD_CHARS = 2
 export const MAX_RAW_CHARS = 200
 
-const HAS_WORD = /[A-Za-z0-9\uAC00-\uD7A3]/
+const HAS_WORD = /[A-Za-z0-9\uAC00-\uD7A3\u3040-\u30FF\u4E00-\u9FFF\u0600-\u06FF]/
 // eslint-disable-next-line no-control-regex
 const CONTROL = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/
 const URL = /https?:\/\/\S+|www\.\S+/gi
 const REPEATED_RUN = /(.)\1{9,}/u
-const WORD_CHAR = /[A-Za-z0-9\uAC00-\uD7A3]/g
+const WORD_CHAR = /[A-Za-z0-9\uAC00-\uD7A3\u3040-\u30FF\u4E00-\u9FFF\u0600-\u06FF]/g
 
 export function normalizeCacheText(raw: string): string {
   return raw.trim().replace(/\s+/g, ' ').toLowerCase()

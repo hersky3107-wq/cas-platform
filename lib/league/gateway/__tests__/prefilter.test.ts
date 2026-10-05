@@ -2,9 +2,12 @@ import { describe, expect, it } from 'vitest'
 import { prefilterRejects } from '../prefilter'
 
 describe('gateway layer-0 prefilter', () => {
-  it('accepts a short Hangul or Latin proposition', () => {
+  it('accepts a short Hangul, Latin, CJK, or Arabic proposition', () => {
     expect(prefilterRejects('애플 내일 오를까?')).toBe(false)
     expect(prefilterRejects('Will AAPL rise')).toBe(false)
+    expect(prefilterRejects('サムスンは年末までに3つ折りを発売する？')).toBe(false)
+    expect(prefilterRejects('三星會在年底前推出三摺手機嗎？')).toBe(false)
+    expect(prefilterRejects('هل تعلن آبل عن آيباد جديد في أكتوبر؟')).toBe(false)
   })
 
   it('rejects length, emoji-only, control, url-only, and repeated junk', () => {

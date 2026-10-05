@@ -98,7 +98,9 @@ export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () =
     observation_shape: 'name_match',
 
     async resolveEntity(raw: string, _locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
-      if (detectBettingFraming(raw)) return { ok: false, refuse: refuse('betting_framing') }
+      if (detectBettingFraming(raw, { category: 'sports' })) {
+        return { ok: false, refuse: refuse('betting_framing') }
+      }
 
       const decoded = decodeSportsInstrument(raw.trim())
       if (decoded) {

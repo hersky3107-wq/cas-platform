@@ -341,7 +341,9 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
   if (prefilterRejects(req.raw_text)) return refused('low_confidence', locale)
   // Betting framing (국민체육진흥법) is a first-class refusal, not junk.
   // Detected here from RAW text so a stripped entity mention cannot bypass it.
-  if (detectBettingFraming(req.raw_text)) return refused('betting_framing', locale)
+  if (detectBettingFraming(req.raw_text, { category: adapter.ledger_category })) {
+    return refused('betting_framing', locale)
+  }
 
   // 5. Normalize + strict schema gate. Malformed output is a refusal, not a 500.
   // Slate-backed categories (sports, politics, entertainment, real_estate) may
