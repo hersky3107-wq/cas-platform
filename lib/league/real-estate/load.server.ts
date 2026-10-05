@@ -11,8 +11,12 @@ import {
   UK_HPI_PAGE,
   fetchEstatHousing,
   fetchFredSeries,
+  fetchMlitHousing,
   fetchRoneRegion,
   fetchUkHpi,
+  MLIT_HOUSING_FILE_ID,
+  MLIT_HOUSING_PAGE,
+  roneTableForRegion,
   fredSeriesForRegion,
   pointsForArea,
 } from './clients'
@@ -73,11 +77,16 @@ async function fetchRegion(parts: PropertyParts) {
     return { ...file, points }
   }
   if (parts.country === 'KR') {
-    const statbl = process.env.RONE_APT_SALE_STATBL_ID?.trim() || RONE_MONTHLY_STATBL
-    return fetchRoneRegion(parts.regionCode, process.env.RONE_API_KEY, fetch, new Date(), statbl)
+    const spec = roneTableForRegion(parts.regionCode)
+    const override =
+      spec.statblId === RONE_MONTHLY_STATBL ? process.env.RONE_APT_SALE_STATBL_ID : process.env.RONE_SIGUNGU_STATBL_ID
+    return fetchRoneRegion(parts.regionCode, process.env.RONE_API_KEY, fetch, new Date(), override)
   }
   if (parts.country === 'JP') {
-    return fetchEstatHousing(parts.regionCode, process.env.ESTAT_APP_ID, process.env.ESTAT_HOUSING_STATS_DATA_ID)
+    if (process.env.ESTAT_HOUSING_STATS_DATA_ID?.trim()) {
+      return fetchEstatHousing(parts.regionCode, process.env.ESTAT_APP_ID, process.env.ESTAT_HOUSING_STATS_DATA_ID)
+    }
+    return fetchMlitHousing()
   }
   return { ok: false as const, error: 'no official index client' }
 }
@@ -113,13 +122,13 @@ function sourceLabel(parts: PropertyParts): string {
   if (parts.country === 'US') return 'FRED'
   if (parts.country === 'UK') return 'UK HPI'
   if (parts.country === 'KR') return 'R-ONE'
-  return 'e-Stat'
+  return process.env.ESTAT_HOUSING_STATS_DATA_ID?.trim() ? 'e-Stat' : 'MLIT'
 }
 
 function seriesLabel(parts: PropertyParts): string {
   if (parts.country === 'US') return fredSeriesForRegion(parts.region) ?? parts.regionCode
-  if (parts.country === 'KR') return process.env.RONE_APT_SALE_STATBL_ID?.trim() || RONE_MONTHLY_STATBL
-  if (parts.country === 'JP') return process.env.ESTAT_HOUSING_STATS_DATA_ID?.trim() || '不動産価格指数（住宅）'
+  if (parts.country === 'KR') return roneTableForRegion(parts.regionCode).statblId
+  if (parts.country === 'JP') return process.env.ESTAT_HOUSING_STATS_DATA_ID?.trim() || MLIT_HOUSING_FILE_ID
   return 'UK-HPI'
 }
 
@@ -127,7 +136,7 @@ function sourceUrl(parts: PropertyParts): string {
   if (parts.country === 'US') return FRED_SERIES_PAGE(fredSeriesForRegion(parts.region) ?? parts.regionCode)
   if (parts.country === 'UK') return UK_HPI_PAGE
   if (parts.country === 'KR') return RONE_PORTAL
-  return ESTAT_PAGE
+  return process.env.ESTAT_HOUSING_STATS_DATA_ID?.trim() ? ESTAT_PAGE : MLIT_HOUSING_PAGE
 }
 
 export async function refreshHousingContextSeries(seenAt: string): Promise<void> {

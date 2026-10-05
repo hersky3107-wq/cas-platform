@@ -37,11 +37,11 @@ export function parseUkHpiCsv(csv: string): ParsedPoint[] {
   const out: ParsedPoint[] = []
   for (const line of lines.slice(1)) {
     const cells = splitCsv(line)
-    const period = /^(\d{4})-(\d{2})/.exec(cells[dateIdx] ?? '')
+    const period = ukHpiPeriod(cells[dateIdx] ?? '')
     const area = (cells[areaIdx] ?? '').trim()
     const value = Number(cells[indexIdx])
     if (!period || !area || !Number.isFinite(value)) continue
-    out.push({ refPeriod: `${period[1]}-${period[2]}`, value, areaCode: area, seriesId: 'UK-HPI' })
+    out.push({ refPeriod: period, value, areaCode: area, seriesId: 'UK-HPI' })
   }
   return out
 }
@@ -51,6 +51,21 @@ export type RoneRow = {
   value: number
   clsId: string
   clsName: string
+  clsFullName: string
+  itmName: string
+  /** Set when the row is a weekly print with a calendar date. */
+  observedOn: string | null
+}
+
+/** UK HPI full-file dates are DD/MM/YYYY. ISO dates still parse. */
+export function ukHpiPeriod(raw: string): string | null {
+  const iso = /^(\d{4})-(\d{2})/.exec(raw.trim())
+  if (iso) return `${iso[1]}-${iso[2]}`
+  const dmy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})/.exec(raw.trim())
+  if (!dmy) return null
+  const month = Number(dmy[2])
+  if (month < 1 || month > 12) return null
+  return `${dmy[3]}-${String(month).padStart(2, '0')}`
 }
 
 export function parseRoneTable(body: unknown): RoneRow[] {
@@ -64,12 +79,22 @@ export function parseRoneTable(body: unknown): RoneRow[] {
   for (const row of rows) {
     if (!row || typeof row !== 'object') continue
     const rec = row as Record<string, unknown>
-    const period = ronePeriod(String(rec.WRTTIME_IDTFR_ID ?? ''), String(rec.WRTTIME_DESC ?? ''))
+    const timed = ronePeriod(String(rec.WRTTIME_IDTFR_ID ?? ''), String(rec.WRTTIME_DESC ?? ''))
     const value = Number(rec.DTA_VAL)
     const clsId = String(rec.CLS_ID ?? '')
-    const clsName = String(rec.CLS_NM ?? rec.CLS_FULLNM ?? '')
-    if (!period || !Number.isFinite(value)) continue
-    out.push({ refPeriod: period, value, clsId, clsName })
+    const clsName = String(rec.CLS_NM ?? '')
+    const clsFullName = String(rec.CLS_FULLNM ?? clsName)
+    const itmName = String(rec.ITM_NM ?? '')
+    if (!timed || !Number.isFinite(value)) continue
+    out.push({
+      refPeriod: timed.refPeriod,
+      value,
+      clsId,
+      clsName,
+      clsFullName,
+      itmName,
+      observedOn: timed.observedOn,
+    })
   }
   return out
 }
@@ -153,6 +178,7 @@ export function catalogRegionForRoneName(name: string): string | null {
     ['제주', '50'],
     ['서울중구', '11140'],
     ['종로구', '11110'],
+    ['중구', '11140'],
     ['용산구', '11170'],
     ['성동구', '11200'],
     ['광진구', '11215'],
@@ -211,6 +237,87 @@ export function catalogRegionForRoneName(name: string): string | null {
   return best
 }
 
+const RONE_PARENT: Array<[string, string]> = [
+  ['11', '서울'],
+  ['26', '부산'],
+  ['28', '인천'],
+  ['41', '경기'],
+]
+
+/** Match a classification leaf, and reject a same-named 구 from another city. */
+export function catalogRegionForRonePath(clsName: string, clsFullName: string): string | null {
+  const segments = (clsFullName || clsName)
+    .split('>')
+    .map((part) => part.replace(/\s+/g, ''))
+    .filter(Boolean)
+  const leaf = segments[segments.length - 1] || clsName.replace(/\s+/g, '')
+  const code = catalogRegionForRoneName(leaf) ?? catalogRegionForRoneName(leaf.replace(/(특별시|광역시|시)$/, ''))
+  if (!code || code.length <= 2 || code === 'NAT') return code
+  const parent = RONE_PARENT.find(([prefix]) => code.startsWith(prefix))?.[1]
+  if (!parent) return code
+  const path = segments.join('>')
+  return path.includes(parent) ? code : null
+}
+
+/**
+ * Weekly 매매가격지수 rows become one monthly print: the last week whose
+ * observation date falls in that reference month.
+ */
+export function lastWeeklyRonePrints(rows: readonly RoneRow[]): RoneRow[] {
+  const best = new Map<string, RoneRow>()
+  for (const row of rows) {
+    if (!row.observedOn) continue
+    const key = `${row.clsFullName}|${row.clsName}|${row.refPeriod}`
+    const prev = best.get(key)
+    if (!prev || (prev.observedOn ?? '') < row.observedOn) best.set(key, row)
+  }
+  return [...best.values()]
+}
+
+const MLIT_SHEETS: ReadonlyArray<readonly [RegExp, string]> = [
+  [/全国/, 'NAT'],
+  [/北海道/, 'HOKKAIDO'],
+  [/東北/, 'TOHOKU'],
+  [/南関東/, 'SOUTH_KANTO'],
+  [/関東/, 'KANTO'],
+  [/北陸/, 'HOKURIKU'],
+  [/名古屋/, 'NAGOYA'],
+  [/中部/, 'CHUBU'],
+  [/京阪神/, 'KEIHANSHIN'],
+  [/近畿/, 'KINKI'],
+  [/中国/, 'CHUGOKU'],
+  [/四国/, 'SHIKOKU'],
+  [/九州/, 'KYUSHU'],
+  [/東京都/, '13'],
+  [/愛知県/, '23'],
+  [/大阪府/, '27'],
+]
+
+/** NSA workbook sheets only. Seasonally adjusted sheets are not graded. */
+export function mlitSheetRegion(sheetName: string): string | null {
+  if (!sheetName.includes('原系列')) return null
+  for (const [pattern, code] of MLIT_SHEETS) {
+    if (pattern.test(sheetName)) return code
+  }
+  return null
+}
+
+/** Column B is the month, column C is 住宅総合. ExcelJS values are 1-indexed. */
+export function parseMlitHousingRow(values: readonly unknown[], sheetName: string, seriesId: string): ParsedPoint | null {
+  const areaCode = mlitSheetRegion(sheetName)
+  const period = mlitPeriod(values[1])
+  const value = typeof values[2] === 'number' ? values[2] : Number(values[2])
+  if (!areaCode || !period || !Number.isFinite(value)) return null
+  return { refPeriod: period, value, areaCode, areaName: sheetName, seriesId }
+}
+
+export function mlitHousingWorkbookUrl(html: string): string | null {
+  const at = html.lastIndexOf('最新データ')
+  const slice = at >= 0 ? html.slice(at) : html
+  const match = slice.match(/不動産価格指数（住宅）[\s\S]{0,500}?href="([^"]+\.xlsx)"/)
+  return match?.[1] ?? null
+}
+
 export function redactHousingSecrets(text: string): string {
   return text
     .replace(/api_key=[^&\s]+/gi, 'api_key=REDACTED')
@@ -218,12 +325,28 @@ export function redactHousingSecrets(text: string): string {
     .replace(/appId=[^&\s]+/gi, 'appId=REDACTED')
 }
 
-function ronePeriod(id: string, desc: string): string | null {
+function ronePeriod(id: string, desc: string): { refPeriod: string; observedOn: string | null } | null {
+  const day = /(\d{4})-(\d{2})-(\d{2})/.exec(desc)
+  if (day) return { refPeriod: `${day[1]}-${day[2]}`, observedOn: `${day[1]}-${day[2]}-${day[3]}` }
   const fromId = /^(\d{4})(\d{2})$/.exec(id.trim())
-  if (fromId) return `${fromId[1]}-${fromId[2]}`
+  if (fromId) {
+    const month = Number(fromId[2])
+    if (month >= 1 && month <= 12) return { refPeriod: `${fromId[1]}-${fromId[2]}`, observedOn: null }
+  }
   const fromDesc = /(\d{4})\D+(\d{1,2})/.exec(desc)
   if (!fromDesc) return null
-  return `${fromDesc[1]}-${fromDesc[2]!.padStart(2, '0')}`
+  return { refPeriod: `${fromDesc[1]}-${fromDesc[2]!.padStart(2, '0')}`, observedOn: null }
+}
+
+function mlitPeriod(cell: unknown): string | null {
+  if (cell instanceof Date && !Number.isNaN(cell.getTime())) {
+    return `${cell.getUTCFullYear()}-${String(cell.getUTCMonth() + 1).padStart(2, '0')}`
+  }
+  if (typeof cell === 'string') {
+    const iso = /^(\d{4})-(\d{2})/.exec(cell)
+    if (iso) return `${iso[1]}-${iso[2]}`
+  }
+  return null
 }
 
 function estatPeriod(time: string): string | null {

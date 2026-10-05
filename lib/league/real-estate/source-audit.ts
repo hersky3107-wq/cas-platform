@@ -96,8 +96,8 @@ function modeFor(region: PropertyRegion): Pick<PropertySourceRow, 'auth' | 'lice
     }
   }
   return {
-    auth: 'ESTAT_APP_ID',
-    license: 'e-Stat API terms; MLIT 不動産価格指数（住宅）',
+    auth: 'MLIT workbook 001473668; ESTAT_HOUSING_STATS_DATA_ID overrides',
+    license: 'MLIT 不動産価格指数（住宅） NSA 住宅総合. e-Stat has no table for this index.',
     packet: 'official-index',
     grading: 'housing_index',
   }

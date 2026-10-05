@@ -10,7 +10,7 @@ describe('property source audit', () => {
     expect(rows.find((row) => row.country === 'KR')?.auth).toBe('RONE_API_KEY')
     expect(rows.find((row) => row.publisher === 'S&P Case-Shiller')?.grading).toBe('housing_index')
     expect(rows.find((row) => row.publisher === 'UK HPI')?.license).toMatch(/Open Government Licence/)
-    expect(rows.find((row) => row.country === 'JP')?.auth).toBe('ESTAT_APP_ID')
+    expect(rows.find((row) => row.country === 'JP')?.auth).toMatch(/001473668/)
     expect(rows.find((row) => row.country === 'AU')).toMatchObject({
       packet: 'unsupported',
       grading: 'unsupported',

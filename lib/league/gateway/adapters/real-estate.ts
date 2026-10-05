@@ -31,6 +31,7 @@ const REFUSALS: readonly RefusalCode[] = [
   'brokerage_advice',
   'unsupported_entity',
   'index_discontinued',
+  'index_unsupported',
   'past_event',
   'vague_target',
   'jurisdiction_blocked',
@@ -63,6 +64,7 @@ export function createRealEstateAdapter(
       if (hit.kind === 'specific_property') return { ok: false, refuse: refuse('specific_property') }
       if (hit.kind === 'brokerage_advice') return { ok: false, refuse: refuse('brokerage_advice') }
       if (hit.kind === 'index_discontinued') return { ok: false, refuse: refuse('index_discontinued') }
+      if (hit.kind === 'index_unsupported') return { ok: false, refuse: refuse('index_unsupported') }
       if (hit.kind === 'reit') return { ok: false, refuse: refuse('unsupported_entity') }
       if (hit.kind === 'past') return { ok: false, refuse: refuse('past_event') }
       if (hit.kind === 'picks') {

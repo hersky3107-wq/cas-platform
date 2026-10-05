@@ -1,3 +1,4 @@
+import { supportedRegionsLine } from '../real-estate/supported'
 import type { LeagueLocale } from '../i18n/locales'
 import { normalizeLeagueLocale } from '../i18n/locales'
 import type { RefusalCode } from './types'
@@ -142,6 +143,16 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
   index_discontinued: {
     ko: '호주 주거용 부동산가격지수(RPPI)는 2021년 4분기 공표 이후 중단되었습니다. 같은 지수를 이어서 내는 무료 공식 지표가 없어 새 질문을 열 수 없습니다.',
     en: 'Australia’s residential property price index stopped after the December quarter 2021 print. No free official series continues that index, so this question cannot be opened.',
+  },
+  index_unsupported: {
+    ko: '이 지역은 공식 주택가격지수로 열 수 없습니다.',
+    en: 'This area has no official housing-price series, so the question cannot be opened.',
+    ja: 'この地域には公式の住宅価格指数がないため、質問を開けません。',
+    'zh-TW': '這個地區沒有官方住宅價格指數，無法開啟問題。',
+    fr: 'Cette zone n’a pas d’indice officiel des prix du logement, donc la question ne peut pas être ouverte.',
+    es: 'Esta zona no tiene un índice oficial de precios de la vivienda, así que la pregunta no se puede abrir.',
+    ar: 'لا يوجد مؤشر رسمي لأسعار المساكن في هذه المنطقة، لذا لا يمكن فتح السؤال.',
+    pt: 'Esta área não tem um índice oficial de preços da habitação, por isso a pergunta não pode ser aberta.',
   },
   unsupported_entity: {
     ko: '이 카테고리에서 지금 열 수 있는 대상은 아래와 같습니다.',
@@ -297,7 +308,9 @@ export function refusalMessageForKey(key: string, locale: string): string {
   const copy = code ? REFUSAL_COPY[code] : undefined
   if (!copy) return REFUSAL_COPY.low_confidence[resolveGatewayLocale(locale)]
   const loc = resolveGatewayLocale(locale)
-  return copy[loc] ?? copy.en
+  const text = copy[loc] ?? copy.en
+  if (code === 'index_unsupported') return `${text} ${supportedRegionsLine(loc)}`
+  return text
 }
 
 /** Localized clarify prompt / option label; '' when the key is unknown (UI hides it). */

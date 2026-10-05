@@ -23,6 +23,7 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { rankedPropositionDisplay } from '@/lib/league/card-header-copy'
 import { sportsVsLabel } from '@/lib/league/sports-display'
 import { propertyInstrumentDisplay } from '@/lib/league/real-estate-display'
+import { supportedRegionsLine } from '@/lib/league/real-estate/supported'
 import { stockChipLabel } from '@/lib/league/gateway/adapters/stock-catalog'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
@@ -1004,7 +1005,7 @@ function ComingSoonPanel({
   categoryId: PublicCategoryId
   onExample?: (text: string) => void
 }) {
-  const { t } = useLeagueLocale()
+  const { t, locale } = useLeagueLocale()
   const panel =
     categoryId === 'sports' ||
     categoryId === 'politics_election' ||
@@ -1039,6 +1040,11 @@ function ComingSoonPanel({
       </div>
       {categoryId === 'sports' ? (
         <p className="mt-3 text-left text-[11px] leading-relaxed text-slate-500">{t.disclaimer.sports}</p>
+      ) : null}
+      {categoryId === 'real_estate' ? (
+        <p className="mt-3 text-left text-[11px] leading-relaxed text-slate-500" data-testid="housing-supported-regions">
+          {supportedRegionsLine(locale)}
+        </p>
       ) : null}
       {categoryId === 'real_estate' ? (
         <p className="mt-3 text-left text-[11px] leading-relaxed text-slate-500">

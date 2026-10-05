@@ -91,8 +91,11 @@ export function propertyResolutionRule(parts: PropertyParts): string {
     `Grade the first official publication of reference period ${parts.refMonth}.`,
     'If the publisher issues a correction notice (통계정정), use the corrected value.',
     tier,
+    parts.country === 'KR' && parts.regionCode.length > 2
+      ? '시군구는 월간 매매가격지수(A_2024_00045)를 쓴다. 그 표에 지역이 없으면 주간 매매가격지수(T244183132827305) 중 기준월의 마지막 주 지수를 그 달의 공표값으로 본다.'
+      : '',
     'Not a complex price, not an appraisal, not brokerage advice.',
-  ].join(' ')
+  ].filter(Boolean).join(' ')
 }
 
 export function propertyHeadlineLabel(instrument: string, locale: 'ko' | 'en' = 'ko'): string | null {

@@ -12,17 +12,21 @@
  */
 import { PROPERTY_REGIONS } from '@/lib/league/gateway/adapters/real-estate-regions'
 import {
-  fetchEstatTable,
+  fetchEstatHousing,
   fetchFredSeries,
+  fetchMlitHousing,
   fetchRoneTable,
   fetchUkHpi,
   fredSeriesForRegion,
   pointsForArea,
   RONE_MONTHLY_STATBL,
+  RONE_SIGUNGU_STATBL,
+  RONE_WEEKLY_STATBL,
+  roneTableForRegion,
   type HousingFetchResult,
 } from '@/lib/league/real-estate/clients'
 import { refreshHousingContextSeries } from '@/lib/league/real-estate/load.server'
-import { catalogRegionForEstatArea, redactHousingSecrets } from '@/lib/league/real-estate/parse'
+import { redactHousingSecrets } from '@/lib/league/real-estate/parse'
 import { storedIndexMetric } from '@/lib/league/real-estate/support'
 import { writeHousingPrints } from '@/lib/league/real-estate/store.server'
 import { supabaseAdmin } from '@/lib/supabase/server'
@@ -65,7 +69,13 @@ export async function runHousingIndexBackfill(argv: string[] = process.argv.slic
     throw new Error('a league generation is queued or running; backfill did not fetch')
   }
   const seenAt = new Date().toISOString()
-  const cache = { uk: null as HousingFetchResult | null, kr: null as HousingFetchResult | null, jp: null as HousingFetchResult | null }
+  const cache = {
+    uk: null as HousingFetchResult | null,
+    krSido: null as HousingFetchResult | null,
+    krGu: null as HousingFetchResult | null,
+    krWeek: null as HousingFetchResult | null,
+    jp: null as HousingFetchResult | null,
+  }
   let wrote = 0
   let failed = 0
   for (const region of open) {
@@ -105,10 +115,15 @@ export async function runHousingIndexBackfill(argv: string[] = process.argv.slic
   if (failed > 0) process.exitCode = 1
 }
 
-async function fetchOne(
-  region: (typeof PROPERTY_REGIONS)[number],
-  cache: { uk: HousingFetchResult | null; kr: HousingFetchResult | null; jp: HousingFetchResult | null },
-) {
+type HousingCache = {
+  uk: HousingFetchResult | null
+  krSido: HousingFetchResult | null
+  krGu: HousingFetchResult | null
+  krWeek: HousingFetchResult | null
+  jp: HousingFetchResult | null
+}
+
+async function fetchOne(region: (typeof PROPERTY_REGIONS)[number], cache: HousingCache) {
   if (region.country === 'US') {
     const seriesId = fredSeriesForRegion(region)
     if (!seriesId) return { ok: false as const, error: 'no FRED series' }
@@ -120,25 +135,48 @@ async function fetchOne(
     const points = pointsForArea(cache.uk.points, region.code)
     return points.length ? { ...cache.uk, points } : { ok: false as const, error: 'area missing in UK HPI' }
   }
-  if (region.country === 'KR') {
-    cache.kr ??= await fetchRoneTable(
+  if (region.country === 'KR') return fetchKorea(region.code, cache)
+  if (process.env.ESTAT_HOUSING_STATS_DATA_ID?.trim()) {
+    return fetchEstatHousing(region.code, process.env.ESTAT_APP_ID, process.env.ESTAT_HOUSING_STATS_DATA_ID)
+  }
+  cache.jp ??= await fetchMlitHousing()
+  if (!cache.jp.ok) return cache.jp
+  const points = pointsForArea(cache.jp.points, region.code)
+  return points.length ? { ...cache.jp, points } : { ok: false as const, error: `MLIT workbook has no NSA row for ${region.code}` }
+}
+
+async function fetchKorea(regionCode: string, cache: HousingCache) {
+  const spec = roneTableForRegion(regionCode)
+  const now = new Date()
+  if (spec.statblId === RONE_MONTHLY_STATBL) {
+    cache.krSido ??= await fetchRoneTable(
       process.env.RONE_API_KEY,
       fetch,
-      new Date(),
+      now,
       process.env.RONE_APT_SALE_STATBL_ID?.trim() || RONE_MONTHLY_STATBL,
+      'MM',
     )
-    if (!cache.kr.ok) return cache.kr
-    const points = pointsForArea(cache.kr.points, region.code)
-    return points.length
-      ? { ...cache.kr, points }
-      : { ok: false as const, error: `R-ONE has no monthly apartment sale index row for ${region.code}` }
+    if (!cache.krSido.ok) return cache.krSido
+    const points = pointsForArea(cache.krSido.points, regionCode)
+    return points.length ? { ...cache.krSido, points } : { ok: false as const, error: `R-ONE has no row for ${regionCode}` }
   }
-  cache.jp ??= await fetchEstatTable(process.env.ESTAT_APP_ID, process.env.ESTAT_HOUSING_STATS_DATA_ID)
-  if (!cache.jp.ok) return cache.jp
-  const points = cache.jp.points.filter((row) => catalogRegionForEstatArea(row.areaName ?? '') === region.code)
+  cache.krGu ??= await fetchRoneTable(
+    process.env.RONE_API_KEY,
+    fetch,
+    now,
+    process.env.RONE_SIGUNGU_STATBL_ID?.trim() || RONE_SIGUNGU_STATBL,
+    'MM',
+  )
+  if (cache.krGu.ok) {
+    const points = pointsForArea(cache.krGu.points, regionCode)
+    if (points.length) return { ...cache.krGu, points }
+  }
+  cache.krWeek ??= await fetchRoneTable(process.env.RONE_API_KEY, fetch, now, RONE_WEEKLY_STATBL, 'WK')
+  if (!cache.krWeek.ok) return { ok: false as const, error: `R-ONE has no monthly apartment sale index row for ${regionCode}` }
+  const points = pointsForArea(cache.krWeek.points, regionCode)
   return points.length
-    ? { ...cache.jp, points }
-    : { ok: false as const, error: `e-Stat has no residential composite for ${region.code}` }
+    ? { ...cache.krWeek, points }
+    : { ok: false as const, error: `R-ONE has no monthly apartment sale index row for ${regionCode}` }
 }
 
 const isMain = process.argv[1]?.replace(/\\/g, '/').endsWith('scripts/league/housing-index-backfill.ts')

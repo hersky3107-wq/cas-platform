@@ -4,7 +4,15 @@
  */
 
 import { decodePropertyInstrument, publicationYmd } from '../gateway/adapters/real-estate-catalog'
-import { ESTAT_PAGE, FRED_SERIES_PAGE, fredSeriesForRegion, RONE_MONTHLY_STATBL, RONE_PORTAL, UK_HPI_PAGE } from './clients'
+import {
+  FRED_SERIES_PAGE,
+  fredSeriesForRegion,
+  MLIT_HOUSING_FILE_ID,
+  MLIT_HOUSING_PAGE,
+  RONE_PORTAL,
+  roneTableForRegion,
+  UK_HPI_PAGE,
+} from './clients'
 import { priorPeriod } from './vintage'
 
 export type HousingEvidencePrint = { refPeriod: string; value: number; firstPublishedAt?: string | null }
@@ -35,15 +43,18 @@ export function housingEvidenceFromInstrument(
   }
   if (previous) bits.push(`prior ${previous.refPeriod} ${previous.value}`)
   else if (prior) bits.push(`prior ${prior} not stored`)
+  if (parts.country === 'KR' && parts.regionCode.length > 2) {
+    bits.push('시군구는 월간 매매가격지수(A_2024_00045). 없으면 주간 매매가격지수(T244183132827305)의 기준월 마지막 주')
+  }
   bits.push(series.url)
-  return bits.join(' · ').slice(0, 500)
+  return bits.join(' · ').slice(0, 800)
 }
 
 function sourceName(country: string): string {
   if (country === 'US') return 'FRED'
   if (country === 'UK') return 'UK HPI'
   if (country === 'KR') return 'R-ONE'
-  if (country === 'JP') return 'e-Stat'
+  if (country === 'JP') return 'MLIT'
   return country
 }
 
@@ -57,6 +68,8 @@ function seriesLabel(
     return { id, url: FRED_SERIES_PAGE(id) }
   }
   if (country === 'UK') return { id: 'UK-HPI', url: UK_HPI_PAGE }
-  if (country === 'KR') return { id: RONE_MONTHLY_STATBL, url: RONE_PORTAL }
-  return { id: '不動産価格指数（住宅）', url: ESTAT_PAGE }
+  if (country === 'KR') {
+    return { id: roneTableForRegion(code).statblId, url: RONE_PORTAL }
+  }
+  return { id: MLIT_HOUSING_FILE_ID, url: MLIT_HOUSING_PAGE }
 }
