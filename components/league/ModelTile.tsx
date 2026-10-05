@@ -12,6 +12,9 @@ import { visibleLeagueText } from '@/lib/league/visible-disclosure'
 import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
+import { isExtraSeatId } from '@/lib/league/extra/seats'
+import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
 /**
  * One AI as a team card / ticker tile.
@@ -47,6 +50,7 @@ export function ModelTile({
   showOriginal = false,
   actualMagnitudePct = null,
   category = null,
+  locale = 'en',
 }: {
   model: CardModelPrediction
   t: LeagueUiPack
@@ -61,6 +65,7 @@ export function ModelTile({
   actualMagnitudePct?: number | null
   /** Ledger category — display-layer scrub of flow/analyst/book figures. */
   category?: string | null
+  locale?: LeagueLocale
 }) {
   const [open, setOpen] = useState(false)
   const isScout = model.league_tier === 'scout'
@@ -116,6 +121,8 @@ export function ModelTile({
     model.magnitude !== null && actualMagnitudePct !== null
       ? magnitudeCompareLine(model.magnitude, actualMagnitudePct, t)
       : null
+  const extraRole = isExtraSeatId(model.model_id) ? leagueSurfaceCopy(locale).extra.role[model.model_id] : null
+  const extraMore = leagueSurfaceCopy(locale).extra.more
 
   function toggle() {
     if (!hasReasoning) return
@@ -292,6 +299,15 @@ export function ModelTile({
           </span>
         ) : null}
       </div>
+      {extraRole ? (
+        <div className="px-2.5 pb-2 md:px-3" data-testid="extra-role">
+          <p className="line-clamp-1 text-[10px] leading-snug text-league-fg-muted">{extraRole.line}</p>
+          <details className="mt-0.5 text-[10px] leading-snug text-league-fg-muted">
+            <summary className="cursor-pointer font-semibold text-league-accent-strong">{extraMore}</summary>
+            <p className="mt-1">{extraRole.detail}</p>
+          </details>
+        </div>
+      ) : null}
     </li>
   )
 }

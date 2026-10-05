@@ -93,6 +93,9 @@ export function CardBody({
           complete={data.generation?.complete ?? liveProgress?.complete ?? false}
           queuePosition={data.generation?.queuePosition}
           etaMinutes={data.generation?.etaMinutes}
+          models={data.models}
+          labels={labels}
+          locale={locale}
           t={t}
         />
       ) : null}

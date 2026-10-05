@@ -38,6 +38,16 @@ import { formatSessionDate } from '@/lib/league/card-header-copy'
 import { publicFacingLabel } from '@/lib/league/public-label'
 import type { FreeformRecentItem } from '@/lib/league/freeform-recent'
 import { AirankRankingPicker } from '@/components/league/AirankRankingPicker'
+import { HubDoors } from '@/components/league/HubDoors'
+import {
+  HUB_DOOR_STORAGE_KEY,
+  categoryFromSearch,
+  chipsForDoor,
+  doorForCategory,
+  parseStoredDoor,
+  type HubDoor,
+  type HubDoorFilter,
+} from '@/lib/league/hub-doors'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -170,6 +180,7 @@ function CardsPanel() {
   const [krAdvisoryRegNo, setKrAdvisoryRegNo] = useState<string | undefined>()
   const [krBizNo, setKrBizNo] = useState<string | undefined>()
   const [promptSeed, setPromptSeed] = useState('')
+  const [door, setDoor] = useState<HubDoorFilter>('all')
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
@@ -257,7 +268,17 @@ function CardsPanel() {
         if (body.krAdvisoryRegNo) setKrAdvisoryRegNo(body.krAdvisoryRegNo)
         if (body.krBizNo) setKrBizNo(body.krBizNo)
         setCategories(list)
-        const firstId = defaultCatalogCategoryId(list)
+        const visibleIds = list.map((row) => row.id)
+        const requested = categoryFromSearch(window.location.search, visibleIds)
+        const stored = parseStoredDoor(window.localStorage.getItem(HUB_DOOR_STORAGE_KEY))
+        const nextDoor: HubDoorFilter = requested
+          ? (doorForCategory(requested) ?? 'all')
+          : (stored ?? 'all')
+        setDoor(nextDoor)
+        const visible = chipsForDoor(list, nextDoor)
+        const firstId =
+          (requested as PublicCategoryId | null) ??
+          (nextDoor === 'all' ? defaultCatalogCategoryId(list) : (visible[0]?.id ?? null))
         setSelectedCategory(firstId)
         const firstCat = list.find((c) => c.id === firstId)
         if (firstCat && isFreeformSearchCategory(firstCat.id)) {
@@ -311,10 +332,17 @@ function CardsPanel() {
     }
   }, [generationStatus, selectedInstrument, selectedRoundId, horizon, loadCard])
 
+  function writeCategorySearch(id: PublicCategoryId) {
+    const url = new URL(window.location.href)
+    url.searchParams.set('cat', id)
+    window.history.replaceState(null, '', `${url.pathname}${url.search}${url.hash}`)
+  }
+
   function selectCategory(id: PublicCategoryId) {
     if (!categories) return
     const next = categories.find((c) => c.id === id)
     setSelectedCategory(id)
+    writeCategorySearch(id)
     if (!next || isFreeformSearchCategory(id) || next.instruments.length === 0) {
       setSelectedInstrument(null)
       setSelectedRoundId(null)
@@ -325,6 +353,28 @@ function CardsPanel() {
     setSelectedInstrument(first)
     setSelectedRoundId(null)
     void loadCard(first, horizon)
+  }
+
+  function rememberDoor(next: HubDoorFilter) {
+    setDoor(next)
+    try {
+      window.localStorage.setItem(HUB_DOOR_STORAGE_KEY, next)
+    } catch {
+      /* private mode */
+    }
+  }
+
+  function chooseDoor(next: HubDoor) {
+    rememberDoor(next)
+    if (!categories || !selectedCategory) return
+    const visible = chipsForDoor(categories, next)
+    if (visible.some((row) => row.id === selectedCategory)) return
+    const first = visible[0]
+    if (first) selectCategory(first.id)
+  }
+
+  function showAllDoors() {
+    rememberDoor('all')
   }
 
   // A plain click handler, not a `[selected]`-keyed effect: re-clicking the
@@ -383,10 +433,21 @@ function CardsPanel() {
     active && isFreeformSearchCategory(active.id) && view.kind !== 'card' && view.kind !== 'locked',
   )
 
+  const visibleCategories = chipsForDoor(categories, door)
+
   return (
     <div className="flex flex-col gap-3">
+      <HubDoors
+        categories={categories}
+        door={door}
+        locale={locale}
+        labelFor={(id) => t.catalog.categories[id]}
+        onChooseDoor={chooseDoor}
+        onShowAll={showAllDoors}
+        onSelectCategory={selectCategory}
+      />
       <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
-        {categories.map((c) => (
+        {visibleCategories.map((c) => (
           <button
             key={c.id}
             type="button"

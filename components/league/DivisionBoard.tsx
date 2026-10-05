@@ -18,6 +18,8 @@ import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { isRationaleTranslationPending, lookupTranslatedRationale } from '@/lib/league/rationale-display'
 import { compactSideTally, type SideLabels } from '@/lib/league/side-labels'
+import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
+import { runningRemainingMinutes, tierRemainingMinutes } from '@/lib/league/waiting-arena'
 import { ModelTile } from './ModelTile'
 
 const DIVISION_DOT: Record<LeagueTier, string> = {
@@ -100,6 +102,21 @@ export function DivisionBoard({
     return <p className="px-4 py-6 text-center text-xs text-league-fg-muted">{t.modelList.empty}</p>
   }
 
+  const surface = leagueSurfaceCopy(locale)
+  const totalUnanswered = streaming
+    ? LEAGUE_TIERS.reduce((sum, tier) => {
+        const expected = rosterIdsForTier(tier).length
+        const arrived = models.filter((model) => model.league_tier === tier).length
+        const dropped = droppedIdsForTier(tier, droppedModelIds).length
+        return sum + Math.max(0, expected - arrived - dropped)
+      }, 0)
+    : 0
+  const answeredSeats = streaming ? models.length + droppedModelIds.length : 0
+  const expectedSeats = streaming
+    ? LEAGUE_TIERS.reduce((sum, tier) => sum + rosterIdsForTier(tier).length, 0)
+    : 0
+  const roundRemaining = streaming ? runningRemainingMinutes(answeredSeats, expectedSeats) : null
+
   return (
     <div className="flex flex-col">
       <OverallStrip groups={groups} tierSplit={tierSplit} t={t} labels={labels} />
@@ -112,6 +129,10 @@ export function DivisionBoard({
             ? { expected: rosterIdsForTier(group.tier).length, noResponse: droppedIds.length, skeletons: 0 }
             : null
         const noResponseIds = fill ? droppedIds.slice(0, fill.noResponse) : []
+        const expected = rosterIdsForTier(group.tier).length
+        const unanswered = streaming ? Math.max(0, expected - group.models.length - droppedIds.length) : 0
+        const tierMinutes = tierRemainingMinutes(unanswered, totalUnanswered, roundRemaining)
+        const ringDone = group.models.length + (streaming ? droppedIds.length : 0)
         return (
           <section
             key={group.tier}
@@ -131,15 +152,26 @@ export function DivisionBoard({
               <span className="min-w-0 flex-1 truncate text-[11px] font-bold uppercase tracking-wide text-league-fg">
                 {t.bracket.division[group.tier]}
               </span>
+              {streaming ? <TierProgressRing done={ringDone} total={expected} /> : null}
               <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-league-fg-muted">
                 {labels ? compactSideTally(tierSplit[group.tier], labels, t) : t.bracket.compactTally(tierSplit[group.tier])}
               </span>
+              {tierMinutes != null ? (
+                <span className="shrink-0 text-[10px] font-semibold tabular-nums text-league-fg-muted" data-testid="tier-remaining">
+                  {surface.arena.tierRemaining(tierMinutes)}
+                </span>
+              ) : null}
               {streaming ? null : (
                 <span className="text-[10px] text-league-fg-muted md:hidden" aria-hidden>
                   {expanded ? '▾' : '▸'}
                 </span>
               )}
             </button>
+            {group.tier === 'extra' ? (
+              <p className="px-3 pb-1 text-[11px] leading-snug text-league-fg-muted md:px-4" data-testid="extra-intro">
+                {surface.extra.intro}
+              </p>
+            ) : null}
             <ul
               className={`${expanded ? 'grid' : 'hidden'} grid-cols-1 gap-1.5 px-2 pb-2 md:grid md:grid-cols-3 md:gap-2 md:px-3 md:pb-3 lg:grid-cols-4 xl:grid-cols-5`}
             >
@@ -162,6 +194,7 @@ export function DivisionBoard({
                     showOriginal={showOriginal}
                     actualMagnitudePct={actualMagnitudePct}
                     category={category}
+                    locale={locale}
                   />
                 )
               })}
@@ -174,7 +207,7 @@ export function DivisionBoard({
               ))}
               {fill
                 ? Array.from({ length: fill.skeletons }, (_, i) => (
-                    <SeatSkeleton key={`${group.tier}-sk-${i}`} />
+                    <SeatSkeleton key={`${group.tier}-sk-${i}`} thinking={streaming ? surface.arena.thinking : undefined} />
                   ))
                 : null}
             </ul>
@@ -185,13 +218,38 @@ export function DivisionBoard({
   )
 }
 
-function SeatSkeleton() {
+function SeatSkeleton({ thinking }: { thinking?: string }) {
   return (
     <li
-      className="league-gen-skeleton h-[52px] rounded-lg border border-league-border/40 md:h-[58px]"
+      className="league-gen-skeleton flex h-[52px] items-center justify-center rounded-lg border border-league-border/40 md:h-[58px]"
       data-testid="seat-skeleton"
-      aria-hidden
-    />
+      aria-hidden={thinking ? undefined : true}
+    >
+      {thinking ? (
+        <span className="league-gen-pulse text-[10px] font-semibold text-league-fg-muted">{thinking}</span>
+      ) : null}
+    </li>
+  )
+}
+
+function TierProgressRing({ done, total }: { done: number; total: number }) {
+  const pct = total > 0 ? Math.min(1, done / total) : 0
+  const r = 7
+  const c = 2 * Math.PI * r
+  return (
+    <svg viewBox="0 0 18 18" className="h-4 w-4 shrink-0" aria-hidden data-testid="division-ring">
+      <circle cx="9" cy="9" r={r} fill="none" className="stroke-league-border" strokeWidth="2" />
+      <circle
+        cx="9"
+        cy="9"
+        r={r}
+        fill="none"
+        className="stroke-league-accent"
+        strokeWidth="2"
+        strokeDasharray={`${c * pct} ${c}`}
+        transform="rotate(-90 9 9)"
+      />
+    </svg>
   )
 }
 

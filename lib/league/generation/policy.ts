@@ -77,12 +77,17 @@ export function queueWaitEstimate(input: {
 }
 
 /**
- * Press-time backpressure: with this many jobs already queued+running, a NEW
- * generation press is refused with 503 BEFORE any charge. At ~4-6 min per
- * job and 3 running at a time, job #10 would wait ~15+ minutes — refusing
- * honestly beats charging for a wait that long.
+ * Press-time backpressure. When this many jobs are already queued+running,
+ * a NEW generation press is refused with 503 BEFORE any charge. Override
+ * with LEAGUE_QUEUE_CAP (clamped 1–200). Default 30.
  */
-export const LEAGUE_JOB_MAX_ACTIVE = 10
+export const LEAGUE_QUEUE_CAP_DEFAULT = 30
+
+export function leagueQueueCap(): number {
+  const raw = Number(process.env.LEAGUE_QUEUE_CAP)
+  if (!Number.isFinite(raw) || raw < 1) return LEAGUE_QUEUE_CAP_DEFAULT
+  return Math.min(200, Math.floor(raw))
+}
 
 /**
  * Wall-clock budget for one cron tick's chunk work. The route's maxDuration

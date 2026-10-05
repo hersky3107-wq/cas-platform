@@ -220,7 +220,7 @@ describe('GenerationProgressStrip waiting and completion notes', () => {
   const t = getLeagueUiPack('ko')
   const en = getLeagueUiPack('en')
 
-  it('renders the subtle waiting note while generation is in progress (Korean)', () => {
+  it('renders the live arena while generation is in progress (Korean)', () => {
     const html = renderToStaticMarkup(
       createElement(GenerationProgressStrip, {
         queued: false,
@@ -228,14 +228,15 @@ describe('GenerationProgressStrip waiting and completion notes', () => {
         rosterSize: 44,
         complete: false,
         t,
+        locale: 'ko',
       })
     )
-    expect(html).toContain('AI들이 예측 중입니다 · 잠시만 기다려 주세요')
+    expect(html).toContain('AI 경기장')
     expect(html).toContain('12/44')
     expect(html).not.toContain('44개 예측 완료')
   })
 
-  it('renders the subtle waiting note while generation is in progress (English)', () => {
+  it('renders the live arena while generation is in progress (English)', () => {
     const html = renderToStaticMarkup(
       createElement(GenerationProgressStrip, {
         queued: false,
@@ -243,9 +244,10 @@ describe('GenerationProgressStrip waiting and completion notes', () => {
         rosterSize: 44,
         complete: false,
         t: en,
+        locale: 'en',
       })
     )
-    expect(html).toContain('AIs are formulating predictions · Please wait a moment')
+    expect(html).toContain('AI arena')
     expect(html).toContain('20/44')
     expect(html).not.toContain('44 predictions ready')
   })
@@ -261,6 +263,6 @@ describe('GenerationProgressStrip waiting and completion notes', () => {
       })
     )
     expect(html).toContain('44개 예측 완료')
-    expect(html).not.toContain('AI들이 예측 중입니다 · 잠시만 기다려 주세요')
+    expect(html).not.toContain('AI 경기장')
   })
 })

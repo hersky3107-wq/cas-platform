@@ -20,7 +20,7 @@ import {
   decisionCharges,
   decisionNeedsNewJob,
   LEAGUE_GENERATE_MODULE,
-  LEAGUE_JOB_MAX_ACTIVE,
+  leagueQueueCap,
 } from '@/lib/league/generation/policy'
 import { advanceLeagueGenerationJob } from '@/lib/league/generation/runner'
 import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
@@ -178,7 +178,7 @@ export async function POST(req: Request) {
   // is deep enough that the wait would be dishonest to sell.
   if (decisionNeedsNewJob(decision)) {
     const active = await countActiveGenerationJobs()
-    if (active >= LEAGUE_JOB_MAX_ACTIVE) {
+    if (active >= leagueQueueCap()) {
       return NextResponse.json(
         { error: 'Generation queue is full. Try again shortly.', code: 'busy' },
         { status: 503, headers: { 'Retry-After': '60' } }

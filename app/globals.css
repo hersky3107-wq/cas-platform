@@ -263,12 +263,26 @@ body {
 .league-gen-pop {
   animation: league-gen-pop 0.55s ease-out both;
 }
+.league-gen-pulse {
+  animation: league-gen-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes league-gen-pulse {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
 
 @media (prefers-reduced-motion: reduce) {
   .league-gen-orbit,
   .league-gen-sand,
   .league-gen-skeleton,
-  .league-gen-pop {
+  .league-gen-pop,
+  .league-gen-pulse {
     animation: none !important;
   }
 }

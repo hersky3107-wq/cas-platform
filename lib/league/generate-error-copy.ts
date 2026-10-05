@@ -38,8 +38,8 @@ const GENERATE_COPY: Record<string, Copy> = {
     en: 'The round could not be opened. Nothing was charged. Please try again in a moment.',
   },
   busy: {
-    ko: '지금 요청이 많습니다. 잠시 후 다시 시도해 주세요.',
-    en: 'The queue is busy. Please try again in a moment.',
+    ko: '지금 많은 분들이 이용 중입니다 · 잠시 후 다시 시도해 주세요',
+    en: 'A lot of people are using this right now. Please try again in a moment.',
   },
   market_data_unavailable: {
     ko: '시세 데이터를 잠시 가져오지 못했습니다. 결제되지 않았습니다. 잠시 후 다시 시도해 주세요.',

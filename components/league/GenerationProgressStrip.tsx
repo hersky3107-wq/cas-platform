@@ -1,7 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import type { CardModelPrediction } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import type { SideLabels } from '@/lib/league/side-labels'
+import { WaitingArena } from './WaitingArena'
 
 export type GenerationProgressStripProps = {
   queued: boolean
@@ -11,11 +15,14 @@ export type GenerationProgressStripProps = {
   t: LeagueUiPack
   queuePosition?: number
   etaMinutes?: number
+  models?: readonly CardModelPrediction[]
+  labels?: SideLabels
+  locale?: LeagueLocale
 }
 
 /**
- * Shared live-generation chrome for every category: progress bar + looping
- * motif while seats resolve, then a brief completion beat that dismisses.
+ * Live waiting chrome. The arena shows real seat counts, the queue line,
+ * and short takes from answers that have already landed.
  */
 export function GenerationProgressStrip({
   queued,
@@ -25,6 +32,9 @@ export function GenerationProgressStrip({
   t,
   queuePosition,
   etaMinutes,
+  models = [],
+  labels,
+  locale = 'en',
 }: GenerationProgressStripProps) {
   const [phase, setPhase] = useState<'work' | 'done' | 'gone'>(complete ? 'done' : 'work')
 
@@ -42,7 +52,6 @@ export function GenerationProgressStrip({
 
   const total = Math.max(0, rosterSize)
   const n = Math.min(Math.max(0, answered), total || answered)
-  const pct = total > 0 ? Math.round((n / total) * 100) : 0
 
   if (phase === 'done') {
     return (
@@ -69,55 +78,23 @@ export function GenerationProgressStrip({
 
   return (
     <div
-      className="mx-3 mb-2 rounded-2xl border border-emerald-200 bg-emerald-50 px-3 py-2.5 md:mx-4"
+      className="mx-3 mb-2 rounded-2xl border border-league-border bg-league-bg-elevated px-3 py-2.5 md:mx-4"
       role="status"
       aria-live="polite"
       aria-busy="true"
       data-testid="generation-progress"
     >
-      <div className="flex items-center gap-2.5">
-        <HourglassMotif />
-        <p className="min-w-0 flex-1 text-xs font-medium leading-relaxed text-emerald-950">
-          {queued
-            ? queuePosition && etaMinutes != null
-              ? `${t.hub.generationQueued} ${t.hub.queueLine(queuePosition, etaMinutes)}`
-              : t.hub.generationQueued
-            : t.hub.generationProgress(n, total)}
-        </p>
-        <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-emerald-800">
-          {pct}%
-        </span>
-      </div>
-      <div
-        className="mt-2 h-1.5 overflow-hidden rounded-full bg-emerald-200/80"
-        aria-hidden
-      >
-        <div
-          className="h-full rounded-full bg-emerald-500 transition-[width] duration-500 ease-out"
-          style={{ width: `${queued ? 6 : Math.max(pct, 4)}%` }}
-        />
-      </div>
-      <p className="mt-1.5 text-[11px] leading-snug text-emerald-800/80">
-        {t.hub.generationWaitingNote}
-      </p>
+      <WaitingArena
+        queued={queued}
+        answered={n}
+        rosterSize={total}
+        queuePosition={queuePosition}
+        etaMinutes={etaMinutes}
+        models={models}
+        labels={labels}
+        t={t}
+        locale={locale}
+      />
     </div>
-  )
-}
-
-function HourglassMotif() {
-  return (
-    <span className="relative inline-flex h-8 w-8 shrink-0 items-center justify-center" aria-hidden>
-      <svg viewBox="0 0 32 32" className="league-gen-orbit h-8 w-8 text-emerald-500">
-        <circle cx="16" cy="16" r="13" fill="none" stroke="currentColor" strokeOpacity="0.25" strokeWidth="2" />
-        <circle cx="16" cy="3" r="2.2" fill="currentColor" />
-      </svg>
-      <svg viewBox="0 0 24 24" className="absolute h-4 w-4 text-emerald-800">
-        <path
-          fill="currentColor"
-          d="M6 3h12v3.2c0 2.1-1.2 4-3.1 5L15 12l-.1.8c1.9 1 3.1 2.9 3.1 5V21H6v-3.2c0-2.1 1.2-4 3.1-5L9 12l.1-.8C7.2 10.2 6 8.3 6 6.2V3zm2 2v1.2c0 1.5.9 2.9 2.3 3.5L12 10.4l1.7-.7C15.1 9.1 16 7.7 16 6.2V5H8zm0 14h8v-1.2c0-1.5-.9-2.9-2.3-3.5L12 13.6l-1.7.7C8.9 14.9 8 16.3 8 17.8V19z"
-        />
-        <rect className="league-gen-sand" x="10" y="6.2" width="4" height="3" rx="0.6" fill="currentColor" opacity="0.85" />
-      </svg>
-    </span>
   )
 }
