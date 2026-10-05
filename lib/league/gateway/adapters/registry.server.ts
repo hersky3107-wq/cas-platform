@@ -22,6 +22,7 @@ import { createRealEstateAdapter } from './real-estate'
 import { LIVE_REAL_ESTATE_IO } from './real-estate-io.server'
 import { LIVE_PRICE_SERIES_IO } from './price-series-io.server'
 import { getResearchPacket } from '../../research'
+import { asQueryRecords, techQueryPlanFromRound } from '../../research-query-plans'
 import { findCatalogInstrument, type PublicCategoryId } from '../../catalog'
 import type { CategoryAdapter } from '../types'
 
@@ -41,7 +42,13 @@ export const memecoinAdapter: CategoryAdapter = createMemecoinAdapter(LIVE_PRICE
 export const realEstateAdapter: CategoryAdapter = createRealEstateAdapter(LIVE_REAL_ESTATE_IO)
 export const techAdapter: CategoryAdapter = createTechAdapter({
   getResearchPacket: ({ round, budgetRemainingUsd, tier }) =>
-    getResearchPacket({ round, budgetRemainingUsd, tier }),
+    getResearchPacket({
+      round,
+      budgetRemainingUsd,
+      tier,
+      extraQueries: asQueryRecords(techQueryPlanFromRound(round)),
+      querySetVersion: 'ms1',
+    }),
 })
 export const aiModelsAdapter: CategoryAdapter = createAiModelsAdapter(LIVE_AIRANK_IO)
 export const sportsAdapter: CategoryAdapter = createSportsAdapter(LIVE_SPORTS_IO)

@@ -1,6 +1,7 @@
 import 'server-only'
 
 import { getResearchPacket } from '../../research'
+import { airankQueryPlanFromRound } from '../../research-query-plans'
 import { brandRankingFromStore, listLeaderboardPublishDates, LMARENA_SOURCE } from '../../ai-ranking/ingest'
 import type { AirankAdapterIo } from './ai-models-packet'
 
@@ -13,6 +14,7 @@ export const LIVE_AIRANK_IO: AirankAdapterIo = {
       budgetRemainingUsd,
       tier: 'normal',
       forcedQueries,
-      querySetVersion: 'airank-news-v1',
+      extraQueries: airankQueryPlanFromRound(round),
+      querySetVersion: 'ms1',
     }),
 }

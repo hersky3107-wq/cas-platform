@@ -16,6 +16,7 @@ export type TechResearchPacket = {
   findings: TechResearchFinding[]
   costUsd: number
   tier: string
+  multiSourceBlock?: string
   error?: string
 }
 
@@ -29,8 +30,8 @@ import {
 import { catalogCompanyForText, decodeOpenTechInstrument } from './tech-resolve'
 
 /**
- * Tech packet IO. No price series, no Twelve Data. Research is Perplexity
- * (mandatory URL + date on every usable finding).
+ * Tech packet IO. No price series, no Twelve Data. Research is the shared
+ * multi-source packet (Perplexity + up to 3 scout search providers).
  */
 export type TechPacketIo = {
   getResearchPacket(args: {
@@ -354,6 +355,9 @@ export function assembleTechInjection(args: {
     `  argues occurs: ${sideLine(occurs)}`,
     `  argues does not occur: ${sideLine(absent)}`,
   )
+  if (args.research.multiSourceBlock) {
+    lines.push('', args.research.multiSourceBlock)
+  }
   return lines.join('\n')
 }
 

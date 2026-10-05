@@ -40,6 +40,7 @@ export type AirankPacketInput = {
   locale?: LeagueLocale
   rankingsByDate: ReadonlyArray<{ date: string; brands: readonly SnapshotBrandRow[] }>
   news?: readonly AirankNewsFinding[]
+  multiSourceBlock?: string
 }
 
 function none(value: string | null | undefined): string {
@@ -183,6 +184,8 @@ export function assembleAirankInjection(input: AirankPacketInput): string {
     'BOTH SIDES — real factors only. Do not invent balance.',
     `  argues YES: ${yesBits.length ? yesBits.join('; ') : 'none measured'}`,
     `  argues NO: ${noBits.length ? noBits.join('; ') : 'none measured'}`,
+    input.multiSourceBlock ? '' : null,
+    input.multiSourceBlock ?? null,
   ].filter((line): line is string => line != null)
 
   return lines.join('\n')

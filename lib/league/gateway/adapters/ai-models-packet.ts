@@ -21,6 +21,7 @@ export type AirankResearchPacket = {
   findings: AirankNewsFinding[]
   costUsd: number
   tier: string
+  multiSourceBlock?: string
   error?: string
 }
 
@@ -77,7 +78,12 @@ export async function buildAirankPacket(ctx: PacketBuildContext, io: AirankAdapt
     ? research.findings.map((f) => ({ query: f.query, summary: f.summary }))
     : []
 
-  const injection = assembleAirankInjection({ ...ranking, news, locale: 'ko' })
+  const injection = assembleAirankInjection({
+    ...ranking,
+    news,
+    locale: 'ko',
+    multiSourceBlock: research.multiSourceBlock,
+  })
   return {
     injection,
     researchCacheKey: research.cacheKey || `airank|${ctx.round.instrument}|${asOfYmd}`,
@@ -89,7 +95,7 @@ export async function buildAirankPacket(ctx: PacketBuildContext, io: AirankAdapt
       costUsd: Number(research.costUsd.toFixed(6)),
       queries: research.queries,
       tier: research.tier,
-      tierSignal: 'airank: ranking packet + 1–2 labeled news queries',
+      tierSignal: 'airank: ranking packet + multi-source model-release research',
       error: research.error,
     },
     relatedCreditsSpent: 0,

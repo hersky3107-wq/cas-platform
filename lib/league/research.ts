@@ -22,6 +22,14 @@ import {
   type DirectorNeed,
   type PacketInventoryInput,
 } from './research-director'
+import { airankQueryPlanFromRound, techQueryPlanFromRound } from './research-query-plans'
+import {
+  parseResearchCapUsd,
+  parseResearchProviderList,
+  runMultiSourceResearch,
+} from './research-providers'
+import { liveResearchProviderCaller } from './research-providers.server'
+import type { MultiSourceLog } from './research-merge'
 
 export { TIGHT_QUERY_BUDGET, NORMAL_QUERY_BUDGET, HIGH_QUERY_BUDGET }
 export type { PacketInventoryInput, DirectorNeed }
@@ -36,7 +44,9 @@ export type { PacketInventoryInput, DirectorNeed }
  *      Stage 2 marks each need against the packet inventory and emits search
  *      queries only for MISSING needs.
  *   2. Each query is run through Perplexity Sonar (already the wired search
- *      provider) and compressed into a short factual brief.
+ *      provider) and compressed into a short factual brief. Tech and
+ *      ai_models instead run Perplexity + up to 3 scout search providers in
+ *      parallel (RESEARCH mode: dated findings + URLs, not predictions).
  *   3. The findings are assembled into ONE shared RESEARCH PACKET that is
  *      injected IDENTICALLY into the closed-book tiers (premier/challenger/
  *      world) — same inputs for all of them keeps the league fair. The Scout
@@ -78,6 +88,9 @@ export type ResearchPacket = {
   tier: ResearchTier
   /** v2 (D): high-tier numbers-first distillation; null on tight/normal. */
   synthesis: string | null
+  /** tech / ai_models: formatted RESEARCH (MULTI-SOURCE) section. */
+  multiSourceBlock?: string
+  providerLog?: MultiSourceLog
   error?: string
 }
 
@@ -100,6 +113,14 @@ const MAX_BLOCK_CHARS = 3600
 const SYNTHESIS_MAX_TOKENS = 600
 /** Below this remaining budget the whole research step is skipped. */
 const MIN_BUDGET_USD = 0.05
+const MULTI_SOURCE_CATEGORIES = new Set(['tech', 'ai_models'])
+const MULTI_SOURCE_QUERY_SET = 'ms1'
+const MAX_MULTI_SOURCE_QUERIES = 10
+const MAX_MULTI_SOURCE_BLOCK_CHARS = 6000
+
+export function isMultiSourceResearchCategory(category: string): boolean {
+  return MULTI_SOURCE_CATEGORIES.has(category)
+}
 /** Fallback list prices (USD per 1M tokens) for providers that report no billed cost. */
 const DIRECTOR_PRICE = { inputPerMTokens: 0.3, outputPerMTokens: 2.5 }
 const SONAR_PRICE = { inputPerMTokens: 1, outputPerMTokens: 1 }
@@ -437,6 +458,12 @@ export async function getResearchPacket(args: {
 }): Promise<ResearchPacket> {
   const { round, budgetRemainingUsd } = args
   const tier: ResearchTier = args.tier ?? 'normal'
+  if (isMultiSourceResearchCategory(round.category)) {
+    return getMultiSourceResearchPacket({
+      ...args,
+      querySetVersion: args.querySetVersion ?? MULTI_SOURCE_QUERY_SET,
+    })
+  }
   const languages = args.languages ?? []
   const cacheKey = buildResearchCacheKey({
     instrument: round.instrument,
@@ -570,6 +597,146 @@ export async function getResearchPacket(args: {
     costUsd,
     tier,
     synthesis,
+  }
+
+  memoryCache.set(cacheKey, { packet, at: Date.now() })
+  await writeDurableCache(cacheKey, round, packet)
+  return packet
+}
+
+function planQueriesForRound(
+  round: ResearchRoundInput,
+  args: {
+    forcedQueries?: readonly { q: string; lang: string }[]
+    extraQueries?: readonly { q: string; lang: string }[]
+  },
+): Array<{ q: string; lang: string }> {
+  const forced = args.forcedQueries ?? []
+  const extra = args.extraQueries?.length
+    ? args.extraQueries
+    : round.category === 'tech'
+      ? techQueryPlanFromRound(round).map((q) => ({ q, lang: 'en' }))
+      : round.category === 'ai_models'
+        ? airankQueryPlanFromRound(round)
+        : []
+  return mergeExtraQueries(
+    forced.map((q) => ({ q: q.q, lang: q.lang || 'en' })),
+    extra,
+  ).slice(0, MAX_MULTI_SOURCE_QUERIES)
+}
+
+async function getMultiSourceResearchPacket(args: {
+  round: ResearchRoundInput
+  budgetRemainingUsd: number
+  tier?: ResearchTier
+  forcedQueries?: readonly { q: string; lang: string }[]
+  extraQueries?: readonly { q: string; lang: string }[]
+  querySetVersion?: string
+}): Promise<ResearchPacket> {
+  const { round, budgetRemainingUsd } = args
+  const tier: ResearchTier = args.tier ?? 'normal'
+  const queryList = planQueriesForRound(round, args)
+  const cacheKey = buildResearchCacheKey({
+    instrument: round.instrument,
+    horizon: round.horizon,
+    tier,
+    forcedQueries: args.forcedQueries,
+    extraQueries: queryList,
+    querySetVersion: args.querySetVersion ?? MULTI_SOURCE_QUERY_SET,
+  })
+  const miss: ResearchPacket = {
+    available: false,
+    cached: false,
+    cacheKey,
+    directorModel: null,
+    queries: queryList.map((q) => q.q),
+    findings: [],
+    promptBlock: '',
+    costUsd: 0,
+    tier,
+    synthesis: null,
+  }
+
+  if (budgetRemainingUsd < MIN_BUDGET_USD) {
+    return { ...miss, error: `skipped: budget remaining $${budgetRemainingUsd.toFixed(4)} < $${MIN_BUDGET_USD}` }
+  }
+
+  const memHit = memoryCache.get(cacheKey)
+  if (memHit) return { ...memHit.packet, cached: true, costUsd: 0 }
+
+  const durableHit = await readDurableCache(cacheKey)
+  if (durableHit) {
+    memoryCache.set(cacheKey, { packet: durableHit, at: Date.now() })
+    return durableHit
+  }
+
+  const capUsd = Math.min(
+    budgetRemainingUsd,
+    parseResearchCapUsd(process.env.LEAGUE_RESEARCH_PACKET_CAP_USD),
+  )
+  const configured = parseResearchProviderList(process.env.LEAGUE_RESEARCH_PROVIDERS)
+  const result = await runMultiSourceResearch({
+    queries: queryList.map((q) => q.q),
+    proposition: round.proposition_text,
+    instrument: round.instrument,
+    deadline: round.resolves_at,
+    configured,
+    costCapUsd: capUsd,
+    caller: liveResearchProviderCaller,
+  })
+
+  console.info(
+    `[league-research-ms] ${JSON.stringify({
+      event: 'league_research_multisource',
+      instrument: round.instrument,
+      category: round.category,
+      providersUsed: result.log.providersUsed,
+      providersFailed: result.log.providersFailed.map((f) => f.provider),
+      findingsPerProvider: result.log.findingsPerProvider,
+      mergedCount: result.log.mergedCount,
+      costUsd: Number(result.log.costUsd.toFixed(6)),
+      wallMs: result.log.wallMs,
+      skippedForCap: result.skippedForCap,
+    })}`,
+  )
+
+  if (!result.log.providersUsed.length) {
+    return {
+      ...miss,
+      costUsd: result.log.costUsd,
+      multiSourceBlock: result.section,
+      providerLog: result.log,
+      error: result.log.providersFailed.map((f) => `${f.provider}: ${f.error}`).join('; ') || 'all research providers failed',
+    }
+  }
+
+  const findings: ResearchFinding[] = result.merged.facts.map((fact, i) => ({
+    query: queryList[Math.min(i, Math.max(queryList.length - 1, 0))]?.q ?? 'multi-source',
+    summary: [fact.claim, fact.date, fact.urls[0]].filter(Boolean).join(' '),
+    citations: fact.urls.length ? fact.urls : undefined,
+  }))
+
+  let promptBlock = [
+    `RESEARCH PACKET (multi-source, compiled ${timeBucket()}:00 UTC — dated findings only, no predictions):`,
+    result.section,
+  ].join('\n')
+  if (promptBlock.length > MAX_MULTI_SOURCE_BLOCK_CHARS) {
+    promptBlock = promptBlock.slice(0, MAX_MULTI_SOURCE_BLOCK_CHARS)
+  }
+
+  const packet: ResearchPacket = {
+    available: true,
+    cached: false,
+    cacheKey,
+    directorModel: null,
+    queries: queryList.map((q) => q.q),
+    findings,
+    promptBlock,
+    costUsd: result.log.costUsd,
+    tier,
+    synthesis: null,
+    multiSourceBlock: result.section,
+    providerLog: result.log,
   }
 
   memoryCache.set(cacheKey, { packet, at: Date.now() })
