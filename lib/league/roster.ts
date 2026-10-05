@@ -153,7 +153,7 @@ export type RosterPrice = {
  *                Cache-hit input is $0.022/$0.044 (pro) and $0.007/$0.014
  *                (flash). First-party usage object has no billed USD field.
  *   Meta Muse  — developer.meta.com Muse Spark 1.2 standard tier $1.25/$4.25
- *   Upstage    — Solar Pro 3 list $0.15/$0.60 (matches OpenRouter)
+ *   Upstage    — Solar Pro 4 alias $0.15/$0.60 (Solar Pro 3 / Pro 2 deprecate 2026-10-30 KST)
  *   Friendli   — serverless google/gemma-4-31B-it $0.14 / $0.40 (docs
  *                friendli.ai/docs/guides/model-apis/pricing, 2026-09-07).
  *                K-EXAONE-2.0-750B-A37B left serverless 2026-09-06 00:00 UTC
@@ -205,7 +205,7 @@ export type RosterPrice = {
  *     Closed.
  *   mistral-medium-3.5 — CONFIRMED open: mistralai/Mistral-Medium-3.5-128B
  *     (Modified MIT).
- *   solar-pro3 — CONFIRMED closed: API-only; Solar 10.7B is a previous gen.
+ *   solar-pro4 — CONFIRMED closed: API-only; Solar 10.7B is a previous gen.
  *   command-a — CONFIRMED open: CohereLabs/c4ai-command-a-03-2025 (CC-BY-NC).
  *     Roster calls Command A, not A+ (A+ is also open, Apache-2.0).
  *   qwen3.8-max — OPEN with caveat: Qwen/Qwen3.8-2.4T-A95B is downloadable
@@ -311,7 +311,7 @@ export const LEAGUE_ROSTER: RosterEntry[] = [
   { model_id: 'deepseek-v4-flash', brand: 'DeepSeek', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'deepseek', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'core', provider: 'deepseek', modelOverride: 'deepseek-v4-flash', extraPayload: DEEPSEEK_FIRST_PARTY_THINKING }, price: DEEPSEEK_V4_FLASH_PRICE }, // MIT; deepseek-ai/DeepSeek-V4-Flash; first-party 2026-09-07
   { model_id: 'qwen3.5-flash', brand: 'Qwen', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 4500, caller: { kind: 'platform', platformId: 'openrouter:qwen3.5-flash' }, price: { inputPerMTokens: 0.065, outputPerMTokens: 0.26 } }, // Apache-2.0; hosted Flash ↔ Qwen/Qwen3.5-35B-A3B
   { model_id: 'mimo-v2.5', brand: 'Xiaomi', product_alias: 'MiMo', camp: 'china', league_tier: 'world', weights: 'open', provider_key: 'openrouter', reasoning: true, maxCompletionTokens: 6000, timeoutMs: 90_000, caller: { kind: 'platform', platformId: 'openrouter:mimo-v2.5' }, price: { inputPerMTokens: 0.14, outputPerMTokens: 0.28 } }, // MIT; XiaomiMiMo/MiMo-V2.5. Recurring empty-content on sports packets; 6000 + 90s + effort:minimal.
-  { model_id: 'solar-pro3', brand: 'Upstage', product_alias: 'Solar', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'upstage', reasoning: true, caller: { kind: 'platform', platformId: 'upstage:solar-pro3' }, price: { inputPerMTokens: 0.15, outputPerMTokens: 0.6 } }, // FLAG resolved: API-only; Solar 10.7B is a previous gen
+  { model_id: 'solar-pro4', brand: 'Upstage', product_alias: 'Solar Pro 4', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'upstage', reasoning: true, caller: { kind: 'platform', platformId: 'upstage:solar-pro4' }, price: { inputPerMTokens: 0.15, outputPerMTokens: 0.6 } }, // FLAG resolved: API-only; Solar 10.7B is a previous gen. Alias solar-pro4 replaces solar-pro3 / solar-pro2 before 2026-10-30 KST deprecation.
   { model_id: 'hcx-007', brand: 'NAVER', product_alias: 'HyperCLOVA', camp: 'other', league_tier: 'world', weights: 'closed', provider_key: 'clova', reasoning: false, caller: { kind: 'platform', platformId: 'clova:hcx-007' }, price: { inputPerMTokens: 3.7, outputPerMTokens: 3.7 } }, // NAVER CLOVA Studio API; ₩0.005/token ($3.70/1M tokens)
   // 2026-09-07: replaces dead LG/EXAONE. OpenRouter list $1.00/$4.05.
   // effort:minimal — default effort on this packet billed $0.0107 and
@@ -377,6 +377,7 @@ const RETIRED_ROSTER_DISPLAY: Record<string, Pick<RosterEntry, 'brand' | 'produc
   'claude-fable-5.1': { brand: 'Anthropic', product_alias: 'Claude' },
   'grok-4.5': { brand: 'xAI', product_alias: 'Grok' },
   'glm-5.2': { brand: 'Z.ai', product_alias: 'GLM' },
+  'solar-pro3': { brand: 'Upstage', product_alias: 'Solar' },
 }
 
 /** Brand line for tiles — e.g. "OpenAI (ChatGPT)" when a product alias exists. */

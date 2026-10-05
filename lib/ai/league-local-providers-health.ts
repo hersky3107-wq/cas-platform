@@ -57,7 +57,7 @@ const LOCAL_PROVIDER_MIRROR: Record<LocalProviderMirrorId, LocalProviderMirrorCo
     brand: 'Upstage',
     league: 'world',
     baseUrl: 'https://api.upstage.ai/v1',
-    model: 'solar-pro3',
+    model: 'solar-pro4',
     envKey: 'UPSTAGE_API_KEY',
   },
   exaone: {

@@ -119,4 +119,16 @@ describe('LEAGUE_SEATS registry', () => {
     expect(retired.find((r) => r.modelId === 'grok-4.5')?.seatId).toBe('premier:xai')
     expect(retired.find((r) => r.modelId === 'glm-5.2')?.seatId).toBe('premier:z-ai')
   })
+
+  it('keeps world:upstage continuous across the solar-pro4 alias swap', () => {
+    const upstage = lookupSeat('world:upstage')!
+    expect(upstage.currentModelId).toBe('solar-pro4')
+    expect(seatForModelId('solar-pro3', 'world')?.seatId).toBe('world:upstage')
+    expect(seatForModelId('solar-pro4', 'world')?.seatId).toBe('world:upstage')
+    expect(formatSeatSwapStatus(upstage).isSwapped).toBe(true)
+    expect(formatSeatSwapStatus(upstage).lastSwapDate).toBe('2026-10-05')
+    const retired = getRetiredTenures().find((r) => r.modelId === 'solar-pro3')
+    expect(retired?.seatId).toBe('world:upstage')
+    expect(retired?.reason).toContain('solar-pro4')
+  })
 })

@@ -11,7 +11,7 @@ import { leagueDeepSeekCallOptions } from './deep-deepseek'
 
 const PLATFORM_BY_PROVIDER: Record<string, string> = {
   'glm-5.2': 'openrouter:glm-5.2',
-  solar: 'upstage:solar-pro3',
+  solar: 'upstage:solar-pro4',
 }
 
 const ROUTER_PROVIDERS = new Set<string>(['openai', 'anthropic', 'google', 'xai', 'deepseek', 'mistral', 'perplexity', 'meta'])

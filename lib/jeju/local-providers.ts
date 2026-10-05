@@ -35,7 +35,7 @@ type JejuLocalProviderConfig = {
 export const JEJU_LOCAL_PROVIDER_CONFIG: Record<JejuLocalProvider, JejuLocalProviderConfig> = {
   solar: {
     baseUrl: 'https://api.upstage.ai/v1',
-    model: 'solar-pro3',
+    model: 'solar-pro4',
     envKey: 'UPSTAGE_API_KEY',
   },
   exaone: {

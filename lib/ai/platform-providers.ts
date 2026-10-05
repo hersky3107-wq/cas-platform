@@ -197,7 +197,7 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // league orchestrator can call it through `callPlatformModel` like every
   // other roster entry. `reasoning_effort: 'low'` keeps hidden reasoning from
   // burning the visible-content budget (same finding as the health mirror).
-  { id: 'upstage:solar-pro3', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 3', model: 'solar-pro3', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'low' } },
+  { id: 'upstage:solar-pro4', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 4', model: 'solar-pro4', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'low' } },
 
   // --- Friendli Serverless ---
   // EXAONE left Model APIs (dedicated-only) 2026-09-06. WORLD LG seat moved

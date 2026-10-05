@@ -60,7 +60,7 @@ type MotieLocalProviderConfig = {
 export const MOTIE_LOCAL_PROVIDER_CONFIG: Record<MotieLocalProvider, MotieLocalProviderConfig> = {
   solar: {
     baseUrl: 'https://api.upstage.ai/v1',
-    model: 'solar-pro3',
+    model: 'solar-pro4',
     envKey: 'UPSTAGE_API_KEY',
     // No timeoutMs — unchanged/unbounded, per "do not touch other providers".
   },

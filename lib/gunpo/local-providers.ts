@@ -66,7 +66,7 @@ type MotieLocalProviderConfig = {
 export const MOTIE_LOCAL_PROVIDER_CONFIG: Record<MotieLocalProvider, MotieLocalProviderConfig> = {
   solar: {
     baseUrl: 'https://api.upstage.ai/v1',
-    model: 'solar-pro3',
+    model: 'solar-pro4',
     envKey: 'UPSTAGE_API_KEY',
     // No timeoutMs — unchanged/unbounded, per "do not touch other providers".
     // STEP9 [1]: floor, mirroring MOTIE_DEEPSEEK_DEBATE_MIN_TOKENS — see the
@@ -233,14 +233,14 @@ export async function callMotieLocalProvider(params: {
     // STEP9 [1] — THE BUG: Solar returned empty `content` mid-debate (round 2).
     // Upstage's own docs are self-contradictory: the general parameter table
     // states `reasoning_effort` defaults to 'minimal' (reasoning OFF), but the
-    // solar-pro3-SPECIFIC reasoning-effort table lists 'medium' — NOT
+    // solar-pro4 / solar-pro3-SPECIFIC reasoning-effort table lists 'medium' — NOT
     // 'minimal' — as "Balanced reasoning (default)", with a dynamic budget up
     // to 16,384 tokens drawn from the SAME remaining-context/completion budget
     // as the visible answer. Left unset, the model is free to follow the
     // model-specific default (reasoning ON) and can burn the entire
     // max_tokens budget on hidden reasoning before `content` — exactly the
     // exaone/deepseek failure mode. Explicitly forcing 'low' (documented as
-    // reasoning OFF for solar-pro3) closes this regardless of which default
+    // reasoning OFF for solar-pro4 / solar-pro3) closes this regardless of which default
     // actually applies server-side. Verified against console.upstage.ai's own
     // API reference, not invented.
     payload.reasoning_effort = 'low'

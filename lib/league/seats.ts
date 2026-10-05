@@ -587,13 +587,20 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
     brand: 'Upstage',
     brandSlug: 'upstage',
     camp: 'other',
-    currentModelId: 'solar-pro3',
+    currentModelId: 'solar-pro4',
     displayName: 'Upstage 3부',
     tenures: [
       {
         modelId: 'solar-pro3',
         modelLabel: 'Solar Pro 3',
         activeFrom: '2026-08-01',
+        retiredAt: '2026-10-05',
+        reason: 'Solar Pro 3 / Pro 2 deprecated 2026-10-30 KST; live alias is solar-pro4',
+      },
+      {
+        modelId: 'solar-pro4',
+        modelLabel: 'Solar Pro 4',
+        activeFrom: '2026-10-05',
       },
     ],
   },

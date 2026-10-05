@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LEAGUE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
-import { EXTRA_ENGINE_ROSTER, LEAGUE_ROSTER, lookupRosterEntry, type WeightsKind } from '../roster'
+import { EXTRA_ENGINE_ROSTER, LEAGUE_ROSTER, lookupRosterDisplay, lookupRosterEntry, type WeightsKind } from '../roster'
 
 describe('roster weights classification', () => {
   it('has exactly 40 seats and every seat is binary open|closed', () => {
@@ -115,6 +115,25 @@ describe('roster weights classification', () => {
     expect(mimo?.caller).toMatchObject({ kind: 'platform', platformId: 'openrouter:mimo-v2.5' })
     expect(LEAGUE_ROSTER.filter((e) => e.brand === 'Tencent')).toHaveLength(1)
     expect(LEAGUE_ROSTER.filter((e) => e.timeoutMs === 240_000).map((e) => e.model_id)).toEqual(['deepseek-v4-pro'])
+  })
+
+  it('routes world Upstage through solar-pro4 before the 2026-10-30 Solar Pro 3 / Pro 2 deprecation', () => {
+    const solar = LEAGUE_ROSTER.find((e) => e.model_id === 'solar-pro4')
+    expect(solar).toMatchObject({
+      brand: 'Upstage',
+      product_alias: 'Solar Pro 4',
+      camp: 'other',
+      league_tier: 'world',
+      weights: 'closed',
+      provider_key: 'upstage',
+      reasoning: true,
+    })
+    expect(solar?.caller).toMatchObject({ kind: 'platform', platformId: 'upstage:solar-pro4' })
+    expect(solar?.price).toEqual({ inputPerMTokens: 0.15, outputPerMTokens: 0.6 })
+    expect(LEAGUE_ROSTER.some((e) => e.model_id === 'solar-pro3')).toBe(false)
+    expect(lookupRosterEntry('solar-pro3')).toBeUndefined()
+    expect(lookupRosterDisplay('solar-pro4')).toEqual({ brand: 'Upstage (Solar Pro 4)', model_id: 'solar-pro4' })
+    expect(lookupRosterDisplay('solar-pro3')).toEqual({ brand: 'Upstage (Solar)', model_id: 'solar-pro3' })
   })
 
   it('keeps premier Fable 5 on stable defaults and grok-4.7 reasoning_effort:low for sports packets', () => {
