@@ -14,7 +14,7 @@ import {
   selectResearchProviders,
   type ResearchProviderCaller,
 } from '../research-providers'
-import { queryPlanFromSamplePrompt, techQueryPlan, aiModelsQueryPlan } from '../research-query-plans'
+import { queryPlanFromSamplePrompt, techQueryPlan, aiModelsQueryPlan, metalsQueryPlan } from '../research-query-plans'
 import { assembleTechInjection, type TechResearchPacket } from '../gateway/adapters/tech-packet'
 import { assembleAirankInjection } from '../ai-ranking/packet'
 
@@ -29,6 +29,18 @@ function finding(partial: Partial<RawResearchFinding> & Pick<RawResearchFinding,
     ...partial,
   }
 }
+
+describe('gold_metal news query plan', () => {
+  it('labels central-bank, geopolitical, and macro-calendar queries as NEWS', () => {
+    const queries = metalsQueryPlan({ instrument: 'XAU/USD', deadline: '2026-10-12' })
+    expect(queries).toHaveLength(3)
+    expect(queries.every((q) => q.startsWith('NEWS:'))).toBe(true)
+    expect(queries.join('\n')).toMatch(/central bank gold buying/)
+    expect(queries.join('\n')).toMatch(/geopolitical risk/)
+    expect(queries.join('\n')).toMatch(/FOMC OR CPI OR nonfarm payrolls/)
+    expect(queries.join('\n')).toContain('2026-10-12')
+  })
+})
 
 describe('tech / AI-release query plans', () => {
   it('builds TECH:OPEN coverage for Apple foldable', () => {

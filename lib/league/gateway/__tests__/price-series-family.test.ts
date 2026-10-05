@@ -11,7 +11,7 @@ import {
   createMemecoinAdapter,
 } from '../adapters/price-series-family'
 import type { PriceSeriesIo } from '../adapters/price-series-packet'
-import type { CategoryAdapter, NormalizeSlots } from '../types'
+import type { CategoryAdapter, NormalizeSlots, PacketRound } from '../types'
 
 const DEAD_IO: PriceSeriesIo = {
   fetchDataPacket: async () => {
@@ -164,5 +164,58 @@ describe('price-series family — clocks', () => {
     expect(usesTradingSessions('commodity_energy', 'CPER')).toBe(true)
     expect(usesTradingSessions('commodity_energy', 'CORN')).toBe(true)
     expect(usesTradingSessions('commodity_energy', 'WTI/USD')).toBe(false)
+  })
+})
+
+describe('gold_metal extraQueries', () => {
+  it('seeds NEWS-labeled central-bank, geopolitical, and calendar queries', async () => {
+    const captured: { q: string; lang: string }[][] = []
+    const io: PriceSeriesIo = {
+      fetchDataPacket: async () => ({
+        available: true,
+        instrument: 'XAU/USD',
+        symbol: 'XAU/USD',
+        currency: 'USD',
+        asOf: '2026-10-05',
+        latestClose: 4151.88,
+        series: [{ date: '2026-10-05', close: 4151.88 }],
+      }),
+      fetchMarketConsensus: async () => {
+        throw new Error('gold must not request consensus')
+      },
+      fetchCryptoContext: async () => {
+        throw new Error('gold must not request crypto')
+      },
+      getResearchPacket: async (args) => {
+        captured.push([...(args.extraQueries ?? [])])
+        return {
+          available: false,
+          cached: false,
+          cacheKey: 'k',
+          directorModel: null,
+          queries: [],
+          findings: [],
+          promptBlock: '',
+          costUsd: 0,
+          tier: args.tier ?? 'normal',
+          synthesis: null,
+        }
+      },
+      fetchRelatedInstruments: async () => null,
+      fetchSlowData: async () => null,
+    }
+    const adapter = createGoldMetalAdapter(io)
+    const now = new Date('2026-10-05T09:00:00.000Z')
+    const composed = adapter.composeProposition(slots(adapter, 'XAU/USD', { horizon: '1w' }), now)
+    await adapter.buildPacket(slots(adapter, 'XAU/USD', { horizon: '1w' }), {
+      round: composed as PacketRound,
+      costCapUsd: 1,
+    })
+    const blob = (captured[0] ?? []).map((q) => q.q).join('\n')
+    expect(captured[0]).toHaveLength(3)
+    expect(blob).toMatch(/^NEWS:/m)
+    expect(blob).toMatch(/central bank gold buying/)
+    expect(blob).toMatch(/geopolitical risk/)
+    expect(blob).toMatch(/FOMC OR CPI OR nonfarm payrolls/)
   })
 })

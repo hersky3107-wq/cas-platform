@@ -44,7 +44,7 @@ export type AirankQueryPlanInput = {
 }
 
 export type SampleQueryPlan = {
-  category: 'tech' | 'ai_models'
+  category: 'tech' | 'ai_models' | 'gold_metal'
   subject?: string
   object?: string
   brands?: string[]
@@ -137,6 +137,20 @@ export function techQueryPlanFromRound(round: QueryPlanRound): string[] {
     object: inferred.object,
     deadline,
   })
+}
+
+export function metalsQueryPlan(input: { instrument: string; deadline: string }): string[] {
+  const instrument = cleanPhrase(input.instrument) || 'gold'
+  const deadline = input.deadline.trim()
+  return uniqueQueries([
+    `NEWS: official sector OR central bank gold buying OR purchases latest World Gold Council OR IMF ${instrument}`,
+    `NEWS: geopolitical risk OR safe-haven demand gold ${instrument} latest`,
+    `NEWS: FOMC OR CPI OR nonfarm payrolls gold implications before ${deadline}`,
+  ])
+}
+
+export function metalsQueryPlanFromRound(round: QueryPlanRound): { q: string; lang: string }[] {
+  return asQueryRecords(metalsQueryPlan({ instrument: round.instrument, deadline: deadlineFromRound(round) }))
 }
 
 export function airankQueryPlanFromRound(round: QueryPlanRound): { q: string; lang: string }[] {

@@ -323,7 +323,7 @@ function cotPositioning(input: ClosedBookPacketInput, report: CrowdingReport): v
   }
   if (any) {
     report.flags.push(
-      'COT note: managed-money / leveraged-funds only — commercial hedger positions and multi-year percentiles are not in this feed; map the contract to this instrument\'s direction yourself (an FX leg can be the quote currency).',
+      'COT note: managed-money / leveraged-funds only — commercial hedger positions are not in this feed; 3y managed-money percentile is on the COT line when history loaded. Map the contract to this instrument\'s direction yourself (an FX leg can be the quote currency).',
     )
   }
 }

@@ -168,6 +168,54 @@ describe('research director — two-stage parse', () => {
     expect(text).toContain('cot_platinum:')
   })
 
+  it('inventory lists metals FRED change / flow / calendar so director does not re-search them', () => {
+    const text = buildPacketInventory({
+      ...inventory,
+      slow: {
+        ...inventory.slow!,
+        metalsDfii10: {
+          seriesId: 'DFII10',
+          date: '2026-10-02',
+          value: 1.82,
+          change1w: -0.05,
+          change1m: 0.12,
+          date1w: '2026-09-25',
+          date1m: '2026-09-04',
+        },
+        metalsDollar: {
+          seriesId: 'DTWEXBGS',
+          date: '2026-10-02',
+          value: 120.4,
+          change1w: 0.3,
+          change1m: null,
+          date1w: '2026-09-25',
+          date1m: null,
+        },
+        gldFlow: {
+          symbol: 'GLD',
+          date: '2026-10-02',
+          lastClose: 310,
+          change5dPct: 1.2,
+          change20dPct: null,
+          lastVolume: 1,
+          avgVolume20: 2,
+          volumeVs20dPct: -50,
+          source: 'Twelve Data',
+        },
+        metalsCalendar: {
+          windowStart: '2026-10-05',
+          windowEnd: '2026-10-12',
+          events: [{ date: '2026-10-08', name: 'CPI', source: 'bls' }],
+        },
+      },
+    })
+    expect(text).toContain('metals_dfii10:')
+    expect(text).toContain('1.82')
+    expect(text).toContain('metals_dollar_dtwexbgs:')
+    expect(text).toContain('gld_flow_proxy:')
+    expect(text).toContain('metals_macro_calendar:')
+  })
+
   it('inventory lists EIA crude / natgas / OVX / energy COT when present', () => {
     const text = buildPacketInventory({
       ...inventory,

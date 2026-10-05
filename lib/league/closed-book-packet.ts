@@ -85,6 +85,11 @@ export type CotPositioning =
       managedMoneyNet: number
       /** Override the default f_disagg.txt attribution (FX uses TFF/legacy). */
       source?: string
+      /** Latest net minus net ~4 weeks earlier. Omitted when history is missing. */
+      change4w?: number
+      /** Percentile of latest net among ~3y weekly history (0-100). */
+      percentile3y?: number
+      historyWeeks?: number
     }
   | { unavailable: string }
 
@@ -106,6 +111,37 @@ export type FxEtfShortVolume =
 
 export type EtfHoldings =
   | { date: string; tonnes: number | null; ounces: number | null; source?: string }
+  | { unavailable: string }
+
+/** FRED level plus 1w / 1m change. Null changes mean no prior print — never guessed. */
+export type FredChange = {
+  seriesId: string
+  date: string
+  value: number
+  change1w: number | null
+  change1m: number | null
+  date1w: string | null
+  date1m: string | null
+}
+
+export type EtfFlowProxy =
+  | {
+      symbol: string
+      date: string
+      lastClose: number
+      change5dPct: number | null
+      change20dPct: number | null
+      lastVolume: number | null
+      avgVolume20: number | null
+      volumeVs20dPct: number | null
+      source: string
+    }
+  | { unavailable: string }
+
+export type MacroCalendarEvent = { date: string; name: string; source: string }
+
+export type MacroCalendar =
+  | { windowStart: string; windowEnd: string; events: MacroCalendarEvent[] }
   | { unavailable: string }
 
 export type SlowDataSnapshot = {
@@ -156,6 +192,14 @@ export type SlowDataSnapshot = {
   semiProduction?: { date: string; value: number } | { unavailable: string } | null
   cotPlatinum?: CotPositioning | null
   cotPalladium?: CotPositioning | null
+  /** FRED DFII10 / DGS10 / DTWEXBGS / DFF with 1w and 1m change. Gold/metals only. */
+  metalsDfii10?: FredChange | { unavailable: string } | null
+  metalsDgs10?: FredChange | { unavailable: string } | null
+  metalsDollar?: FredChange | { unavailable: string } | null
+  metalsFedFunds?: FredChange | { unavailable: string } | null
+  gldFlow?: EtfFlowProxy | null
+  slvFlow?: EtfFlowProxy | null
+  metalsCalendar?: MacroCalendar | null
   /** EIA Weekly Petroleum Status Report — crude (WTI/Brent) only. */
   eiaCrude?:
     | {
@@ -825,7 +869,42 @@ function formatHoldings(label: string, h: EtfHoldings): string {
 function formatCot(label: string, cot: CotPositioning): string {
   if ('unavailable' in cot) return `  ${unavailable(label, cot.unavailable)}`
   const source = cot.source ?? 'CFTC disaggregated COT f_disagg.txt'
-  return `  ${label} (${cot.date}): managed-money net ${fmtShares(cot.managedMoneyNet)} contracts (long ${fmtShares(cot.managedMoneyLong)} / short ${fmtShares(cot.managedMoneyShort)}; OI ${fmtShares(cot.openInterest)}; ${cot.contract}) (source: ${source}; informative horizon: weeks)`
+  const change =
+    cot.change4w == null
+      ? ''
+      : `; 4w ${cot.change4w >= 0 ? '+' : '-'}${fmtShares(Math.abs(cot.change4w))} contracts`
+  const pctile =
+    cot.percentile3y == null
+      ? ''
+      : `; 3y percentile ${fmt(cot.percentile3y, 0)}${cot.historyWeeks ? ` (n=${cot.historyWeeks})` : ''}`
+  return `  ${label} (${cot.date}): managed-money net ${fmtShares(cot.managedMoneyNet)} contracts (long ${fmtShares(cot.managedMoneyLong)} / short ${fmtShares(cot.managedMoneyShort)}; OI ${fmtShares(cot.openInterest)}; ${cot.contract}${change}${pctile}) (source: ${source}; informative horizon: weeks)`
+}
+
+function formatFredChange(label: string, point: FredChange | { unavailable: string }): string {
+  if ('unavailable' in point) return `  ${unavailable(label, point.unavailable)}`
+  const w = point.change1w == null ? '1w none measured' : `1w ${signed(point.change1w, 2)} (${point.date1w})`
+  const m = point.change1m == null ? '1m none measured' : `1m ${signed(point.change1m, 2)} (${point.date1m})`
+  return `  ${label} (${point.date}): ${fmt(point.value, 2)} (${w}; ${m}) (source: FRED ${point.seriesId}; informative horizon: days-weeks)`
+}
+
+function formatEtfFlow(label: string, flow: EtfFlowProxy): string {
+  if ('unavailable' in flow) return `  ${unavailable(label, flow.unavailable)}`
+  const px5 = flow.change5dPct == null ? '5d none measured' : `5d ${pct(flow.change5dPct)}`
+  const px20 = flow.change20dPct == null ? '20d none measured' : `20d ${pct(flow.change20dPct)}`
+  const vol =
+    flow.volumeVs20dPct == null
+      ? 'volume vs 20d none measured'
+      : `volume vs 20d avg ${pct(flow.volumeVs20dPct)}`
+  return `  ${flow.symbol} ETF flow proxy (${flow.date}): close ${fmt(flow.lastClose)} (${px5}; ${px20}); ${vol} (source: ${flow.source}; informative horizon: days — volume is a flow proxy, not holdings)`
+}
+
+function formatMetalsCalendar(cal: MacroCalendar): string {
+  if ('unavailable' in cal) return `  ${unavailable('macro calendar', cal.unavailable)}`
+  if (!cal.events.length) {
+    return `  macro calendar (${cal.windowStart}–${cal.windowEnd}): none measured (source: Fed FOMC + BLS CPI/payrolls schedules)`
+  }
+  const bits = cal.events.map((e) => `${e.name} ${e.date}`).join('; ')
+  return `  macro calendar (${cal.windowStart}–${cal.windowEnd}): ${bits} (source: Fed FOMC + BLS CPI/payrolls schedules; informative horizon: days)`
 }
 
 function formatFredObs(label: string, seriesId: string, point: FredObs, unit: string, horizon: string): string {
@@ -915,6 +994,13 @@ function formatSlowData(slow: SlowDataSnapshot | null | undefined): string {
         : `  US semiconductor production (${slow.semiProduction.date}): ${fmt(slow.semiProduction.value, 2)} (source: FRED IPG3344S; informative horizon: months — silver electronics demand proxy)`,
     )
   }
+  if (slow.metalsDfii10) lines.push(formatFredChange('10Y TIPS real yield DFII10', slow.metalsDfii10))
+  if (slow.metalsDgs10) lines.push(formatFredChange('10Y nominal yield DGS10', slow.metalsDgs10))
+  if (slow.metalsDollar) lines.push(formatFredChange('broad dollar index DTWEXBGS', slow.metalsDollar))
+  if (slow.metalsFedFunds) lines.push(formatFredChange('fed funds DFF', slow.metalsFedFunds))
+  if (slow.gldFlow) lines.push(formatEtfFlow('GLD ETF flow proxy', slow.gldFlow))
+  if (slow.slvFlow) lines.push(formatEtfFlow('SLV ETF flow proxy', slow.slvFlow))
+  if (slow.metalsCalendar) lines.push(formatMetalsCalendar(slow.metalsCalendar))
   if (slow.goldSilverRatio) {
     lines.push(
       'unavailable' in slow.goldSilverRatio
@@ -1294,6 +1380,94 @@ function formatProse(findings: ResearchFinding[], numericBlockText: string): str
   ].join('\n')
 }
 
+function measuredFred(point: FredChange | { unavailable: string } | null | undefined): FredChange | null {
+  return point && !('unavailable' in point) ? point : null
+}
+
+function measuredCot(cot: CotPositioning | null | undefined): Exclude<CotPositioning, { unavailable: string }> | null {
+  return cot && !('unavailable' in cot) ? cot : null
+}
+
+function measuredFlow(flow: EtfFlowProxy | null | undefined): Exclude<EtfFlowProxy, { unavailable: string }> | null {
+  return flow && !('unavailable' in flow) ? flow : null
+}
+
+function formatMetalsDrivers(input: ClosedBookPacketInput): string {
+  if (input.category !== 'gold_metal') return ''
+  const slow = input.slow
+  const lines = ['DRIVERS (rates, dollar, positioning, flows, calendar)']
+  const tips = measuredFred(slow?.metalsDfii10)
+  const nom = measuredFred(slow?.metalsDgs10)
+  const fed = measuredFred(slow?.metalsFedFunds)
+  if (tips || nom || fed) {
+    const bits = [
+      tips ? `TIPS ${fmt(tips.value, 2)}% 1w ${tips.change1w == null ? 'none measured' : signed(tips.change1w, 2)}` : null,
+      nom ? `nominal ${fmt(nom.value, 2)}% 1w ${nom.change1w == null ? 'none measured' : signed(nom.change1w, 2)}` : null,
+      fed ? `fed funds ${fmt(fed.value, 2)}%` : null,
+    ].filter((b): b is string => Boolean(b))
+    lines.push(`  Rates: ${bits.join('; ')}`)
+    lines.push('    Up: falling real yields / easier policy lower the opportunity cost of holding gold')
+    lines.push('    Down: rising real yields / tighter policy raise the opportunity cost of holding gold')
+  } else {
+    lines.push('  Rates: none measured')
+  }
+
+  const dollar = measuredFred(slow?.metalsDollar)
+  if (dollar) {
+    lines.push(
+      `  Dollar (DTWEXBGS): ${fmt(dollar.value, 2)} (1w ${dollar.change1w == null ? 'none measured' : signed(dollar.change1w, 2)}; 1m ${dollar.change1m == null ? 'none measured' : signed(dollar.change1m, 2)})`,
+    )
+    lines.push('    Up: a weaker dollar often supports USD gold')
+    lines.push('    Down: a stronger dollar often weighs on USD gold')
+  } else {
+    lines.push('  Dollar: none measured')
+  }
+
+  const gold = measuredCot(slow?.cotGold)
+  const silver = measuredCot(slow?.cotSilver)
+  if (gold || silver) {
+    const bits = [
+      gold
+        ? `gold net ${fmtShares(gold.managedMoneyNet)}${gold.percentile3y == null ? '' : `; 3y pct ${fmt(gold.percentile3y, 0)}`}${gold.change4w == null ? '' : `; 4w ${gold.change4w >= 0 ? '+' : '-'}${fmtShares(Math.abs(gold.change4w))}`}`
+        : null,
+      silver ? `silver net ${fmtShares(silver.managedMoneyNet)}` : null,
+    ].filter((b): b is string => Boolean(b))
+    lines.push(`  Positioning: ${bits.join('; ')}`)
+    lines.push('    Up: covering shorts or adding managed-money longs can support')
+    lines.push('    Down: a crowded long (high 3y percentile) raises unwind risk')
+  } else {
+    lines.push('  Positioning: none measured')
+  }
+
+  const gld = measuredFlow(slow?.gldFlow)
+  const slv = measuredFlow(slow?.slvFlow)
+  if (gld || slv) {
+    const bits = [
+      gld
+        ? `GLD 5d ${gld.change5dPct == null ? 'none measured' : pct(gld.change5dPct)}; vol vs 20d ${gld.volumeVs20dPct == null ? 'none measured' : pct(gld.volumeVs20dPct)}`
+        : null,
+      slv
+        ? `SLV 5d ${slv.change5dPct == null ? 'none measured' : pct(slv.change5dPct)}; vol vs 20d ${slv.volumeVs20dPct == null ? 'none measured' : pct(slv.volumeVs20dPct)}`
+        : null,
+    ].filter((b): b is string => Boolean(b))
+    lines.push(`  Flows: ${bits.join('; ')}`)
+    lines.push('    Up: rising volume on an advancing ETF is an inflow-like proxy')
+    lines.push('    Down: rising volume on a declining ETF is an outflow-like proxy')
+  } else {
+    lines.push('  Flows: none measured')
+  }
+
+  const cal = slow?.metalsCalendar
+  if (cal && !('unavailable' in cal) && cal.events.length) {
+    lines.push(`  Calendar: ${cal.events.map((e) => `${e.name} ${e.date}`).join('; ')}`)
+    lines.push('    Up: dovish FOMC / softer CPI or payrolls can support gold')
+    lines.push('    Down: hawkish FOMC / firmer CPI or payrolls can weigh on gold')
+  } else {
+    lines.push('  Calendar: none measured')
+  }
+  return lines.join('\n')
+}
+
 /**
  * The exact text closed-book models receive (minus the proposition header /
  * closer, which `buildPrompts` wraps). Persist THIS string.
@@ -1314,6 +1488,8 @@ export function assembleClosedBookInjection(input: ClosedBookPacketInput): strin
   if (related) parts.push('', related)
   const slow = formatSlowData(input.slow)
   if (slow) parts.push('', slow)
+  const drivers = formatMetalsDrivers(input)
+  if (drivers) parts.push('', drivers)
   const crowding = formatCrowding(input)
   if (crowding) parts.push('', crowding)
   const numericBlockText = parts.join('\n')

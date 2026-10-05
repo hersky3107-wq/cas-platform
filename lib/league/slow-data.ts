@@ -376,8 +376,9 @@ export async function fetchSlowData(args: {
   category: string
   symbol?: string
   instrument?: string
+  horizon?: string
 }): Promise<SlowDataSnapshot | null> {
-  const { category, symbol, instrument } = args
+  const { category, symbol, instrument, horizon } = args
   const isUsTicker = !!symbol && /^[A-Z.]{1,6}$/.test(symbol)
 
   const wantsShort = SHORT_VOLUME_CATEGORIES.has(category) && isUsTicker
@@ -417,7 +418,7 @@ export async function fetchSlowData(args: {
       wantsBtcFlow ? fetchFarsideEtfFlow('btc') : Promise.resolve(null),
       wantsEthFlow ? fetchFarsideEtfFlow('eth') : Promise.resolve(null),
       wantsInsider ? fetchInsider(symbol!) : Promise.resolve(null),
-      wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
+      wantsMetals ? fetchMetalsSlowFields(category, instrument ?? symbol, { horizon }) : Promise.resolve(null),
       wantsEnergy ? fetchEnergySlowFields(category, instrument ?? symbol) : Promise.resolve(null),
       wantsFx ? fetchFxSlowFields(category, instrument ?? symbol) : Promise.resolve(null),
       wantsIndexEtf ? fetchIndexEtfSlowFields(category, instrument ?? symbol) : Promise.resolve(null),

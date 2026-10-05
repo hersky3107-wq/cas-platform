@@ -262,6 +262,286 @@ export function parseFredCsvLast(text: string): { date: string; value: number } 
   return best
 }
 
+export type FredChangeSnap = {
+  seriesId: string
+  date: string
+  value: number
+  change1w: number | null
+  change1m: number | null
+  date1w: string | null
+  date1m: string | null
+}
+
+export type CotHistoryRow = {
+  date: string
+  contract: string
+  code: string
+  openInterest: number
+  managedMoneyLong: number
+  managedMoneyShort: number
+  managedMoneyNet: number
+}
+
+export type EtfFlowSnap = {
+  symbol: string
+  date: string
+  lastClose: number
+  change5dPct: number | null
+  change20dPct: number | null
+  lastVolume: number | null
+  avgVolume20: number | null
+  volumeVs20dPct: number | null
+  source: string
+}
+
+export type MacroEventSnap = { date: string; name: string; source: string }
+
+/** All numeric FRED CSV rows (`.` skipped). */
+export function parseFredCsvObservations(text: string): { date: string; value: number }[] {
+  const lines = text.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
+  const out: { date: string; value: number }[] = []
+  for (const line of lines.slice(1)) {
+    const cols = splitCsvLine(line)
+    const date = (cols[0] ?? '').trim()
+    const raw = (cols[1] ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || raw === '.' || raw === '') continue
+    const value = Number(raw)
+    if (!Number.isFinite(value)) continue
+    out.push({ date, value })
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date))
+  return out
+}
+
+export function parseFredApiObservations(json: unknown): { date: string; value: number }[] {
+  if (!json || typeof json !== 'object') return []
+  const rows = (json as { observations?: unknown }).observations
+  if (!Array.isArray(rows)) return []
+  const out: { date: string; value: number }[] = []
+  for (const row of rows) {
+    if (!row || typeof row !== 'object') continue
+    const rec = row as { date?: unknown; value?: unknown }
+    const date = String(rec.date ?? '').slice(0, 10)
+    const raw = String(rec.value ?? '').trim()
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || raw === '.' || raw === '') continue
+    const value = Number(raw)
+    if (!Number.isFinite(value)) continue
+    out.push({ date, value })
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date))
+  return out
+}
+
+function addUtcDays(iso: string, days: number): string {
+  const d = new Date(`${iso}T00:00:00.000Z`)
+  d.setUTCDate(d.getUTCDate() + days)
+  return d.toISOString().slice(0, 10)
+}
+
+function priorOnOrBefore(
+  obs: { date: string; value: number }[],
+  target: string,
+  latestDate: string,
+): { date: string; value: number } | null {
+  let best: { date: string; value: number } | null = null
+  for (const row of obs) {
+    if (row.date > target) break
+    if (row.date >= latestDate) continue
+    best = row
+  }
+  return best
+}
+
+export function fredChangeFromObservations(
+  seriesId: string,
+  obs: { date: string; value: number }[],
+): FredChangeSnap | null {
+  if (!obs.length) return null
+  const latest = obs[obs.length - 1]!
+  const week = priorOnOrBefore(obs, addUtcDays(latest.date, -7), latest.date)
+  const month = priorOnOrBefore(obs, addUtcDays(latest.date, -30), latest.date)
+  const delta = (prior: { value: number } | null | undefined): number | null =>
+    prior == null ? null : Math.round((latest.value - prior.value) * 1e6) / 1e6
+  return {
+    seriesId,
+    date: latest.date,
+    value: latest.value,
+    change1w: delta(week),
+    change1m: delta(month),
+    date1w: week?.date ?? null,
+    date1m: month?.date ?? null,
+  }
+}
+
+function socrataNum(raw: unknown): number | null {
+  if (typeof raw === 'number' && Number.isFinite(raw)) return raw
+  if (typeof raw === 'string') return num(raw)
+  return null
+}
+
+export function parseCftcSocrataRows(json: unknown, contractCode: string): CotHistoryRow[] {
+  if (!Array.isArray(json)) return []
+  const out: CotHistoryRow[] = []
+  for (const row of json) {
+    if (!row || typeof row !== 'object') continue
+    const rec = row as Record<string, unknown>
+    const code = String(rec.cftc_contract_market_code ?? rec.cftc_contract_market_code_quotes ?? '').replace(/\s+/g, '')
+    if (code !== contractCode) continue
+    const date = String(rec.report_date_as_yyyy_mm_dd ?? '').slice(0, 10)
+    const openInterest = socrataNum(rec.open_interest_all)
+    const managedMoneyLong = socrataNum(rec.m_money_positions_long_all)
+    const managedMoneyShort = socrataNum(rec.m_money_positions_short_all)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || openInterest == null || managedMoneyLong == null || managedMoneyShort == null) {
+      continue
+    }
+    out.push({
+      date,
+      contract: String(rec.market_and_exchange_names ?? contractCode),
+      code,
+      openInterest,
+      managedMoneyLong,
+      managedMoneyShort,
+      managedMoneyNet: managedMoneyLong - managedMoneyShort,
+    })
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date))
+  return out
+}
+
+export function cotHistoryStats(rows: CotHistoryRow[]): {
+  change4w: number | null
+  percentile3y: number | null
+  historyWeeks: number
+} | null {
+  if (!rows.length) return null
+  const latest = rows[rows.length - 1]!
+  const floor3y = addUtcDays(latest.date, -1096)
+  const window = rows.filter((r) => r.date >= floor3y)
+  const prior4 = priorCot(rows, addUtcDays(latest.date, -28), latest.date)
+  const n = window.length
+  let atOrBelow = 0
+  for (const row of window) {
+    if (row.managedMoneyNet <= latest.managedMoneyNet) atOrBelow += 1
+  }
+  return {
+    change4w: prior4 ? latest.managedMoneyNet - prior4.managedMoneyNet : null,
+    percentile3y: n > 0 ? (atOrBelow / n) * 100 : null,
+    historyWeeks: n,
+  }
+}
+
+function priorCot(rows: CotHistoryRow[], target: string, latestDate: string): CotHistoryRow | null {
+  let best: CotHistoryRow | null = null
+  for (const row of rows) {
+    if (row.date > target) break
+    if (row.date >= latestDate) continue
+    best = row
+  }
+  return best
+}
+
+export function parseTwelveDataBars(json: unknown): { date: string; close: number; volume: number | null }[] {
+  if (!json || typeof json !== 'object') return []
+  const values = (json as { values?: unknown }).values
+  if (!Array.isArray(values)) return []
+  const out: { date: string; close: number; volume: number | null }[] = []
+  for (const row of values) {
+    if (!row || typeof row !== 'object') continue
+    const rec = row as { datetime?: unknown; close?: unknown; volume?: unknown }
+    const date = String(rec.datetime ?? '').slice(0, 10)
+    const close = Number(rec.close)
+    const volRaw = rec.volume == null || rec.volume === '' ? null : Number(rec.volume)
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date) || !Number.isFinite(close)) continue
+    out.push({
+      date,
+      close,
+      volume: volRaw != null && Number.isFinite(volRaw) ? volRaw : null,
+    })
+  }
+  out.sort((a, b) => a.date.localeCompare(b.date))
+  return out
+}
+
+export function etfFlowFromBars(
+  symbol: string,
+  bars: { date: string; close: number; volume: number | null }[],
+  source: string,
+): EtfFlowSnap | null {
+  if (!bars.length) return null
+  const latest = bars[bars.length - 1]!
+  const d5 = bars.length >= 6 ? bars[bars.length - 6]! : null
+  const d20 = bars.length >= 21 ? bars[bars.length - 21]! : null
+  const last20 = bars.slice(-20)
+  const vols = last20.map((b) => b.volume).filter((v): v is number => v != null && v > 0)
+  const avgVolume20 = vols.length >= 10 ? vols.reduce((s, v) => s + v, 0) / vols.length : null
+  const lastVolume = latest.volume
+  return {
+    symbol,
+    date: latest.date,
+    lastClose: latest.close,
+    change5dPct: d5 ? ((latest.close - d5.close) / d5.close) * 100 : null,
+    change20dPct: d20 ? ((latest.close - d20.close) / d20.close) * 100 : null,
+    lastVolume,
+    avgVolume20,
+    volumeVs20dPct: lastVolume != null && avgVolume20 != null && avgVolume20 > 0 ? (lastVolume / avgVolume20 - 1) * 100 : null,
+    source,
+  }
+}
+
+const MONTHS =
+  'January|February|March|April|May|June|July|August|September|October|November|December'
+
+export function parseFomcMeetingDates(html: string, year: number): MacroEventSnap[] {
+  const yearBlock = html.match(new RegExp(`${year}\\s+FOMC[\\s\\S]{0,4000}`, 'i'))?.[0] ?? html
+  const re = new RegExp(`\\b(${MONTHS})\\s+(\\d{1,2})(?:\\s*[-–]\\s*(\\d{1,2}))?`, 'gi')
+  const out: MacroEventSnap[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(yearBlock)) !== null) {
+    const mon = MONTH_NUM[m[1]!.toLowerCase()]
+    if (!mon) continue
+    const day = (m[3] ?? m[2]!).padStart(2, '0')
+    out.push({ date: `${year}-${mon}-${day}`, name: 'FOMC', source: 'federalreserve.gov FOMC calendars' })
+  }
+  return uniqueEvents(out)
+}
+
+export function parseBlsReleaseDates(html: string, name: 'CPI' | 'payrolls'): MacroEventSnap[] {
+  const re = new RegExp(`\\b(${MONTHS}|Jan\\.?|Feb\\.?|Mar\\.?|Apr\\.?|Jun\\.?|Jul\\.?|Aug\\.?|Sep\\.?|Sept\\.?|Oct\\.?|Nov\\.?|Dec\\.?)\\s+(\\d{1,2}),\\s*(\\d{4})`, 'gi')
+  const out: MacroEventSnap[] = []
+  let m: RegExpExecArray | null
+  while ((m = re.exec(html)) !== null) {
+    const rawMon = m[1]!.replace(/\./g, '').toLowerCase()
+    const mon = MONTH_NUM[rawMon] ?? MONTH_NUM[rawMon.slice(0, 3)]
+    if (!mon) continue
+    out.push({
+      date: `${m[3]}-${mon}-${m[2]!.padStart(2, '0')}`,
+      name,
+      source: name === 'CPI' ? 'bls.gov CPI release schedule' : 'bls.gov Employment Situation schedule',
+    })
+  }
+  return uniqueEvents(out)
+}
+
+export function eventsInWindow(
+  events: MacroEventSnap[],
+  windowStart: string,
+  windowEnd: string,
+): MacroEventSnap[] {
+  return events.filter((e) => e.date >= windowStart && e.date <= windowEnd)
+}
+
+function uniqueEvents(events: MacroEventSnap[]): MacroEventSnap[] {
+  const seen = new Set<string>()
+  const out: MacroEventSnap[] = []
+  for (const e of events) {
+    const k = `${e.date}|${e.name}`
+    if (seen.has(k)) continue
+    seen.add(k)
+    out.push(e)
+  }
+  return out
+}
+
 export function parseTreasuryRealYield10y(xml: unknown): { date: string; yieldPct: number } | null {
   if (!xml || typeof xml !== 'object') return null
   const root = xml as Record<string, unknown>

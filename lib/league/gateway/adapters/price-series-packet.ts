@@ -10,6 +10,7 @@ import {
 import { decideResearchTier, type ResearchTier, type TierDecision } from '../../research-tier'
 import { relationsFor, type ResearchLang } from '../../relations'
 import type { PacketInventoryInput } from '../../research-director'
+import { metalsQueryPlanFromRound } from '../../research-query-plans'
 import { normalizeSessionDate } from '@/lib/prediction/resolution'
 import { pickCompletedDailyClose, usesCompletedDailyBars, usesWeekdayDailyBars } from '../../horizon'
 import type { DataPacket } from '../../market-data'
@@ -51,7 +52,12 @@ export type PriceSeriesIo = {
     instrument: string,
     anchorSeries: readonly SeriesBar[],
   ): Promise<RelatedInstrumentsResult | null>
-  fetchSlowData(args: { category: string; symbol?: string; instrument?: string }): Promise<SlowDataSnapshot | null>
+  fetchSlowData(args: {
+    category: string
+    symbol?: string
+    instrument?: string
+    horizon?: string
+  }): Promise<SlowDataSnapshot | null>
 }
 
 /**
@@ -182,13 +188,15 @@ export async function buildPriceSeriesPacket(ctx: PacketBuildContext, io: PriceS
   // overlap the Twelve Data throttle wait — extra latency, fewer wasted searches.
   const [related, slow] = await Promise.all([
     io.fetchRelatedInstruments(round.instrument, packet.series ?? []),
-    io.fetchSlowData({ category: round.category, symbol: packet.symbol, instrument: round.instrument }),
+    io.fetchSlowData({ category: round.category, symbol: packet.symbol, instrument: round.instrument, horizon: round.horizon }),
   ])
+  const extraQueries = round.category === 'gold_metal' ? metalsQueryPlanFromRound(round) : undefined
   const research = await io.getResearchPacket({
     round,
     budgetRemainingUsd: ctx.costCapUsd,
     tier: tierDecision.tier,
     languages: relations?.asiaLinks ?? [],
+    extraQueries,
     inventory: {
       instrument: round.instrument,
       category: round.category,

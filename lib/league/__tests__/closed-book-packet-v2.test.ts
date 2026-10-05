@@ -919,6 +919,103 @@ describe('closed-book packet v2 — new sections', () => {
     expect(withoutSynthesis).toContain('PROSE FINDINGS')
   })
 
+  it('gold_metal Drivers section prints both sides and none measured without inventing values', () => {
+    const measured = assembleClosedBookInjection(
+      input({
+        instrument: 'XAU/USD',
+        category: 'gold_metal',
+        slow: {
+          fetchedAt: '2026-10-05T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          metalsDfii10: {
+            seriesId: 'DFII10',
+            date: '2026-10-02',
+            value: 1.82,
+            change1w: -0.05,
+            change1m: 0.12,
+            date1w: '2026-09-25',
+            date1m: '2026-09-04',
+          },
+          metalsDollar: {
+            seriesId: 'DTWEXBGS',
+            date: '2026-10-02',
+            value: 120.4,
+            change1w: 0.3,
+            change1m: -0.8,
+            date1w: '2026-09-25',
+            date1m: '2026-09-04',
+          },
+          cotGold: {
+            contract: 'GOLD',
+            date: '2026-09-29',
+            openInterest: 400000,
+            managedMoneyLong: 140000,
+            managedMoneyShort: 20000,
+            managedMoneyNet: 120000,
+            change4w: 40000,
+            percentile3y: 88,
+            historyWeeks: 156,
+          },
+          gldFlow: {
+            symbol: 'GLD',
+            date: '2026-10-02',
+            lastClose: 310,
+            change5dPct: 1.2,
+            change20dPct: -0.4,
+            lastVolume: 12_000_000,
+            avgVolume20: 10_000_000,
+            volumeVs20dPct: 20,
+            source: 'Twelve Data /time_series volume+close',
+          },
+          metalsCalendar: {
+            windowStart: '2026-10-05',
+            windowEnd: '2026-10-12',
+            events: [{ date: '2026-10-08', name: 'CPI', source: 'bls.gov CPI release schedule' }],
+          },
+        },
+      }),
+    )
+    expect(measured).toContain('DRIVERS (rates, dollar, positioning, flows, calendar)')
+    expect(measured).toContain('10Y TIPS real yield DFII10 (2026-10-02): 1.82')
+    expect(measured).toContain('1w -0.05')
+    expect(measured).toContain('broad dollar index DTWEXBGS')
+    expect(measured).toContain('4w +40,000 contracts')
+    expect(measured).toContain('3y percentile 88 (n=156)')
+    expect(measured).toContain('GLD ETF flow proxy')
+    expect(measured).toContain('macro calendar (2026-10-05–2026-10-12): CPI 2026-10-08')
+    expect(measured).toContain('    Up: falling real yields')
+    expect(measured).toContain('    Down: rising real yields')
+    expect(measured).toContain('    Up: a weaker dollar')
+    expect(measured).toContain('    Down: a stronger dollar')
+
+    const missing = assembleClosedBookInjection(
+      input({
+        instrument: 'XAU/USD',
+        category: 'gold_metal',
+        slow: {
+          fetchedAt: '2026-10-05T00:00:00.000Z',
+          shortVolume: null,
+          putCall: null,
+          btcEtfFlow: null,
+          insider: null,
+          metalsDfii10: { unavailable: 'FRED DFII10: HTTP 500' },
+          metalsCalendar: { unavailable: 'macro calendar: no dates parsed' },
+        },
+      }),
+    )
+    expect(missing).toContain('Rates: none measured')
+    expect(missing).toContain('Dollar: none measured')
+    expect(missing).toContain('Positioning: none measured')
+    expect(missing).toContain('Flows: none measured')
+    expect(missing).toContain('Calendar: none measured')
+    expect(missing).toMatch(/10Y TIPS real yield DFII10: UNAVAILABLE/)
+    expect(missing).not.toContain('1.82')
+    expect(missing).not.toContain('DTWEXBGS (2026')
+  })
+
   it('v1-shaped input (no v2 fields) renders no v2 sections — backward compatible', () => {
     const text = assembleClosedBookInjection(
       input({ related: null, slow: null, nonEnglishFindings: [], synthesis: null }),

@@ -6,16 +6,27 @@ import {
   GLD_OZ_PER_SHARE,
   SLV_OZ_PER_SHARE,
   TROY_OZ_PER_TONNE,
+  cotHistoryStats,
+  etfFlowFromBars,
+  eventsInWindow,
   holdingsFromShares,
+  parseBlsReleaseDates,
   parseCftcManagedMoney,
+  parseCftcSocrataRows,
+  parseFomcMeetingDates,
+  parseFredApiObservations,
   parseFredCsvLast,
+  parseFredCsvObservations,
   parseIsharesSharesOutstanding,
   parseSpdrGoldData,
   parseTreasuryRealYield10y,
   parseTreasuryRealYieldCsv,
+  parseTwelveDataBars,
   parseTwelveDataSharesOutstanding,
+  fredChangeFromObservations,
 } from './metals-parse'
-import type { CotPositioning, EtfHoldings, SlowDataSnapshot } from './closed-book-packet'
+import { CALENDAR_DAY_COUNT, isUiHorizon } from './horizon'
+import type { CotPositioning, EtfFlowProxy, EtfHoldings, FredChange, MacroCalendar, SlowDataSnapshot } from './closed-book-packet'
 
 /**
  * Free gold/metals packet feeds. Zero API-key cost.
@@ -284,14 +295,120 @@ export async function fetchFredSeries(
   seriesId: string,
 ): Promise<{ date: string; value: number } | Fail> {
   return memoDaily(`fred|${seriesId}`, async () => {
+    const hist = await fetchFredObservations(seriesId)
+    if ('unavailable' in hist) return hist
+    const last = hist.obs[hist.obs.length - 1]
+    if (!last) return { unavailable: `FRED ${seriesId}: no numeric observation` }
+    return last
+  })
+}
+
+export async function fetchFredObservations(
+  seriesId: string,
+): Promise<{ obs: { date: string; value: number }[] } | Fail> {
+  return memoDaily(`fred-obs|${seriesId}`, async () => {
+    const key = process.env.FRED_API_KEY?.trim()
+    if (key) {
+      const start = new Date()
+      start.setUTCDate(start.getUTCDate() - 120)
+      const url = `https://api.stlouisfed.org/fred/series/observations?series_id=${encodeURIComponent(seriesId)}&file_type=json&observation_start=${start.toISOString().slice(0, 10)}&sort_order=asc&api_key=${encodeURIComponent(key)}`
+      const res = await getText(url, { Accept: 'application/json' })
+      if (!('error' in res) && res.status === 200 && !/^\s*</.test(res.text)) {
+        try {
+          const obs = parseFredApiObservations(JSON.parse(res.text) as unknown)
+          if (obs.length) return { obs }
+        } catch {
+          // fall through to CSV
+        }
+      }
+    }
     const url = `https://fred.stlouisfed.org/graph/fredgraph.csv?id=${encodeURIComponent(seriesId)}`
     const res = await getText(url, { Accept: 'text/csv,text/plain,*/*' })
     if ('error' in res) return { unavailable: `FRED ${seriesId}: ${res.error}` }
     if (res.status !== 200) return { unavailable: `FRED ${seriesId}: HTTP ${res.status}` }
     if (/^\s*</.test(res.text)) return { unavailable: `FRED ${seriesId}: HTML (not CSV)` }
-    const parsed = parseFredCsvLast(res.text)
-    if (!parsed) return { unavailable: `FRED ${seriesId}: no numeric observation` }
-    return parsed
+    const obs = parseFredCsvObservations(res.text)
+    if (!obs.length) return { unavailable: `FRED ${seriesId}: no numeric observation` }
+    return { obs }
+  })
+}
+
+async function fetchFredChange(seriesId: string): Promise<FredChange | Fail> {
+  const hist = await fetchFredObservations(seriesId)
+  if ('unavailable' in hist) return hist
+  const snap = fredChangeFromObservations(seriesId, hist.obs)
+  return snap ?? { unavailable: `FRED ${seriesId}: no numeric observation` }
+}
+
+const CFTC_SOCRATA =
+  'https://publicreporting.cftc.gov/resource/jun7-fc8e.json?$select=report_date_as_yyyy_mm_dd,cftc_contract_market_code,market_and_exchange_names,open_interest_all,m_money_positions_long_all,m_money_positions_short_all&$where=cftc_contract_market_code%20in(%27088691%27,%27084691%27)&$order=report_date_as_yyyy_mm_dd%20DESC&$limit=400'
+
+async function fetchCftcHistoryJson(): Promise<{ json: unknown } | Fail> {
+  return memoDaily('cftc-socrata', async () => {
+    const res = await getText(CFTC_SOCRATA, { Accept: 'application/json' })
+    if ('error' in res) return { unavailable: `CFTC Socrata: ${res.error}` }
+    if (res.status !== 200) return { unavailable: `CFTC Socrata: HTTP ${res.status}` }
+    try {
+      return { json: JSON.parse(res.text) as unknown }
+    } catch {
+      return { unavailable: 'CFTC Socrata: invalid JSON' }
+    }
+  })
+}
+
+function mergeCotHistory(latest: CotPositioning, history: { json: unknown } | Fail, code: string): CotPositioning {
+  if ('unavailable' in latest) return latest
+  if ('unavailable' in history) return latest
+  const rows = parseCftcSocrataRows(history.json, code)
+  const stats = cotHistoryStats(rows)
+  if (!stats) return latest
+  return {
+    ...latest,
+    ...(stats.change4w != null ? { change4w: stats.change4w } : {}),
+    ...(stats.percentile3y != null ? { percentile3y: stats.percentile3y, historyWeeks: stats.historyWeeks } : {}),
+  }
+}
+
+async function fetchEtfFlow(symbol: 'GLD' | 'SLV'): Promise<EtfFlowProxy> {
+  return memoDaily(`etf-flow|${symbol}`, async () => {
+    const res = await twelveDataGet('time_series', { symbol, interval: '1day', outputsize: '40' })
+    if (!res.ok) return { unavailable: `${symbol} Twelve Data time_series: ${res.error}` }
+    const bars = parseTwelveDataBars(res.json)
+    const snap = etfFlowFromBars(symbol, bars, 'Twelve Data /time_series volume+close')
+    return snap ?? { unavailable: `${symbol} Twelve Data time_series: no usable bars` }
+  })
+}
+
+const FOMC_CAL_URL = 'https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm'
+const BLS_CPI_URL = 'https://www.bls.gov/schedule/news_release/cpi.htm'
+const BLS_EMP_URL = 'https://www.bls.gov/schedule/news_release/empsit.htm'
+
+async function fetchMetalsCalendar(horizon?: string): Promise<MacroCalendar> {
+  const h = isUiHorizon(horizon) ? horizon : '1w'
+  const days = CALENDAR_DAY_COUNT[h]
+  const today = utcDay()
+  const end = new Date(`${today}T00:00:00.000Z`)
+  end.setUTCDate(end.getUTCDate() + days)
+  const windowEnd = end.toISOString().slice(0, 10)
+  return memoDaily(`macro-cal|${today}|${windowEnd}`, async () => {
+    const year = Number(today.slice(0, 4))
+    const errors: string[] = []
+    const events = []
+    const fomc = await getText(FOMC_CAL_URL, { 'User-Agent': BROWSER_UA, Accept: 'text/html' })
+    if ('error' in fomc) errors.push(`FOMC: ${fomc.error}`)
+    else if (fomc.status !== 200) errors.push(`FOMC: HTTP ${fomc.status}`)
+    else events.push(...parseFomcMeetingDates(fomc.text, year), ...parseFomcMeetingDates(fomc.text, year + 1))
+    const cpi = await getText(BLS_CPI_URL, { 'User-Agent': BROWSER_UA, Accept: 'text/html' })
+    if ('error' in cpi) errors.push(`CPI: ${cpi.error}`)
+    else if (cpi.status !== 200) errors.push(`CPI: HTTP ${cpi.status}`)
+    else events.push(...parseBlsReleaseDates(cpi.text, 'CPI'))
+    const emp = await getText(BLS_EMP_URL, { 'User-Agent': BROWSER_UA, Accept: 'text/html' })
+    if ('error' in emp) errors.push(`payrolls: ${emp.error}`)
+    else if (emp.status !== 200) errors.push(`payrolls: HTTP ${emp.status}`)
+    else events.push(...parseBlsReleaseDates(emp.text, 'payrolls'))
+    const inWindow = eventsInWindow(events, today, windowEnd)
+    if (!events.length) return { unavailable: errors.join('; ') || 'macro calendar: no dates parsed' }
+    return { windowStart: today, windowEnd, events: inWindow }
   })
 }
 
@@ -310,6 +427,7 @@ function isPlatinumInstrument(instrument?: string): boolean {
 export async function fetchMetalsSlowFields(
   category: string,
   instrument?: string,
+  opts?: { horizon?: string },
 ): Promise<{
   realYield10y: SlowDataSnapshot['realYield10y']
   cotGold: SlowDataSnapshot['cotGold']
@@ -321,22 +439,53 @@ export async function fetchMetalsSlowFields(
   gvz: SlowDataSnapshot['gvz']
   indpro?: SlowDataSnapshot['indpro']
   semiProduction?: SlowDataSnapshot['semiProduction']
+  metalsDfii10?: SlowDataSnapshot['metalsDfii10']
+  metalsDgs10?: SlowDataSnapshot['metalsDgs10']
+  metalsDollar?: SlowDataSnapshot['metalsDollar']
+  metalsFedFunds?: SlowDataSnapshot['metalsFedFunds']
+  gldFlow?: SlowDataSnapshot['gldFlow']
+  slvFlow?: SlowDataSnapshot['slvFlow']
+  metalsCalendar?: SlowDataSnapshot['metalsCalendar']
 } | null> {
   if (!GOLD_CATEGORIES.has(category)) return null
   const silver = !instrument || isSilverInstrument(instrument)
   const platinum = !instrument || isPlatinumInstrument(instrument)
 
-  const [realYield10y, disagg, gldHoldings, slvHoldings, gvz, indpro, semiProduction] = await Promise.all([
+  const [
+    realYield10y,
+    disagg,
+    cotHistory,
+    gldHoldings,
+    slvHoldings,
+    gvz,
+    indpro,
+    semiProduction,
+    metalsDfii10,
+    metalsDgs10,
+    metalsDollar,
+    metalsFedFunds,
+    gldFlow,
+    slvFlow,
+    metalsCalendar,
+  ] = await Promise.all([
     fetchTreasuryRealYield10y(),
     fetchCftcDisaggText(),
+    fetchCftcHistoryJson(),
     fetchEtfHoldings('GLD'),
     fetchEtfHoldings('SLV'),
     fetchFredSeries('GVZCLS'),
     silver ? fetchFredSeries('INDPRO') : Promise.resolve(null),
     silver ? fetchFredSeries('IPG3344S') : Promise.resolve(null),
+    fetchFredChange('DFII10'),
+    fetchFredChange('DGS10'),
+    fetchFredChange('DTWEXBGS'),
+    fetchFredChange('DFF'),
+    fetchEtfFlow('GLD'),
+    fetchEtfFlow('SLV'),
+    fetchMetalsCalendar(opts?.horizon),
   ])
-  const cotGold = cotOrFail(disagg, CFTC_GOLD_CODE)
-  const cotSilver = cotOrFail(disagg, CFTC_SILVER_CODE)
+  const cotGold = mergeCotHistory(cotOrFail(disagg, CFTC_GOLD_CODE), cotHistory, CFTC_GOLD_CODE)
+  const cotSilver = mergeCotHistory(cotOrFail(disagg, CFTC_SILVER_CODE), cotHistory, CFTC_SILVER_CODE)
   return {
     realYield10y,
     cotGold,
@@ -352,5 +501,12 @@ export async function fetchMetalsSlowFields(
     gvz,
     ...(silver && indpro ? { indpro } : {}),
     ...(silver && semiProduction ? { semiProduction } : {}),
+    metalsDfii10,
+    metalsDgs10,
+    metalsDollar,
+    metalsFedFunds,
+    gldFlow,
+    slvFlow,
+    metalsCalendar,
   }
 }
