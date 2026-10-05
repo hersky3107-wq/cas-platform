@@ -5,7 +5,7 @@
  * when the rest of the text is a schedule ask (or just the name). A
  * prediction question with no opponent ("손흥민 이길까") is vague.
  *
- * Pure. Consumes a public Odds-API slate; never invents a match.
+ * Pure. Consumes the merged public slate (API-Football + Odds-API); never invents a match.
  */
 
 import { TARGET_WINDOW_MS, MAX_TARGET_PICKS, type TargetSearchResult } from '../target-resolve'

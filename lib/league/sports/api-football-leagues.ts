@@ -3,8 +3,19 @@
  * Pure. Unknown leagues become soccer_af_{id} so decode still accepts them.
  */
 
+export const FOOTBALL_SEARCH_WINDOW_MS = 35 * 86_400_000
+
+/** Curated popular set — ranking / suggestions only. Opening still allows other professional comps. */
+export const POPULAR_FOOTBALL_LEAGUE_IDS: readonly number[] = [
+  39, 40, 140, 135, 78, 61, 88, 94, 179, 203, 307, 253, 262, 71, 128, 292, 293, 98, 99, 188, 169,
+  2, 3, 848, 17, 18, 13, 45, 143, 66, 81, 137, 1, 4, 5, 6, 7, 9, 10, 29, 32, 34,
+]
+
+const POPULAR_SET = new Set(POPULAR_FOOTBALL_LEAGUE_IDS)
+
 export const API_FOOTBALL_LEAGUE_TO_KEY: Record<number, string> = {
   39: 'soccer_epl',
+  40: 'soccer_efl_championship',
   140: 'soccer_spain_la_liga',
   135: 'soccer_italy_serie_a',
   78: 'soccer_germany_bundesliga',
@@ -15,12 +26,21 @@ export const API_FOOTBALL_LEAGUE_TO_KEY: Record<number, string> = {
   5: 'soccer_uefa_nations_league',
   4: 'soccer_uefa_european_championship',
   1: 'soccer_fifa_world_cup',
+  6: 'soccer_africa_cup_of_nations',
+  7: 'soccer_afc_asian_cup',
+  9: 'soccer_copa_america',
+  10: 'soccer_fifa_friendlies',
+  13: 'soccer_copa_libertadores',
+  29: 'soccer_fifa_world_cup_qualifiers_asia',
+  32: 'soccer_fifa_world_cup_qualifiers_europe',
+  34: 'soccer_fifa_world_cup_qualifiers_sa',
   45: 'soccer_fa_cup',
   48: 'soccer_efl_cup',
-  292: 'soccer_korea_kleague1',
-  293: 'soccer_korea_kleague2',
-  98: 'soccer_japan_j_league',
-  99: 'soccer_japan_j_league2',
+  66: 'soccer_coupe_de_france',
+  81: 'soccer_dfb_pokal',
+  137: 'soccer_coppa_italia',
+  143: 'soccer_copa_del_rey',
+  169: 'soccer_china_superleague',
   188: 'soccer_australia_aleague',
   253: 'soccer_usa_mls',
   262: 'soccer_mexico_ligamx',
@@ -32,7 +52,13 @@ export const API_FOOTBALL_LEAGUE_TO_KEY: Record<number, string> = {
   203: 'soccer_turkey_super_league',
   197: 'soccer_greece_super_league',
   179: 'soccer_scotland_premiership',
+  292: 'soccer_korea_kleague1',
+  293: 'soccer_korea_kleague2',
+  98: 'soccer_japan_j_league',
+  99: 'soccer_japan_j_league2',
   17: 'soccer_afc_champions_league',
+  18: 'soccer_afc_champions_league_two',
+  307: 'soccer_saudi_pro_league',
 }
 
 const KEY_TO_ID: Record<string, number> = (() => {
@@ -57,6 +83,22 @@ export const FOOTBALL_LEAGUE_LABEL_EN: Record<string, string> = {
   soccer_fifa_world_cup: 'FIFA World Cup',
   soccer_fa_cup: 'FA Cup',
   soccer_efl_cup: 'EFL Cup',
+  soccer_efl_championship: 'EFL Championship',
+  soccer_coupe_de_france: 'Coupe de France',
+  soccer_dfb_pokal: 'DFB-Pokal',
+  soccer_coppa_italia: 'Coppa Italia',
+  soccer_copa_del_rey: 'Copa del Rey',
+  soccer_china_superleague: 'Chinese Super League',
+  soccer_saudi_pro_league: 'Saudi Pro League',
+  soccer_africa_cup_of_nations: 'Africa Cup of Nations',
+  soccer_afc_asian_cup: 'AFC Asian Cup',
+  soccer_copa_america: 'Copa América',
+  soccer_fifa_friendlies: 'International Friendlies',
+  soccer_fifa_world_cup_qualifiers_asia: 'World Cup Qualifiers (AFC)',
+  soccer_fifa_world_cup_qualifiers_europe: 'World Cup Qualifiers (UEFA)',
+  soccer_fifa_world_cup_qualifiers_sa: 'World Cup Qualifiers (CONMEBOL)',
+  soccer_copa_libertadores: 'Copa Libertadores',
+  soccer_afc_champions_league_two: 'AFC Champions League Two',
   soccer_korea_kleague1: 'K League 1',
   soccer_korea_kleague2: 'K League 2',
   soccer_japan_j_league: 'J1 League',
@@ -108,6 +150,31 @@ export function apiFootballLeagueIdFromKey(league: string): number | null {
 
 export function isFootballInstrumentLeague(league: string): boolean {
   return league.startsWith('soccer_')
+}
+
+export function isPopularFootballLeagueId(leagueId: number): boolean {
+  return POPULAR_SET.has(leagueId)
+}
+
+const REFUSED_NAME =
+  /amateur|youth|reserve|academy|primavera|u-?1[679]\b|u-?2[013]\b|u-?23\b|k3(?:리그|_|$|\b)|k4(?:리그|_|$|\b)|k league 3|j3(?:리그|_|$|\b)|jfl\b|japan football league|regionalliga|3\.\s*liga|league one|league two|national league|non-league|serie c|serie d|ligue 3|national 2|segunda federaci[oó]n|segunda b|semipro/i
+
+export function isRefusedFootballCompetition(leagueId: number | null | undefined, leagueName?: string | null): boolean {
+  if (leagueId != null && POPULAR_SET.has(leagueId)) return false
+  const name = `${leagueName ?? ''} ${leagueId != null ? API_FOOTBALL_LEAGUE_TO_KEY[leagueId] ?? '' : ''}`.trim()
+  return REFUSED_NAME.test(name)
+}
+
+export function isRefusedFootballLeagueKey(league: string, leagueName?: string | null): boolean {
+  const id = apiFootballLeagueIdFromKey(league)
+  return isRefusedFootballCompetition(id, leagueName ?? league)
+}
+
+export function footballPopularityRank(leagueId: number | null | undefined, leagueKey?: string): number {
+  if (leagueId != null && POPULAR_SET.has(leagueId)) return 0
+  const id = leagueKey ? apiFootballLeagueIdFromKey(leagueKey) : null
+  if (id != null && POPULAR_SET.has(id)) return 0
+  return 1
 }
 
 export function encodeApiFootballEventId(fixtureId: number): string {

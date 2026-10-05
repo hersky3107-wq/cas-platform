@@ -13,6 +13,8 @@ import { detectBettingFraming } from '../betting-framing'
 import { gradePlanFor } from '../grade-plan'
 import { CATEGORY_PROPOSITION_KIND } from '../normalize-prompt'
 import { refusalMessageForKey } from '../refusal-copy'
+import { LEAGUE_LOCALES } from '../../i18n/locales'
+import { getLeagueUiPack } from '../../i18n/dictionary'
 import type { SportsFixtureCacheRow } from '../../sports/types'
 import type { NormalizeSlots } from '../types'
 import type { SportsPacketIo } from '../adapters/sports-packet'
@@ -134,8 +136,141 @@ describe('sports CategoryAdapter', () => {
     expect(hit.ok).toBe(false)
     if (!hit.ok && 'refuse' in hit) {
       expect(hit.refuse.code).toBe('non_public_fixture')
-      expect(refusalMessageForKey(hit.refuse.message_i18n_key, 'ko')).toMatch(/지원 범위/)
+      expect(refusalMessageForKey(hit.refuse.message_i18n_key, 'ko')).toMatch(/K리그|MLB|NBA|UFC/)
+      expect(refusalMessageForKey(hit.refuse.message_i18n_key, 'ko')).not.toMatch(/EPL·챔스·라리가·세리에/)
     }
+  })
+
+  it('opens K League / J League / Bundesliga next-fixture prompts via API-Football', async () => {
+    const footballAdapter = createSportsAdapter(
+      {
+        ...SLATE_IO,
+        searchFootballFixtures: async (query) => {
+          if (/울산|케이리그|k리그/i.test(query) && !/전북|포항/.test(query)) {
+            return [
+              {
+                fixture_id: 'af-1001',
+                league: 'soccer_korea_kleague1',
+                home: 'Ulsan HD',
+                away: 'FC Seoul',
+                kickoff: '2026-10-06T06:00:00.000Z',
+              },
+            ]
+          }
+          if (/전북|포항/.test(query)) {
+            return [
+              {
+                fixture_id: 'af-1002',
+                league: 'soccer_korea_kleague1',
+                home: 'Jeonbuk Motors',
+                away: 'Pohang Steelers',
+                kickoff: '2026-10-07T06:00:00.000Z',
+              },
+            ]
+          }
+          if (/가시마|j리그|제이리그/i.test(query)) {
+            return [
+              {
+                fixture_id: 'af-2001',
+                league: 'soccer_japan_j_league',
+                home: 'Kashima Antlers',
+                away: 'Urawa',
+                kickoff: '2026-10-08T10:00:00.000Z',
+              },
+            ]
+          }
+          if (/바이에른|분데스/i.test(query)) {
+            return [
+              {
+                fixture_id: 'af-3001',
+                league: 'soccer_germany_bundesliga',
+                home: 'Bayern Munich',
+                away: 'Borussia Dortmund',
+                kickoff: '2026-10-09T18:30:00.000Z',
+              },
+            ]
+          }
+          return []
+        },
+      },
+      () => new Date('2026-09-27T00:00:00.000Z'),
+    )
+
+    const ulsan = await footballAdapter.resolveEntity('케이리그 울산 다음 경기 이길까?', 'ko')
+    expect(ulsan.ok).toBe(true)
+    if (ulsan.ok) {
+      const parts = decodeSportsInstrument(ulsan.entity_id)
+      expect(parts?.home).toBe('Ulsan HD')
+      expect(parts?.league).toBe('soccer_korea_kleague1')
+      expect(parts?.side).toBe('home')
+    }
+
+    const jeonbuk = await footballAdapter.resolveEntity('K리그 전북 vs 포항', 'ko')
+    expect(jeonbuk.ok).toBe(true)
+    if (jeonbuk.ok) {
+      const parts = decodeSportsInstrument(jeonbuk.entity_id)
+      expect(parts?.home).toBe('Jeonbuk Motors')
+      expect(parts?.away).toBe('Pohang Steelers')
+      expect(parts?.side).toBe('home')
+    }
+
+    const kashima = await footballAdapter.resolveEntity('J리그 가시마 다음 경기', 'ko')
+    expect(kashima.ok).toBe(true)
+    if (kashima.ok) {
+      expect(decodeSportsInstrument(kashima.entity_id)?.home).toBe('Kashima Antlers')
+    }
+
+    const bayern = await footballAdapter.resolveEntity('분데스리가 바이에른 다음 경기', 'ko')
+    expect(bayern.ok).toBe(true)
+    if (bayern.ok) {
+      expect(decodeSportsInstrument(bayern.entity_id)?.home).toBe('Bayern Munich')
+      expect(decodeSportsInstrument(bayern.entity_id)?.league).toBe('soccer_germany_bundesliga')
+    }
+  })
+
+  it('refuses lower-tier football and keeps baseball/basketball on the Odds slate', async () => {
+    const footballAdapter = createSportsAdapter(
+      {
+        ...SLATE_IO,
+        searchFootballFixtures: async () => [
+          {
+            fixture_id: 'af-k3',
+            league: 'soccer_k3_league',
+            home: 'Ulsan Citizen',
+            away: 'Paju Citizen',
+            kickoff: '2026-10-06T06:00:00.000Z',
+          },
+        ],
+      },
+      () => new Date('2026-09-27T00:00:00.000Z'),
+    )
+    const amateur = await footballAdapter.resolveEntity('K3리그 울산시티즌 다음 경기', 'ko')
+    expect(amateur.ok).toBe(false)
+    if (!amateur.ok && 'refuse' in amateur) expect(amateur.refuse.code).toBe('non_public_fixture')
+
+    const mlb = await adapter.resolveEntity('양키스 다저스', 'ko')
+    expect(mlb.ok).toBe(true)
+    if (mlb.ok) expect(decodeSportsInstrument(mlb.entity_id)?.league).toBe('baseball_mlb')
+
+    const nbaSlate = createSportsAdapter(
+      {
+        ...DEAD_IO,
+        listUpcomingFixtures: async () => [
+          ...SLATE,
+          {
+            fixture_id: 'evt-lal-bos',
+            league: 'basketball_nba',
+            home: 'Los Angeles Lakers',
+            away: 'Boston Celtics',
+            kickoff: '2026-10-06T02:00:00.000Z',
+          },
+        ],
+      },
+      () => new Date('2026-09-27T00:00:00.000Z'),
+    )
+    const nba = await nbaSlate.resolveEntity('레이커스 셀틱스', 'ko')
+    expect(nba.ok).toBe(true)
+    if (nba.ok) expect(decodeSportsInstrument(nba.entity_id)?.league).toBe('basketball_nba')
   })
 
   it('composes a 90-minute win / draw=No proposition with zero user substrings', async () => {
@@ -397,6 +532,28 @@ describe('sports mentions', () => {
     expect(extractSportsMentions('아스날 토트넘').map((m) => m.canonical)).toEqual([
       'Arsenal',
       'Tottenham Hotspur',
+    ])
+    expect(extractSportsMentions('케이리그 울산 다음 경기').map((m) => m.canonical)).toEqual(['Ulsan HD'])
+    expect(extractSportsMentions('전북 현대 포항 스틸러스').map((m) => m.canonical)).toEqual([
+      'Jeonbuk Motors',
+      'Pohang Steelers',
+    ])
+  })
+})
+
+describe('sports scope copy', () => {
+  it('lists the real per-sport scope in all 8 locales and drops the stale EPL-only list', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const msg = refusalMessageForKey('league.gateway.refusal.non_public_fixture', locale)
+      expect(msg.length).toBeGreaterThan(20)
+      expect(msg).not.toMatch(/EPL·챔스·라리가·세리에/)
+      expect(msg.toLowerCase()).toMatch(/mlb/)
+      expect(msg.toLowerCase()).toMatch(/nba/)
+    }
+    expect(getLeagueUiPack('ko').catalog.freeformPanel.sports.examples).toEqual([
+      '토트넘이 아스날을 이길까?',
+      '양키스가 레드삭스를 이길까?',
+      '울산이 다음 경기에서 이길까?',
     ])
   })
 })

@@ -1,3 +1,5 @@
+import type { LeagueLocale } from '../i18n/locales'
+import { normalizeLeagueLocale } from '../i18n/locales'
 import type { RefusalCode } from './types'
 
 /**
@@ -15,9 +17,9 @@ import type { RefusalCode } from './types'
  * user input — refusal copy is 100% server-authored.
  */
 
-export type GatewayLocale = 'ko' | 'en'
+export type GatewayLocale = LeagueLocale
 
-type Copy = { ko: string; en: string }
+type Copy = { ko: string; en: string } & Partial<Record<LeagueLocale, string>>
 
 /** Canonical i18n key for a refusal code. */
 export function refusalMessageKey(code: RefusalCode): string {
@@ -86,8 +88,14 @@ const REFUSAL_COPY: Record<RefusalCode, Copy> = {
     en: 'Only elections on the prediction-market slate inside the next 3 months can be opened. e.g. Georgia governor, Texas governor, Illinois senate',
   },
   non_public_fixture: {
-    ko: '지원 범위: EPL·챔스·라리가·세리에·NBA·MLB·UFC + 주요 국제대회. 지원하지 않는 경기입니다.',
-    en: 'Coverage: EPL, Champions League, La Liga, Serie A, NBA, MLB, UFC, plus major internationals. This fixture is not supported.',
+    ko: '축구는 프로 대회 전부(K리그·J리그·유럽 5대 리그·컵·MLS·AFC/UEFA/FIFA 대표팀 등). 야구는 MLB, 농구는 NBA, 격투기는 UFC. 아마추어·하부리그는 지원하지 않습니다.',
+    en: 'Football: professional competitions (K League, J League, European top leagues and cups, MLS, AFC/UEFA/FIFA internationals). Baseball: MLB. Basketball: NBA. MMA: UFC. Amateur and lower-tier leagues are not supported.',
+    ja: 'サッカーはプロ大会全般（Kリーグ、Jリーグ、欧州主要リーグ／カップ、MLS、AFC／UEFA／FIFA代表など）。野球はMLB、バスケはNBA、格闘技はUFC。アマチュア・下位リーグは対象外です。',
+    'zh-TW': '足球涵蓋職業賽事（K聯賽、J聯賽、歐洲五大聯賽與盃賽、MLS、AFC／UEFA／FIFA國家隊等）。棒球為 MLB，籃球為 NBA，綜合格鬥為 UFC。業餘與低層級聯賽不支援。',
+    fr: 'Football : compétitions pro (K League, J League, grands championnats européens et coupes, MLS, sélections AFC/UEFA/FIFA). Baseball : MLB. Basket : NBA. MMA : UFC. Amateur et divisions inférieures exclus.',
+    es: 'Fútbol: competiciones profesionales (K League, J League, grandes ligas y copas europeas, MLS, selecciones AFC/UEFA/FIFA). Béisbol: MLB. Baloncesto: NBA. MMA: UFC. Amateur y categorías inferiores no.',
+    ar: 'كرة القدم: البطولات المحترفة (الدوري الكوري والياباني والدوري الأوروبي والكؤوس وMLS ومنتخبات AFC/UEFA/FIFA). البيسبول: MLB. السلة: NBA. الفنون القتالية: UFC. الهواة والدرجات الدنيا غير مدعومة.',
+    pt: 'Futebol: competições profissionais (K League, J League, grandes ligas e copas europeias, MLS, seleções AFC/UEFA/FIFA). Beisebol: MLB. Basquete: NBA. MMA: UFC. Amador e divisões inferiores não.',
   },
   vague_target: {
     ko: '팀 이름과 상대 팀을 함께 입력해주세요. 예: 토트넘 아스날 / 양키스 레드삭스',
@@ -244,7 +252,7 @@ const CLARIFY_COPY: Record<string, Copy> = {
 }
 
 export function resolveGatewayLocale(locale: string): GatewayLocale {
-  return locale === 'ko' ? 'ko' : 'en'
+  return normalizeLeagueLocale(locale) ?? 'en'
 }
 
 /** Localized refusal message for an i18n key produced by `refusalMessageKey`. */
@@ -254,11 +262,14 @@ export function refusalMessageForKey(key: string, locale: string): string {
     : null
   const copy = code ? REFUSAL_COPY[code] : undefined
   if (!copy) return REFUSAL_COPY.low_confidence[resolveGatewayLocale(locale)]
-  return copy[resolveGatewayLocale(locale)]
+  const loc = resolveGatewayLocale(locale)
+  return copy[loc] ?? copy.en
 }
 
 /** Localized clarify prompt / option label; '' when the key is unknown (UI hides it). */
 export function clarifyCopyForKey(key: string, locale: string): string {
   const copy = CLARIFY_COPY[key]
-  return copy ? copy[resolveGatewayLocale(locale)] : ''
+  if (!copy) return ''
+  const loc = resolveGatewayLocale(locale)
+  return copy[loc] ?? copy.en
 }

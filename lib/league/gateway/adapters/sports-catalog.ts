@@ -1,8 +1,7 @@
 /**
- * Sports entity world — launch slates only (EPL / UCL / La Liga / Serie A /
- * Nations League / MLB / NBA / UFC). Aliases + athletes resolve onto Odds-API
- * team names, then onto a fixture already on the cached slate. Never invents
- * a match that is not public.
+ * Sports entity world. Football resolves onto API-Football professional
+ * competitions (any soccer_* key). Other sports stay on the Odds-API launch
+ * slate (MLB / NBA / UFC). Never invents a match that is not public.
  */
 
 import { FOOTBALL_LEAGUE_LABEL_EN, isFootballInstrumentLeague } from '../../sports/api-football-leagues'
@@ -134,14 +133,24 @@ const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['los angeles lakers', 'lakers', '레이커스'], canonical: 'Los Angeles Lakers' },
   { aliases: ['boston celtics', 'celtics', '셀틱스'], canonical: 'Boston Celtics' },
   { aliases: ['golden state warriors', 'warriors', '워리어스'], canonical: 'Golden State Warriors' },
-  { aliases: ['울산', 'ulsan', 'ulsan hyundai', 'ulsan hd'], canonical: 'Ulsan HD' },
-  { aliases: ['전북', 'jeonbuk', 'jeonbuk hyundai', 'jeonbuk motors'], canonical: 'Jeonbuk Motors' },
-  { aliases: ['포항', 'pohang', 'pohang steelers'], canonical: 'Pohang Steelers' },
-  { aliases: ['서울', 'fc 서울', 'fc seoul'], canonical: 'FC Seoul' },
-  { aliases: ['수원', 'suwon', 'suwon samsung', 'suwon fc'], canonical: 'Suwon' },
-  { aliases: ['가시마', 'kashima', 'kashima antlers'], canonical: 'Kashima Antlers' },
-  { aliases: ['우라와', 'urawa', 'urawa reds'], canonical: 'Urawa' },
+  { aliases: ['울산 hd', '울산 현대', '울산', 'ulsan hyundai', 'ulsan hd', 'ulsan'], canonical: 'Ulsan HD' },
+  { aliases: ['전북 현대', '전북', 'jeonbuk hyundai', 'jeonbuk motors', 'jeonbuk'], canonical: 'Jeonbuk Motors' },
+  { aliases: ['포항 스틸러스', '포항', 'pohang steelers', 'pohang'], canonical: 'Pohang Steelers' },
+  { aliases: ['fc서울', 'fc 서울', '서울', 'fc seoul'], canonical: 'FC Seoul' },
+  { aliases: ['수원 삼성', '수원fc', '수원 fc', '수원', 'suwon samsung', 'suwon fc', 'suwon'], canonical: 'Suwon' },
+  { aliases: ['김천 상무', '김천', 'gimcheon sangmu', 'gimcheon'], canonical: 'Gimcheon Sangmu' },
+  { aliases: ['강원fc', '강원 fc', '강원', 'gangwon'], canonical: 'Gangwon' },
+  { aliases: ['인천 유나이티드', '인천', 'incheon united', 'incheon'], canonical: 'Incheon United' },
+  { aliases: ['대전 하나시티즌', '대전 하나', '대전', 'daejeon'], canonical: 'Daejeon' },
+  { aliases: ['광주fc', '광주 fc', '광주', 'gwangju'], canonical: 'Gwangju' },
+  { aliases: ['제주 sk', '제주 유나이티드', '제주', 'jeju united', 'jeju'], canonical: 'Jeju United' },
+  { aliases: ['대구fc', '대구 fc', '대구', 'daegu'], canonical: 'Daegu' },
+  { aliases: ['가시마 앤틀러스', '가시마', 'kashima antlers', 'kashima'], canonical: 'Kashima Antlers' },
+  { aliases: ['우라와 레즈', '우라와', 'urawa reds', 'urawa'], canonical: 'Urawa' },
   { aliases: ['요코하마 f. 마리노스', '요코하마 마리노스', 'yokohama f. marinos', 'yokohama f marinos'], canonical: 'Yokohama F. Marinos' },
+  { aliases: ['가와사키 프론탈레', '가와사키', 'kawasaki frontale', 'kawasaki'], canonical: 'Kawasaki Frontale' },
+  { aliases: ['비셀 고베', 'vissel kobe'], canonical: 'Vissel Kobe' },
+  { aliases: ['산프레체 히로시마', 'sanfrecce hiroshima'], canonical: 'Sanfrecce Hiroshima' },
 ]
 
 const ATHLETES: readonly AliasRow[] = [

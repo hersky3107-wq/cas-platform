@@ -1,10 +1,13 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { extractFootballAliasHits, resolveFootballSearchName } from './api-football-aliases'
+import { extractFootballAliasHits, extractFootballLeagueHits, leftoverFootballTokens, resolveFootballSearchName } from './api-football-aliases'
 import {
   encodeApiFootballEventId,
+  FOOTBALL_SEARCH_WINDOW_MS,
   footballLeagueKeyFromApiId,
+  footballPopularityRank,
+  isRefusedFootballCompetition,
   parseApiFootballEventId,
 } from './api-football-leagues'
 import {
@@ -249,6 +252,12 @@ export async function fetchTeamUpcoming(teamId: number, now = new Date()) {
   return { fixtures: parseApiFootballFixtures(res.json), error: null }
 }
 
+export async function fetchFixturesByLeague(leagueId: number, now = new Date()) {
+  const res = await apiFootballGet(`/fixtures?league=${leagueId}&next=20`, HOUR, now)
+  if (!res.ok) return { fixtures: [] as ApiFootballFixture[], error: res.error }
+  return { fixtures: parseApiFootballFixtures(res.json), error: null }
+}
+
 function fixtureToLite(f: ApiFootballFixture): FootballSearchFixture {
   return {
     fixture_id: encodeApiFootballEventId(f.fixtureId),
@@ -259,56 +268,70 @@ function fixtureToLite(f: ApiFootballFixture): FootballSearchFixture {
   }
 }
 
-function leftoverTeamTokens(raw: string, used: readonly string[]): string[] {
-  let rest = raw
-  for (const hit of used) {
-    rest = rest.replace(new RegExp(hit.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'ig'), ' ')
-  }
-  return rest
-    .split(/[\s,./|vsVS대-]+/)
-    .map((t) => t.trim())
-    .filter((t) => t.length >= 2 && !/^(vs|and|the|fc|next|game|경기|다음)$/i.test(t))
+function inSearchWindow(dateIso: string, now: Date): boolean {
+  const t = Date.parse(dateIso)
+  return Number.isFinite(t) && t > now.getTime() - 3 * 60 * 60 * 1000 && t <= now.getTime() + FOOTBALL_SEARCH_WINDOW_MS
+}
+
+function allowedFixture(f: ApiFootballFixture): boolean {
+  return !isRefusedFootballCompetition(f.leagueId, f.leagueName)
 }
 
 export async function searchFootballFixtures(raw: string, now = new Date()): Promise<FootballSearchFixture[]> {
+  const leagueIds = extractFootballLeagueHits(raw)
   const aliasHits = extractFootballAliasHits(raw)
-  const tokens = leftoverTeamTokens(raw, aliasHits)
+  const tokens = leftoverFootballTokens(raw)
   const queries = [...aliasHits]
   for (const token of tokens) {
     if (queries.length >= 4) break
     if (!queries.some((q) => q.toLowerCase() === token.toLowerCase())) queries.push(token)
   }
-  if (!queries.length) return []
 
   const teams: ApiFootballTeamRef[] = []
   for (const q of queries) {
     const found = await searchTeams(q, now)
     if (found[0]) teams.push(found[0])
   }
-  if (!teams.length) return []
 
   const seen = new Set<number>()
   const fixtures: ApiFootballFixture[] = []
-  if (teams.length >= 2) {
-    const h2h = await fetchHeadToHead(teams[0]!.id, teams[1]!.id, now)
-    for (const f of h2h.fixtures) {
-      if (Date.parse(f.date) < now.getTime() - 3 * 60 * 60 * 1000) continue
+  const push = (rows: readonly ApiFootballFixture[]) => {
+    for (const f of rows) {
+      if (!inSearchWindow(f.date, now) || !allowedFixture(f)) continue
       if (seen.has(f.fixtureId)) continue
       seen.add(f.fixtureId)
       fixtures.push(f)
     }
+  }
+
+  if (leagueIds.length) {
+    for (const id of leagueIds.slice(0, 3)) {
+      const { fixtures: rows } = await fetchFixturesByLeague(id, now)
+      push(rows)
+    }
+  }
+  if (teams.length >= 2) {
+    const h2h = await fetchHeadToHead(teams[0]!.id, teams[1]!.id, now)
+    push(h2h.fixtures)
   }
   for (const team of teams.slice(0, 2)) {
     const upcoming = await fetchTeamUpcoming(team.id, now)
-    for (const f of upcoming.fixtures) {
-      if (seen.has(f.fixtureId)) continue
-      seen.add(f.fixtureId)
-      fixtures.push(f)
-    }
+    push(upcoming.fixtures)
   }
-  return fixtures
-    .filter((f) => Date.parse(f.date) > now.getTime() - 3 * 60 * 60 * 1000)
-    .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+
+  let picked = fixtures
+  if (leagueIds.length && teams.length) {
+    const inLeague = fixtures.filter((f) => leagueIds.includes(f.leagueId))
+    if (inLeague.length) picked = inLeague
+  }
+  if (!picked.length) return []
+
+  return picked
+    .sort((a, b) => {
+      const rank = footballPopularityRank(a.leagueId) - footballPopularityRank(b.leagueId)
+      if (rank !== 0) return rank
+      return Date.parse(a.date) - Date.parse(b.date)
+    })
     .slice(0, 12)
     .map(fixtureToLite)
 }

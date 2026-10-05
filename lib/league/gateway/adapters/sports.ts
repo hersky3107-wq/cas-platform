@@ -1,4 +1,5 @@
 import { isUiHorizon } from '../../horizon'
+import { isRefusedFootballLeagueKey } from '../../sports/api-football-leagues'
 import { isSportsInstrumentLeague } from './sports-catalog'
 import { detectBettingFraming } from '../betting-framing'
 import { refusalMessageKey } from '../refusal-copy'
@@ -33,11 +34,10 @@ import { buildSportsPacket, type SportsPacketIo } from './sports-packet'
 /**
  * SPORTS adapter — binary_subject_outcome, name_match.
  *
- * Freeform is a prediction search, not a browse list: team+opponent (or a
- * dated pair) resolves onto the Odds-API slate and opens; team-alone offers
- * that club’s upcoming fixtures as picks. Vague input is refused with
- * guidance. Betting framing (국민체육진흥법) → refuse. Grading parks to
- * operator_manual.
+ * Freeform is a prediction search, not a browse list. Football uses
+ * API-Football (all professional competitions); other sports stay on the
+ * Odds-API launch slate. Team-alone offers that club’s upcoming fixtures
+ * as picks. Vague input is refused. Betting framing → refuse.
  */
 
 const SPORTS_REFUSALS: readonly RefusalCode[] = [
@@ -63,6 +63,7 @@ function asLaunchSlate(
   const out: SportsFixtureLite[] = []
   for (const row of rows) {
     if (!isSportsInstrumentLeague(row.league)) continue
+    if (isRefusedFootballLeagueKey(row.league)) continue
     if (!row.fixture_id || !row.home || !row.away || !row.kickoff) continue
     out.push({
       fixture_id: row.fixture_id,

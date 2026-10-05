@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { extractFootballAliasHits, resolveFootballSearchName } from '../api-football-aliases'
+import { extractFootballAliasHits, extractFootballLeagueHits, leftoverFootballTokens, resolveFootballSearchName } from '../api-football-aliases'
+import { isRefusedFootballCompetition, isRefusedFootballLeagueKey } from '../api-football-leagues'
 import { footballLeagueKeyFromApiId, parseApiFootballEventId } from '../api-football-leagues'
 import {
   decideFootballMatchGrade,
@@ -55,6 +56,44 @@ describe('K League / J League aliases', () => {
     expect(resolveFootballSearchName('우라와')).toBe('Urawa')
     expect(resolveFootballSearchName('요코하마 F. 마리노스')).toBe('Yokohama F. Marinos')
     expect(extractFootballAliasHits('울산 전북')).toEqual(['Ulsan', 'Jeonbuk Motors'])
+    expect(resolveFootballSearchName('울산 현대')).toBe('Ulsan')
+    expect(resolveFootballSearchName('전북 현대')).toBe('Jeonbuk Motors')
+    expect(resolveFootballSearchName('포항 스틸러스')).toBe('Pohang Steelers')
+    expect(resolveFootballSearchName('FC서울')).toBe('FC Seoul')
+    expect(resolveFootballSearchName('수원 삼성')).toBe('Suwon')
+    expect(resolveFootballSearchName('수원FC')).toBe('Suwon')
+    expect(resolveFootballSearchName('광주FC')).toBe('Gwangju')
+    expect(resolveFootballSearchName('대구FC')).toBe('Daegu')
+    expect(resolveFootballSearchName('인천 유나이티드')).toBe('Incheon United')
+    expect(resolveFootballSearchName('강원FC')).toBe('Gangwon')
+    expect(resolveFootballSearchName('제주 SK')).toBe('Jeju United')
+    expect(resolveFootballSearchName('대전 하나시티즌')).toBe('Daejeon')
+    expect(resolveFootballSearchName('김천 상무')).toBe('Gimcheon Sangmu')
+    expect(resolveFootballSearchName('가와사키 프론탈레')).toBe('Kawasaki Frontale')
+    expect(resolveFootballSearchName('비셀 고베')).toBe('Vissel Kobe')
+    expect(resolveFootballSearchName('산프레체 히로시마')).toBe('Sanfrecce Hiroshima')
+  })
+
+  it('maps K League / J League / Bundesliga names and does not treat them as leftover team tokens', () => {
+    expect(extractFootballLeagueHits('케이리그 울산 다음 경기 이길까?')).toEqual([292, 293])
+    expect(extractFootballLeagueHits('K리그 전북 vs 포항')).toEqual([292, 293])
+    expect(extractFootballLeagueHits('K리그1')).toEqual([292])
+    expect(extractFootballLeagueHits('K리그2')).toEqual([293])
+    expect(extractFootballLeagueHits('J리그 가시마 다음 경기')).toEqual([98, 99])
+    expect(extractFootballLeagueHits('제이리그')).toEqual([98, 99])
+    expect(extractFootballLeagueHits('J1 Kashima')).toEqual([98])
+    expect(extractFootballLeagueHits('분데스리가 바이에른 다음 경기')).toEqual([78])
+    expect(leftoverFootballTokens('케이리그 울산 다음 경기 이길까?')).toEqual([])
+    expect(extractFootballAliasHits('케이리그 울산 다음 경기 이길까?')).toEqual(['Ulsan'])
+  })
+
+  it('refuses amateur / lower-tier competitions and keeps professional keys open', () => {
+    expect(isRefusedFootballCompetition(292, 'K League 1')).toBe(false)
+    expect(isRefusedFootballCompetition(78, 'Bundesliga')).toBe(false)
+    expect(isRefusedFootballCompetition(null, 'K3 League')).toBe(true)
+    expect(isRefusedFootballLeagueKey('soccer_k3_league')).toBe(true)
+    expect(isRefusedFootballCompetition(null, 'EFL League Two')).toBe(true)
+    expect(isRefusedFootballCompetition(null, 'J3 League')).toBe(true)
   })
 })
 
