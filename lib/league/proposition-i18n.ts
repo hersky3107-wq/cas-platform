@@ -10,6 +10,7 @@ import {
   airankAllPropositions,
 } from './ai-ranking/instrument'
 import type { LeagueLocale } from './i18n/locales'
+import { sportsPropositionDisplay } from './sports-display'
 
 export { airankAllPropositions }
 
@@ -38,6 +39,11 @@ export function resolveLocalizedProposition(
     const parsed = round.instrument ? parseAirankInstrument(round.instrument) : null
     const parts = parsed && parsed.ok ? parsed.parts : round.instrument ? decodeAirankInstrument(round.instrument) : null
     if (parts) return airankDisplayProposition(parts, locale, round.horizon)
+  }
+
+  if (round.category === 'sports' && round.instrument) {
+    const shown = sportsPropositionDisplay(round.instrument, round.proposition_text, locale)
+    if (shown.trim()) return shown
   }
 
   if (round.propositions && typeof round.propositions === 'object') {

@@ -5,7 +5,7 @@ import type { LeagueLocale } from './i18n/locales'
 import type { DirectionTally, ModelSide, SideToken } from './card-types'
 import { decodeAirankInstrument, isAirankInstrument, airankSubjectLabel } from './ai-ranking/instrument'
 import { decodeSportsInstrument, opponentTeamOf } from './gateway/adapters/sports-catalog'
-import { displaySportsTeam } from './sports-display'
+import { displaySportsTeam, drawOrLossLabel, sportsDrawPossible } from './sports-display'
 import { techEventFromInstrument, techVerbPair } from './tech-labels'
 
 export function iGa(name: string | null | undefined): '이' | '가' {
@@ -370,9 +370,15 @@ export function sideLabelsFor(
     const opponentRaw = sports ? opponentTeamOf(sports) : null
     const opponent = opponentRaw ? displaySportsTeam(opponentRaw, locale, 'short') : null
     const named = Boolean(subject)
+    const drawPossible = Boolean(sports && sportsDrawPossible(sports.league))
     const yesWord = subject ? pair.answer.yes(subject) : pair.badge.yes
-    const noWord =
-      subject && opponent ? pair.answer.yes(opponent) : subject ? pair.answer.no(subject) : pair.badge.no
+    const noWord = drawPossible && subject
+      ? drawOrLossLabel(subject, locale)
+      : subject && opponent
+        ? pair.answer.yes(opponent)
+        : subject
+          ? pair.answer.no(subject)
+          : pair.badge.no
     const badge = (side: ModelSide | null): string => {
       const s = slot(side)
       if (s === 'a') return yesWord

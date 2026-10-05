@@ -475,3 +475,24 @@ function validYmd(y: string, m: string, d: string): string | null {
 function truncate(text: string, n: number): string {
   return text.length <= n ? text : `${text.slice(0, n - 1)}…`
 }
+
+/** Official seats in these categories must not see third-party tips or odds. */
+export const PREDICTION_FILTER_CATEGORIES = new Set([
+  'sports',
+  'politics_election',
+  'entertainment',
+  'entertainment_awards',
+])
+
+const THIRD_PARTY_PREDICTION_RE =
+  /prediction|predicted|win probability|\btips?\b|\bodds\b|\bbetting\b|\bpicks?\b|예측|승률\s*추정|배당|픽|scorebase|\d+\s*%\s*추정/i
+
+export function isThirdPartyPredictionClaim(text: string): boolean {
+  return THIRD_PARTY_PREDICTION_RE.test(text)
+}
+
+/** True when this text must be dropped from the official research packet. */
+export function omitThirdPartyPredictionText(text: string, category: string | null | undefined): boolean {
+  if (!category || !PREDICTION_FILTER_CATEGORIES.has(category)) return false
+  return isThirdPartyPredictionClaim(text)
+}

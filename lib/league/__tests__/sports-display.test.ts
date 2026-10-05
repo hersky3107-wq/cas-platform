@@ -3,10 +3,15 @@ import { encodeSportsInstrument } from '../gateway/adapters/sports-catalog'
 import { sideLabelsFor } from '../side-labels'
 import {
   displaySportsTeam,
+  drawOrLossLabel,
   formatSportsPropositionLocalized,
+  sportsAllPropositions,
+  sportsCardHeaderLine,
   sportsPropositionDisplay,
   sportsVsLabel,
 } from '../sports-display'
+import { buildSportsRankedRoundInput } from '../gateway/adapters/sports-compose'
+import { LEAGUE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
 
 const DODGERS_MATCH = encodeSportsInstrument({
@@ -67,6 +72,93 @@ describe('sports named sides', () => {
     expect(labels.answer('yes')).toBe('LA 다저스 승')
     expect(labels.tallyWord('yes')).toBe('LA 다저스 승')
     expect(labels.glyph('yes')).toBe('Y')
+  })
+
+  it('labels a draw-possible match as subject win / subject draw-or-loss', () => {
+    const kickoffMs = Date.parse('2026-10-11T05:00:00.000Z')
+    const instrument = encodeSportsInstrument({
+      league: 'soccer_korea_kleague1',
+      eventId: '1507081',
+      side: 'away',
+      kickoffMs,
+      home: 'Gwangju FC',
+      away: 'Ulsan Hyundai FC',
+    })
+    const ko = sideLabelsFor(
+      {
+        proposition_kind: 'binary_subject_outcome',
+        category: 'sports',
+        subject_label: 'Ulsan Hyundai FC',
+        instrument,
+      },
+      getLeagueUiPack('ko'),
+      'ko',
+    )
+    expect(ko.badge('yes')).toBe('울산 HD 승')
+    expect(ko.badge('no')).toBe('울산 HD 무·패')
+    expect(ko.badge('no')).not.toContain('광주')
+    const en = sideLabelsFor(
+      {
+        proposition_kind: 'binary_subject_outcome',
+        category: 'sports',
+        subject_label: 'Ulsan Hyundai FC',
+        instrument,
+      },
+      getLeagueUiPack('en'),
+      'en',
+    )
+    expect(en.badge('yes')).toBe('Ulsan Hyundai FC win')
+    expect(en.badge('no')).toBe('Ulsan Hyundai FC draw or loss')
+    for (const locale of LEAGUE_LOCALES) {
+      const subject = displaySportsTeam('Ulsan Hyundai FC', locale, 'short')
+      const labels = sideLabelsFor(
+        {
+          proposition_kind: 'binary_subject_outcome',
+          category: 'sports',
+          subject_label: 'Ulsan Hyundai FC',
+          instrument,
+        },
+        getLeagueUiPack(locale),
+        locale,
+      )
+      expect(labels.badge('yes')).toContain(subject)
+      expect(labels.badge('no')).toBe(drawOrLossLabel(subject, locale))
+      expect(labels.badge('no')).not.toMatch(/Gwangju FC 승|광주FC 승/)
+    }
+    const header = sportsCardHeaderLine(instrument, 'ko')
+    expect(header).toContain('광주FC vs 울산 HD')
+    expect(header).toContain('K리그1')
+    expect(header).toContain('14:00')
+    expect(header).not.toContain('sports')
+    expect(header).not.toContain('1일')
+  })
+
+  it('maps API club names in Korean and Japanese and localizes the confirm proposition', () => {
+    expect(displaySportsTeam('Ulsan Hyundai FC', 'ko', 'full')).toBe('울산 HD')
+    expect(displaySportsTeam('Gwangju FC', 'ko')).toBe('광주FC')
+    expect(displaySportsTeam('Jeonbuk Motors', 'ko', 'full')).toBe('전북 현대')
+    expect(displaySportsTeam('Pohang Steelers', 'ko', 'full')).toBe('포항 스틸러스')
+    expect(displaySportsTeam('FC Seoul', 'ko')).toBe('FC서울')
+    expect(displaySportsTeam('Kashima Antlers', 'ko', 'full')).toBe('가시마 앤틀러스')
+    expect(displaySportsTeam('Kashima Antlers', 'ja')).toBe('鹿島アントラーズ')
+    expect(displaySportsTeam('Unknown Town FC', 'ko')).toBe('Unknown Town FC')
+    const parts = {
+      league: 'soccer_korea_kleague1',
+      eventId: '1507081',
+      side: 'away' as const,
+      kickoffMs: Date.parse('2026-10-11T05:00:00.000Z'),
+      home: 'Gwangju FC',
+      away: 'Ulsan Hyundai FC',
+    }
+    const props = sportsAllPropositions(parts)
+    expect(props.ko).toContain('울산 HD')
+    expect(props.ko).toContain('광주FC')
+    expect(props.ko).not.toContain('Will ')
+    expect(props.ja).toContain('蔚山HD')
+    expect(props.en).toContain('Will Ulsan Hyundai FC win')
+    const round = buildSportsRankedRoundInput(encodeSportsInstrument(parts))
+    expect(round?.propositions?.ko).toBe(props.ko)
+    expect(formatSportsPropositionLocalized(parts, 'ko')).toContain('정규시간')
   })
 
   it('price rounds stay unnamed ▲▼', () => {

@@ -8,6 +8,7 @@
  */
 
 import { isUiHorizon, type UiHorizon } from '../../horizon'
+import { sportsAllPropositions } from '../../sports-display'
 import type { ComposedRound } from '../types'
 import type { SportsInstrumentParts } from './sports-catalog'
 import {
@@ -111,6 +112,7 @@ export function buildSportsRankedRoundInput(
     proposition_kind: 'binary_subject_outcome',
     subject_label: subject,
     observation_shape: 'name_match',
+    propositions: sportsAllPropositions(parts),
   }
 }
 

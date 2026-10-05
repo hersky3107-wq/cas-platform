@@ -175,7 +175,8 @@ describe('sports multi-fixture clarify reaches generate', () => {
     expect(first.status).toBe('clarify')
     if (first.status !== 'clarify') throw new Error('unreachable')
     expect(first.questions[0]?.slot).toBe('entity_confirmed')
-    expect(first.preview_proposition).toContain('Los Angeles Dodgers')
+    expect(first.preview_proposition).toContain('로스앤젤레스 다저스')
+    expect(first.preview_proposition).not.toContain('Will ')
     expect(charge).not.toHaveBeenCalled()
 
     const second = await runLeagueGateway(

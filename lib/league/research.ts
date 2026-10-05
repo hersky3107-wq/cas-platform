@@ -29,7 +29,7 @@ import {
   runMultiSourceResearch,
 } from './research-providers'
 import { liveResearchProviderCaller } from './research-providers.server'
-import type { MultiSourceLog } from './research-merge'
+import { omitThirdPartyPredictionText, type MultiSourceLog } from './research-merge'
 
 export { TIGHT_QUERY_BUDGET, NORMAL_QUERY_BUDGET, HIGH_QUERY_BUDGET }
 export type { PacketInventoryInput, DirectorNeed }
@@ -552,6 +552,7 @@ export async function getResearchPacket(args: {
       ]
       const summary = attachSourceUrl(r.summary, citations)
       if (!isAdmissibleFinding(summary, citations)) continue
+      if (omitThirdPartyPredictionText(summary, round.category)) continue
       findings.push({
         query: query.q,
         summary,
@@ -683,6 +684,7 @@ async function getMultiSourceResearchPacket(args: {
     configured,
     costCapUsd: capUsd,
     caller: liveResearchProviderCaller,
+    category: round.category,
   })
 
   console.info(

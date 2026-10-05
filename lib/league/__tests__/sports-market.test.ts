@@ -37,6 +37,14 @@ describe('sports market dual-display', () => {
     expect(iron.fracture).toBe('iron')
     expect(fractureFromAgreement(50)).toBe('warn')
     expect(fractureFromAgreement(70)).toBe('none')
+    const soft = buildSportsMarketView({
+      consensus: consensus({ up: 35, down: 4, p: 58, dir: 'yes' }),
+      marketBaselinePct: null,
+    })
+    expect(soft.agreementPct).toBeGreaterThan(85)
+    expect(soft.fracture).toBe('soft')
+    expect(fractureFromAgreement(89.7, 58)).toBe('soft')
+    expect(fractureFromAgreement(89.7, 70)).toBe('iron')
   })
 
   it('sports UI copy never uses 토토/배당/핸디캡/픽/베팅', () => {
@@ -47,6 +55,7 @@ describe('sports market dual-display', () => {
         pack.sportsMarket.marketBaselineLabel,
         pack.sportsMarket.divergenceLabel('+3'),
         pack.sportsMarket.fractureIron,
+        pack.sportsMarket.fractureSoft,
         pack.sportsMarket.fractureWarn,
         pack.sportsMarket.agreement('90'),
         pack.sportsMarket.consensusSeat,
@@ -149,5 +158,47 @@ describe('sports extra-seat redefinition', () => {
     expect(html).toContain('Statistical divergence +7.1p')
     expect(html).toContain('Dodgers vs San Francisco Giants')
     expect(html).toContain('Informational analysis only. This is not gambling advice.')
+  })
+})
+
+describe('consensus abstain tile', () => {
+  it('shows only the localized no-market line, never unparseable or fail_reason', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { ModelTile } = await import('../../../components/league/ModelTile')
+    const { sideLabelsFor } = await import('../side-labels')
+    const t = getLeagueUiPack('ko')
+    const html = renderToStaticMarkup(
+      createElement(ModelTile, {
+        t,
+        labels: sideLabelsFor(
+          { proposition_kind: 'binary_subject_outcome', category: 'sports', subject_label: 'Ulsan HD' },
+          t,
+          'ko',
+        ),
+        model: {
+          prediction_id: null,
+          model_id: 'consensus',
+          brand: 'Market',
+          model_identifier: 'consensus',
+          camp: 'us',
+          league_tier: 'extra',
+          direction: null,
+          probability: null,
+          magnitude: null,
+          qualifierText: null,
+          reasoning_snippet: 'unparseable',
+          is_correct: null,
+          cost_usd: 0,
+          predicted_at: '2026-10-05T00:00:00.000Z',
+          fail_reason: 'unparseable',
+        },
+      }),
+    )
+    expect(html).toContain('시장 신호 없음')
+    expect(html).not.toContain('unparseable')
+    expect(html).not.toContain('fail_reason')
+    expect(getLeagueUiPack('en').modelTile.noMarketSignal).toBe('No market signal')
+    expect(getLeagueUiPack('ja').modelTile.noMarketSignal.length).toBeGreaterThan(0)
   })
 })

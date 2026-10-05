@@ -16,6 +16,7 @@ import { airankGradingFootnote } from '@/lib/league/ai-ranking/instrument'
 import { isNonFinancialCategory } from '@/lib/league/compliance'
 import { resolveLocalizedProposition } from '@/lib/league/proposition-i18n'
 import { techCardHeaderLine, techEventFromInstrument } from '@/lib/league/tech-labels'
+import { sportsCardHeaderLine } from '@/lib/league/sports-display'
 
 /**
  * Header: the ROUND's opened date + instrument + ANCHOR (or "unavailable"),
@@ -87,6 +88,7 @@ export function CardHeader({
             {round.category === 'ai_models' ? null : (
               <p className="mt-0.5 text-[11px] text-league-fg-muted">
                 {techSubhead(round, locale, t) ??
+                  (round.category === 'sports' ? sportsCardHeaderLine(round.instrument, locale) : null) ??
                   `${propertyHorizon ?? t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · ${formatCategory(round.category)}`}
               </p>
             )}

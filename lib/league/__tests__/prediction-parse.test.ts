@@ -313,6 +313,16 @@ describe('reasoning-trace leak — no-answer, nothing stored as rationale', () =
     expect(unclosed?.parseFailure).toBeUndefined()
   })
 
+  it('parses a nemotron thought block when the final line is a side answer', () => {
+    const contract = answerContractFor('binary_subject_outcome')
+    const thought = `<|begin_of_thought|>${'form check. '.repeat(40)}<|end_of_thought|>`
+    const raw = `${thought}\n{"side":"yes","probability":61,"qualifier":"2-1","rationale":"Home form is better.","strongest_counter":"Away counterattack."}`
+    const parsed = contract.parse(raw)
+    expect(parsed?.side).toBe('yes')
+    expect(parsed?.probability).toBe(61)
+    expect(parsed?.parseFailure).toBeUndefined()
+  })
+
   it('does not infer a direction from truncated CoT that exceeds the snippet cap', () => {
     const long = `${'x'.repeat(520)} direction: up probability: 80`
     const parsed = parsePrediction(long)

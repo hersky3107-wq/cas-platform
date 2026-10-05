@@ -48,18 +48,46 @@ export function hasReasoningTrace(text: string): boolean {
   return REASONING_TRACE_MARKERS.some((re) => re.test(text))
 }
 
+const NEMOTRON_CLOSED_THOUGHT = /<\|begin_of_thought\|>[\s\S]*?<\|end_of_thought\|>/gi
+const NEMOTRON_ANALYSIS_CHANNEL =
+  /<\|channel\|>analysis<\|message\|>[\s\S]*?<\|channel\|>final<\|message\|>/gi
+
+function lastMarkerEnd(text: string, pattern: RegExp): number {
+  const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`)
+  let end = -1
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text))) end = match.index + match[0].length
+  return end
+}
+
 /** Drop hidden-thinking wrappers so a trailing answer JSON can still be found. */
 export function stripReasoningTracePreamble(text: string): string {
   let out = text.replace(/<think\b[^>]*>[\s\S]*?<\/think>/gi, '')
+  out = out.replace(new RegExp(NEMOTRON_CLOSED_THOUGHT.source, 'gi'), '')
+  out = out.replace(new RegExp(NEMOTRON_ANALYSIS_CHANNEL.source, 'gi'), '')
+  const markerEnd = Math.max(
+    lastMarkerEnd(out, /<\|end_of_thought\|>/gi),
+    lastMarkerEnd(out, /<\|channel\|>final<\|message\|>/gi),
+  )
+  if (markerEnd >= 0) out = out.slice(markerEnd)
   const lastJson = findLastAnswerJson(out)
   if (lastJson) {
     const before = out.slice(0, lastJson.start)
-    if (/<think\b/i.test(before) || /^(?:thinking(?:\s+process)?|reasoning)\s*:/i.test(before.trim())) {
+    const lead = before.trim()
+    if (
+      /<think\b/i.test(before) ||
+      /<\|begin_of_thought\|>/i.test(before) ||
+      /<\|channel\|>/i.test(before) ||
+      /^(?:thinking(?:\s+process)?|reasoning|analysis)\s*:/i.test(lead)
+    ) {
       return out.slice(lastJson.start).trim()
     }
   }
-  out = out.replace(/<think\b[^>]*>[\s\S]*$/gi, '')
-  const thinkingLead = out.match(/^(?:thinking(?:\s+process)?|reasoning)\s*:\s*/i)
+  if (!findLastAnswerJson(out)) {
+    out = out.replace(/<think\b[^>]*>[\s\S]*$/gi, '')
+    out = out.replace(/<\|begin_of_thought\|>[\s\S]*$/gi, '')
+  }
+  const thinkingLead = out.match(/^(?:thinking(?:\s+process)?|reasoning|analysis)\s*:\s*/i)
   if (thinkingLead) {
     const afterLead = out.slice(thinkingLead[0].length)
     const jsonAfter = findLastAnswerJson(afterLead)
@@ -248,12 +276,12 @@ export function sanitizeReasoningText(raw: string | null | undefined): string | 
 
 /**
  * Finds the LAST parseable JSON object in mixed output that carries a
- * "direction" key (the v2 contract puts the answer JSON on the final line,
- * after the visible reasoning block). Scans '{' positions from the END and
- * brace-matches forward with string-awareness, so braces inside the reasoning
- * prose or inside JSON string values cannot break extraction. The
- * direction-key requirement skips nested sub-objects that parse but are not
- * the answer.
+ * "direction" or "side" key (the v2 contract puts the answer JSON on the
+ * final line, after the visible reasoning block). Scans '{' positions from
+ * the END and brace-matches forward with string-awareness, so braces inside
+ * the reasoning prose or inside JSON string values cannot break extraction.
+ * The key requirement skips nested sub-objects that parse but are not the
+ * answer. Sports seats answer with "side", not "direction".
  */
 function findLastAnswerJson(text: string): { obj: Record<string, unknown>; start: number } | null {
   const opens: number[] = []
@@ -278,7 +306,7 @@ function findLastAnswerJson(text: string): { obj: Record<string, unknown>; start
         if (depth === 0) {
           try {
             const obj = JSON.parse(text.slice(start, i + 1)) as Record<string, unknown>
-            if (obj && typeof obj === 'object' && 'direction' in obj) return { obj, start }
+            if (obj && typeof obj === 'object' && ('direction' in obj || 'side' in obj)) return { obj, start }
           } catch {
             // not valid JSON from this open brace — try the previous one
           }

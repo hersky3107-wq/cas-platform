@@ -5,7 +5,10 @@
 
 import type { ConsensusSummary } from './card-types'
 
-export type SportsFractureKind = 'iron' | 'warn' | 'none'
+export type SportsFractureKind = 'iron' | 'soft' | 'warn' | 'none'
+
+/** "철벽" only when the weighted confidence is this high. */
+export const IRON_MIN_CONFIDENCE_PCT = 70
 
 export type SportsMarketView = {
   ensembleWinPct: number | null
@@ -35,9 +38,15 @@ export function agreementPctOf(
   return round1((a / responded) * 100)
 }
 
-export function fractureFromAgreement(agreementPct: number | null): SportsFractureKind {
+export function fractureFromAgreement(
+  agreementPct: number | null,
+  confidencePct?: number | null,
+): SportsFractureKind {
   if (agreementPct == null) return 'none'
-  if (agreementPct > 85) return 'iron'
+  if (agreementPct > 85) {
+    if (confidencePct == null || confidencePct >= IRON_MIN_CONFIDENCE_PCT) return 'iron'
+    return 'soft'
+  }
   if (agreementPct >= 45 && agreementPct <= 55) return 'warn'
   return 'none'
 }
@@ -59,7 +68,7 @@ export function buildSportsMarketView(args: {
     marketBaselinePct,
     divergencePp,
     agreementPct,
-    fracture: fractureFromAgreement(agreementPct),
+    fracture: fractureFromAgreement(agreementPct, args.consensus.aggregateProbability),
   }
 }
 

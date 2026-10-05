@@ -6,6 +6,7 @@
 import {
   formatMultiSourceSection,
   mergeResearchFindings,
+  omitThirdPartyPredictionText,
   type MergedResearch,
   type MultiSourceLog,
   type RawResearchFinding,
@@ -159,6 +160,7 @@ export async function runMultiSourceResearch(args: {
   estimates?: Partial<Record<ResearchProviderId, number>>
   caller: ResearchProviderCaller
   nowMs?: () => number
+  category?: string | null
 }): Promise<MultiSourceResearchResult> {
   const timeoutMs = args.timeoutMs ?? RESEARCH_PROVIDER_TIMEOUT_MS
   const { selected, skippedForCap } = selectResearchProviders({
@@ -213,7 +215,8 @@ export async function runMultiSourceResearch(args: {
     raw.push(...row.findings)
   }
 
-  const merged = mergeResearchFindings(raw)
+  const kept = raw.filter((row) => !omitThirdPartyPredictionText(row.claim, args.category))
+  const merged = mergeResearchFindings(kept)
   const log: MultiSourceLog = {
     providersUsed,
     providersFailed,

@@ -69,8 +69,9 @@ export function ModelTile({
     const sanitized = isScout ? sanitizeScoutRationaleDisplay(coerced) : coerced
     return category ? visibleLeagueText(category, sanitized) : sanitized
   }
-  const original = snippetForDisplay(model.reasoning_snippet)
-  const translated = snippetForDisplay(translatedRationale)
+  const consensusAbstain = model.model_id === 'consensus' && !model.direction
+  const original = consensusAbstain ? null : snippetForDisplay(model.reasoning_snippet)
+  const translated = consensusAbstain ? null : snippetForDisplay(translatedRationale)
   const rationale = translated || original
   const showNoRationale = !rationale && hasCallableSide(model.direction)
   const hasReasoning = Boolean(rationale)
@@ -227,7 +228,11 @@ export function ModelTile({
         </p>
         <CountryFlag brand={model.brand} camp={model.camp} />
 
-        {model.fail_reason && !model.direction ? (
+        {consensusAbstain ? (
+          <p className="text-[11px] font-semibold text-league-fg-muted" data-testid="consensus-no-market">
+            {t.modelTile.noMarketSignal}
+          </p>
+        ) : model.fail_reason && !model.direction ? (
           <p className="font-mono text-[10px] text-amber-700/90" data-testid="seat-fail-reason">
             {model.fail_reason}
           </p>

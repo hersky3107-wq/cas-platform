@@ -565,6 +565,7 @@ function isHttp429(message: string | undefined): boolean {
   return isHttp429Message(message)
 }
 
+/** Server log only. The public tile never receives this snippet or a fail_reason code. */
 export function logUnparseableRaw(modelId: string, text: string | null | undefined): void {
   const raw = (text ?? '').replace(/\s+/g, ' ').slice(0, 300)
   console.log(`[league-generate] unparseable model=${modelId} raw=${raw}`)

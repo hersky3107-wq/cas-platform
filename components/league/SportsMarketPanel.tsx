@@ -14,7 +14,13 @@ export function SportsMarketPanel({
       ? null
       : copy.divergenceLabel(view.divergencePp > 0 ? `+${view.divergencePp}` : String(view.divergencePp))
   const fracture =
-    view.fracture === 'iron' ? copy.fractureIron : view.fracture === 'warn' ? copy.fractureWarn : null
+    view.fracture === 'iron'
+      ? copy.fractureIron
+      : view.fracture === 'soft'
+        ? copy.fractureSoft
+        : view.fracture === 'warn'
+          ? copy.fractureWarn
+          : null
 
   return (
     <section

@@ -219,6 +219,8 @@ export type LeagueUiPack = {
     marketBaselineLabel: string
     divergenceLabel: (pp: string) => string
     fractureIron: string
+    /** High agreement, but weighted confidence is under 70%. Never "철벽". */
+    fractureSoft: string
     fractureWarn: string
     agreement: (pct: string) => string
     consensusSeat: string
@@ -453,6 +455,8 @@ export type LeagueUiPack = {
     translating: string
     /** Callable seat with no stored rationale (never raw answer JSON). */
     noRationale: string
+    /** Consensus extra abstained because no market price exists. Never a fail_reason code. */
+    noMarketSignal: string
   }
   /**
    * Cards-tab board chrome (division headers + final-verdict label).
@@ -934,6 +938,7 @@ const en: LeagueUiPack = {
     marketBaselineLabel: 'Market baseline',
     divergenceLabel: (pp) => `Statistical divergence ${pp}p`,
     fractureIron: 'Ironclad agreement',
+    fractureSoft: 'Most AIs picked the same side (weak confidence)',
     fractureWarn: 'AI split alert',
     agreement: (pct) => `${pct}% agreement`,
     consensusSeat: 'Market baseline',
@@ -1178,6 +1183,7 @@ const en: LeagueUiPack = {
     originalLabel: 'Original',
     translating: 'Translating…',
     noRationale: 'No rationale provided',
+    noMarketSignal: 'No market signal',
   },
   bracket: {
     finalVerdict: 'Final verdict',
@@ -1559,6 +1565,7 @@ const ko: LeagueUiPack = {
     marketBaselineLabel: '시장 기준선',
     divergenceLabel: (pp) => `통계적 괴리율 ${pp}%p`,
     fractureIron: '철벽 합의',
+    fractureSoft: 'AI 다수가 같은 쪽(약한 확신)',
     fractureWarn: 'AI 분열 경보',
     agreement: (pct) => `합의 ${pct}%`,
     consensusSeat: '시장 기준선',
@@ -1797,6 +1804,7 @@ const ko: LeagueUiPack = {
     originalLabel: '원문',
     translating: '번역 중…',
     noRationale: '근거 없음',
+    noMarketSignal: '시장 신호 없음',
   },
   bracket: {
     finalVerdict: '최종 판정',
@@ -2175,6 +2183,7 @@ const ja: LeagueUiPack = {
     marketBaselineLabel: '市場基準線',
     divergenceLabel: (pp) => `統計的乖離 ${pp}p`,
     fractureIron: '堅い合意',
+    fractureSoft: 'AIの多数が同じ側（弱い確信）',
     fractureWarn: 'AI分裂アラート',
     agreement: (pct) => `合意 ${pct}%`,
     consensusSeat: '市場基準線',
@@ -2413,6 +2422,7 @@ const ja: LeagueUiPack = {
     originalLabel: '原文',
     translating: '翻訳中…',
     noRationale: '根拠なし',
+    noMarketSignal: '市場シグナルなし',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -2788,6 +2798,7 @@ const zhTW: LeagueUiPack = {
     marketBaselineLabel: '市場基準線',
     divergenceLabel: (pp) => `統計乖離 ${pp}p`,
     fractureIron: '高度共識',
+    fractureSoft: '多數 AI 站同一邊（信心偏弱）',
     fractureWarn: 'AI 分裂警示',
     agreement: (pct) => `共識 ${pct}%`,
     consensusSeat: '市場基準線',
@@ -3023,6 +3034,7 @@ const zhTW: LeagueUiPack = {
     originalLabel: '原文',
     translating: '翻譯中…',
     noRationale: '無依據',
+    noMarketSignal: '沒有市場訊號',
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -3399,6 +3411,7 @@ const fr: LeagueUiPack = {
     marketBaselineLabel: 'Référence de marché',
     divergenceLabel: (pp) => `Écart statistique ${pp}p`,
     fractureIron: 'Accord solide',
+    fractureSoft: 'La majorité des IA est du même côté (confiance faible)',
     fractureWarn: 'Alerte de fracture IA',
     agreement: (pct) => `accord ${pct} %`,
     consensusSeat: 'Référence de marché',
@@ -3644,6 +3657,7 @@ const fr: LeagueUiPack = {
     originalLabel: 'Original',
     translating: 'Traduction…',
     noRationale: 'Aucune justification',
+    noMarketSignal: 'Pas de signal de marché',
   },
   bracket: {
     finalVerdict: 'Verdict final',
@@ -4031,6 +4045,7 @@ const es: LeagueUiPack = {
     marketBaselineLabel: 'Línea de mercado',
     divergenceLabel: (pp) => `Divergencia estadística ${pp}p`,
     fractureIron: 'Acuerdo sólido',
+    fractureSoft: 'La mayoría de las IA elige el mismo lado (confianza baja)',
     fractureWarn: 'Alerta de fractura de IA',
     agreement: (pct) => `${pct}% de acuerdo`,
     consensusSeat: 'Línea de mercado',
@@ -4276,6 +4291,7 @@ const es: LeagueUiPack = {
     originalLabel: 'Original',
     translating: 'Traduciendo…',
     noRationale: 'Sin justificación',
+    noMarketSignal: 'Sin señal de mercado',
   },
   bracket: {
     finalVerdict: 'Veredicto final',
@@ -4663,6 +4679,7 @@ const ar: LeagueUiPack = {
     marketBaselineLabel: 'خط السوق المرجعي',
     divergenceLabel: (pp) => `الانحراف الإحصائي ${pp}p`,
     fractureIron: 'اتفاق راسخ',
+    fractureSoft: 'أغلبية الذكاء الاصطناعي في الجهة نفسها (ثقة ضعيفة)',
     fractureWarn: 'تنبيه انقسام الذكاء الاصطناعي',
     agreement: (pct) => `اتفاق ${pct}%`,
     consensusSeat: 'خط السوق المرجعي',
@@ -4901,6 +4918,7 @@ const ar: LeagueUiPack = {
     originalLabel: 'الأصل',
     translating: 'جارٍ الترجمة…',
     noRationale: 'لا توجد مبررات',
+    noMarketSignal: 'لا توجد إشارة سوق',
   },
   bracket: {
     finalVerdict: 'الحكم النهائي',
@@ -5284,6 +5302,7 @@ const pt: LeagueUiPack = {
     marketBaselineLabel: 'Linha de mercado',
     divergenceLabel: (pp) => `Divergência estatística ${pp}p`,
     fractureIron: 'Acordo sólido',
+    fractureSoft: 'A maioria das IAs no mesmo lado (confiança fraca)',
     fractureWarn: 'Alerta de cisão da IA',
     agreement: (pct) => `${pct}% de acordo`,
     consensusSeat: 'Linha de mercado',
@@ -5524,6 +5543,7 @@ const pt: LeagueUiPack = {
     originalLabel: 'Original',
     translating: 'Traduzindo…',
     noRationale: 'Sem justificativa',
+    noMarketSignal: 'Sem sinal de mercado',
   },
   bracket: {
     finalVerdict: 'Veredito final',

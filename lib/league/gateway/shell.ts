@@ -516,7 +516,7 @@ export async function runLeagueGateway(req: GatewayRequest, deps: GatewayDeps): 
         }),
       ],
       partial: slots,
-      preview_proposition: preview.proposition_text,
+      preview_proposition: preview.propositions?.[locale] ?? preview.proposition_text,
     }
   }
 

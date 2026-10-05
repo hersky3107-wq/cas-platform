@@ -4,7 +4,7 @@
  * the MATCH instrument the same way catalog chips localize AAPL → 애플.
  */
 
-import type { LeagueLocale } from './i18n/locales'
+import { LEAGUE_LOCALES, type LeagueLocale } from './i18n/locales'
 import {
   decodeSportsInstrument,
   isNflLeague,
@@ -37,11 +37,32 @@ const TEAM_KO: Record<string, TeamKo> = {
   'Chicago Cubs': { short: '시카고 컵스', full: '시카고 컵스' },
   'Atlanta Braves': { short: '애틀랜타 브레이브스', full: '애틀랜타 브레이브스' },
   'Houston Astros': { short: '휴스턴 애스트로스', full: '휴스턴 애스트로스' },
-  'Ulsan HD': { short: '울산', full: '울산 HD' },
-  'Jeonbuk Motors': { short: '전북', full: '전북 현대' },
-  'Pohang Steelers': { short: '포항', full: '포항 스틸러스' },
-  'FC Seoul': { short: '서울', full: 'FC 서울' },
+  'Ulsan HD': { short: '울산 HD', full: '울산 HD' },
+  'Gwangju FC': { short: '광주FC', full: '광주FC' },
+  'Jeonbuk Motors': { short: '전북 현대', full: '전북 현대' },
+  'Pohang Steelers': { short: '포항 스틸러스', full: '포항 스틸러스' },
+  'FC Seoul': { short: 'FC서울', full: 'FC서울' },
+  'Daegu FC': { short: '대구FC', full: '대구FC' },
+  'Daejeon Hana Citizen': { short: '대전 하나', full: '대전 하나 시티즌' },
+  'Incheon United': { short: '인천', full: '인천 유나이티드' },
+  'Jeju United': { short: '제주', full: '제주 유나이티드' },
+  'Gangwon FC': { short: '강원FC', full: '강원FC' },
+  'Gimcheon Sangmu': { short: '김천 상무', full: '김천 상무' },
+  'FC Anyang': { short: '안양FC', full: 'FC안양' },
+  'Suwon FC': { short: '수원FC', full: '수원FC' },
+  'Suwon Samsung Bluewings': { short: '수원 삼성', full: '수원 삼성' },
+  'Busan IPark': { short: '부산', full: '부산 아이파크' },
+  'Jeonnam Dragons': { short: '전남', full: '전남 드래곤즈' },
+  'Seongnam FC': { short: '성남', full: '성남FC' },
+  'Gyeongnam FC': { short: '경남', full: '경남FC' },
   'Kashima Antlers': { short: '가시마', full: '가시마 앤틀러스' },
+  'Vissel Kobe': { short: '고베', full: '비셀 고베' },
+  'Kawasaki Frontale': { short: '가와사키', full: '가와사키 프론탈레' },
+  'Cerezo Osaka': { short: '세레소', full: '세레소 오사카' },
+  'Gamba Osaka': { short: '감바', full: '감바 오사카' },
+  'FC Tokyo': { short: 'FC도쿄', full: 'FC 도쿄' },
+  'Nagoya Grampus': { short: '나고야', full: '나고야 그램퍼스' },
+  'Sanfrecce Hiroshima': { short: '히로시마', full: '산프레체 히로시마' },
   Urawa: { short: '우라와', full: '우라와 레즈' },
   'Yokohama F. Marinos': { short: '요코하마 마리노스', full: '요코하마 F. 마리노스' },
   'Tottenham Hotspur': { short: '토트넘', full: '토트넘 홋스퍼' },
@@ -85,6 +106,56 @@ const TEAM_KO: Record<string, TeamKo> = {
   Portugal: { short: '포르투갈', full: '포르투갈' },
   Netherlands: { short: '네덜란드', full: '네덜란드' },
   'Borussia Dortmund': { short: '도르트문트', full: '도르트문트' },
+  'RB Leipzig': { short: '라이프치히', full: 'RB 라이프치히' },
+  'Bayer Leverkusen': { short: '레버쿠젠', full: '바이어 레버쿠젠' },
+  'Kansas City Chiefs': { short: '캔자스시티', full: '캔자스시티 치프스' },
+  'Philadelphia Eagles': { short: '이글스', full: '필라델피아 이글스' },
+  'Dallas Cowboys': { short: '카우보이스', full: '댈러스 카우보이스' },
+  'Toronto Maple Leafs': { short: '메이플리프스', full: '토론토 메이플리프스' },
+}
+
+/** API-Football / Odds names that share one display row. */
+const TEAM_ALIAS: Record<string, string> = {
+  'Ulsan Hyundai FC': 'Ulsan HD',
+  'Ulsan Hyundai': 'Ulsan HD',
+  'Jeonbuk Hyundai Motors': 'Jeonbuk Motors',
+  'Jeonbuk Hyundai': 'Jeonbuk Motors',
+  'Daejeon Citizen': 'Daejeon Hana Citizen',
+  'Daejeon Hana': 'Daejeon Hana Citizen',
+  'Jeju SK': 'Jeju United',
+  'Gimcheon Sangmu FC': 'Gimcheon Sangmu',
+  'Bayern München': 'Bayern Munich',
+  'Bayern Munchen': 'Bayern Munich',
+  'Paris Saint-Germain': 'Paris Saint Germain',
+  'Urawa Red Diamonds': 'Urawa',
+  'Yokohama F Marinos': 'Yokohama F. Marinos',
+}
+
+const TEAM_JA: Record<string, string> = {
+  'Ulsan HD': '蔚山HD',
+  'Gwangju FC': '光州FC',
+  'Jeonbuk Motors': '全北現代',
+  'Pohang Steelers': '浦項スティーラーズ',
+  'FC Seoul': 'FCソウル',
+  'Kashima Antlers': '鹿島アントラーズ',
+  Urawa: '浦和レッズ',
+  'Yokohama F. Marinos': '横浜F・マリノス',
+  'Vissel Kobe': 'ヴィッセル神戸',
+  'Kawasaki Frontale': '川崎フロンターレ',
+  Arsenal: 'アーセナル',
+  'Tottenham Hotspur': 'トッテナム',
+  'Manchester City': 'マンチェスター・シティ',
+  'Manchester United': 'マンチェスター・ユナイテッド',
+  Liverpool: 'リバプール',
+  Chelsea: 'チェルシー',
+  'Real Madrid': 'レアル・マドリード',
+  Barcelona: 'バルセロナ',
+  'Bayern Munich': 'バイエルン',
+  'Paris Saint Germain': 'パリ・サンジェルマン',
+  'Los Angeles Dodgers': 'ドジャース',
+  'New York Yankees': 'ヤンキース',
+  'Los Angeles Lakers': 'レイカーズ',
+  'Boston Celtics': 'セルティックス',
 }
 
 const LEAGUE_KO: Record<SportsLeagueKey, string> = {
@@ -100,20 +171,46 @@ const LEAGUE_KO: Record<SportsLeagueKey, string> = {
   mma_mixed_martial_arts: 'UFC',
 }
 
-function lookupKo(name: string): TeamKo | null {
-  return TEAM_KO[name] ?? null
+function canonicalTeam(name: string): string {
+  return TEAM_ALIAS[name] ?? name
 }
 
-/** Locale-aware team name. Unmapped teams keep the English (romanized) Odds-API name. */
+function lookupKo(name: string): TeamKo | null {
+  return TEAM_KO[name] ?? TEAM_KO[canonicalTeam(name)] ?? null
+}
+
+/** Locale-aware team name. Unmapped teams keep the API name. */
 export function displaySportsTeam(
   name: string,
   locale: LeagueLocale,
   form: 'short' | 'full' = 'short',
 ): string {
+  const key = canonicalTeam(name)
+  if (locale === 'ja') return TEAM_JA[key] ?? TEAM_JA[name] ?? name
   if (locale !== 'ko') return name
   const row = lookupKo(name)
   if (!row) return name
   return form === 'full' ? row.full : row.short
+}
+
+/** Football and NFL can finish level. NHL's official result includes OT/SO. */
+export function sportsDrawPossible(league: string): boolean {
+  return isSoccerLeague(league) || isNflLeague(league)
+}
+
+const DRAW_OR_LOSS: Record<LeagueLocale, (subject: string) => string> = {
+  en: (s) => `${s} draw or loss`,
+  ko: (s) => `${s} 무·패`,
+  ja: (s) => `${s}の引き分け・負け`,
+  'zh-TW': (s) => `${s} 和或敗`,
+  fr: (s) => `${s} nul ou défaite`,
+  es: (s) => `${s} empate o derrota`,
+  ar: (s) => `${s} تعادل أو خسارة`,
+  pt: (s) => `${s} empate ou derrota`,
+}
+
+export function drawOrLossLabel(subject: string, locale: LeagueLocale): string {
+  return DRAW_OR_LOSS[locale](subject)
 }
 
 export function sportsLeagueLabel(league: string, locale: LeagueLocale): string {
@@ -131,32 +228,95 @@ export function sportsVsLabel(instrument: string, locale: LeagueLocale): string 
   return `${subject} vs ${opponent}`
 }
 
+function sportsHomeAwayLabel(parts: SportsInstrumentParts, locale: LeagueLocale): string {
+  const home = displaySportsTeam(parts.home, locale, 'short')
+  const away = displaySportsTeam(parts.away, locale, 'short')
+  return `${home} vs ${away}`
+}
+
+export function formatSportsKickoff(kickoffMs: number, locale: LeagueLocale): string {
+  const tag = locale === 'zh-TW' ? 'zh-TW' : locale
+  return new Intl.DateTimeFormat(tag, {
+    timeZone: 'Asia/Seoul',
+    month: 'numeric',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23',
+  }).format(new Date(kickoffMs))
+}
+
+/** "{home} vs {away} · {competition} · {kickoff}" — never the raw horizon chip. */
+export function sportsCardHeaderLine(instrument: string, locale: LeagueLocale): string | null {
+  const parts = decodeSportsInstrument(instrument)
+  if (!parts) return null
+  return `${sportsHomeAwayLabel(parts, locale)} · ${sportsLeagueLabel(parts.league, locale)} · ${formatSportsKickoff(parts.kickoffMs, locale)}`
+}
+
 export function formatSportsPropositionLocalized(parts: SportsInstrumentParts, locale: LeagueLocale): string {
-  const subject = displaySportsTeam(subjectTeamOf(parts), locale, locale === 'ko' ? 'full' : 'short')
-  const opponent = displaySportsTeam(opponentTeamOf(parts), locale, locale === 'ko' ? 'full' : 'short')
+  const named = locale === 'ko' || locale === 'ja'
+  const subject = displaySportsTeam(subjectTeamOf(parts), locale, named ? 'full' : 'short')
+  const opponent = displaySportsTeam(opponentTeamOf(parts), locale, named ? 'full' : 'short')
   const competition = sportsLeagueLabel(parts.league, locale)
+  const soccer = isSoccerLeague(parts.league)
+  const nfl = isNflLeague(parts.league)
+  const nhl = isNhlLeague(parts.league)
   if (locale === 'ko') {
-    if (isSoccerLeague(parts.league)) {
-      return `${subject}가 ${opponent}와의 ${competition} 경기에서 정규시간(90분+추가시간, 무승부는 패)에 이길까?`
-    }
-    if (isNflLeague(parts.league)) {
-      return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 무승부는 패.`
-    }
-    if (isNhlLeague(parts.league)) {
-      return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장·승부치기 포함 최종 결과.`
-    }
+    if (soccer) return `${subject}가 ${opponent}와의 ${competition} 경기에서 정규시간(90분+추가시간, 무승부는 패)에 이길까?`
+    if (nfl) return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 무승부는 패.`
+    if (nhl) return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장·승부치기 포함 최종 결과.`
     return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까?`
   }
-  if (isSoccerLeague(parts.league)) {
+  if (locale === 'ja') {
+    if (soccer) return `${subject}は${opponent}との${competition}の試合で、通常時間（90分＋アディショナル、引き分けは否）に勝つか？`
+    if (nfl) return `${subject}は${opponent}との${competition}の試合に勝つか？引き分けは否。`
+    if (nhl) return `${subject}は${opponent}との${competition}の試合に勝つか？延長・シュートアウトを含む最終結果。`
+    return `${subject}は${opponent}との${competition}の試合に勝つか？`
+  }
+  if (locale === 'zh-TW') {
+    if (soccer) return `${subject}會在對${opponent}的${competition}比賽中，於正規時間（90分鐘加傷停，和局算否）贏嗎？`
+    if (nfl) return `${subject}會在對${opponent}的${competition}比賽中贏嗎？平手算否。`
+    if (nhl) return `${subject}會在對${opponent}的${competition}比賽中贏嗎？含延長與點球大戰的最終結果。`
+    return `${subject}會在對${opponent}的${competition}比賽中贏嗎？`
+  }
+  if (locale === 'fr') {
+    if (soccer) return `${subject} va-t-il gagner le match de ${competition} contre ${opponent} dans le temps réglementaire (90 minutes plus arrêts de jeu ; un nul est Non) ?`
+    if (nfl) return `${subject} va-t-il gagner le match de ${competition} contre ${opponent} ? Un nul est Non.`
+    if (nhl) return `${subject} va-t-il gagner le match de ${competition} contre ${opponent} (résultat final, prolongations et tirs au but compris) ?`
+    return `${subject} va-t-il gagner le match de ${competition} contre ${opponent} ?`
+  }
+  if (locale === 'es') {
+    if (soccer) return `¿Ganará ${subject} el partido de ${competition} contra ${opponent} en el tiempo reglamentario (90 minutos más descuento; un empate es No)?`
+    if (nfl) return `¿Ganará ${subject} el partido de ${competition} contra ${opponent}? Un empate es No.`
+    if (nhl) return `¿Ganará ${subject} el partido de ${competition} contra ${opponent} (resultado final, prórroga y tanda de penaltis incluidas)?`
+    return `¿Ganará ${subject} el partido de ${competition} contra ${opponent}?`
+  }
+  if (locale === 'ar') {
+    if (soccer) return `هل سيفوز ${subject} على ${opponent} في ${competition} خلال الوقت الأصلي (90 دقيقة مع الوقت بدل الضائع؛ التعادل يعني لا)؟`
+    if (nfl) return `هل سيفوز ${subject} على ${opponent} في ${competition}؟ التعادل يعني لا.`
+    if (nhl) return `هل سيفوز ${subject} على ${opponent} في ${competition} (النتيجة النهائية بما فيها الوقت الإضافي وركلات الترجيح)؟`
+    return `هل سيفوز ${subject} على ${opponent} في ${competition}؟`
+  }
+  if (locale === 'pt') {
+    if (soccer) return `${subject} vai vencer o jogo de ${competition} contra ${opponent} no tempo regulamentar (90 minutos mais acréscimos; um empate é Não)?`
+    if (nfl) return `${subject} vai vencer o jogo de ${competition} contra ${opponent}? Um empate é Não.`
+    if (nhl) return `${subject} vai vencer o jogo de ${competition} contra ${opponent} (resultado final, incluindo prorrogação e pênaltis)?`
+    return `${subject} vai vencer o jogo de ${competition} contra ${opponent}?`
+  }
+  if (soccer) {
     return `Will ${subject} win the ${competition} match against ${opponent} in regular time (90 minutes plus stoppage; a draw is No)?`
   }
-  if (isNflLeague(parts.league)) {
-    return `Will ${subject} win the ${competition} game against ${opponent}? A tie is No.`
-  }
-  if (isNhlLeague(parts.league)) {
+  if (nfl) return `Will ${subject} win the ${competition} game against ${opponent}? A tie is No.`
+  if (nhl) {
     return `Will ${subject} win the ${competition} game against ${opponent} (final result, including overtime and the shootout)?`
   }
   return `Will ${subject} win the ${competition} game against ${opponent}?`
+}
+
+export function sportsAllPropositions(parts: SportsInstrumentParts): Record<LeagueLocale, string> {
+  const out = {} as Record<LeagueLocale, string>
+  for (const locale of LEAGUE_LOCALES) out[locale] = formatSportsPropositionLocalized(parts, locale)
+  return out
 }
 
 /** Card / locked-panel proposition. Falls back to the stored English text. */
