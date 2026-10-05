@@ -67,6 +67,7 @@ export type GradingRoundRecord = {
   grading_status?: GradingStatus
   opened_at?: string | null
   created_at?: string | null
+  proposition_text?: string | null
 }
 
 /** Why a grading attempt was refused BEFORE any price data was considered. */

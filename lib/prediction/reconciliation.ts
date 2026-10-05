@@ -5,6 +5,7 @@ import { fetchDailyCloses, mapInstrumentToTwelveData } from '@/lib/league/market
 import { adapterForInstrument, adapterForLedgerCategory } from '@/lib/league/gateway/adapters/registry.server'
 import { gradePlanFor } from '@/lib/league/gateway/grade-plan'
 import { gradeKrBoxOfficeInstrument } from '@/lib/league/entertainment/kobis'
+import { gradeFootballMatchInstrument } from '@/lib/league/sports/api-football-grade'
 import { gradeBrandTableChildren, resolveAirankOfficial } from '@/lib/league/ai-ranking/grade.server'
 import { isBrandTableInstrument } from '@/lib/league/ai-ranking/brand-table'
 import { VOID_UNRESOLVABLE_REASON } from '@/lib/league/manual-grade/types'
@@ -67,7 +68,7 @@ export { GRADING_SWEEP_SCAN_CAP } from './grading-core'
  */
 
 const ROUND_COLUMNS =
-  'id, instrument, category, resolves_at, opened_at, created_at, anchor_price, anchor_price_at, actual_outcome, resolved_at, ' +
+  'id, instrument, category, proposition_text, resolves_at, opened_at, created_at, anchor_price, anchor_price_at, actual_outcome, resolved_at, ' +
   'grading_busy_until, grading_attempted_at, unresolvable_reason, grading_status'
 
 function asRecord(row: Record<string, unknown>): GradingRoundRecord {
@@ -92,6 +93,7 @@ function asRecord(row: Record<string, unknown>): GradingRoundRecord {
         : 'auto',
     opened_at: typeof row.opened_at === 'string' ? row.opened_at : null,
     created_at: typeof row.created_at === 'string' ? row.created_at : null,
+    proposition_text: typeof row.proposition_text === 'string' ? row.proposition_text : null,
   }
 }
 
@@ -421,7 +423,12 @@ async function fetchSeriesViaGradePlan(instrument: string, startDate: string, en
     return fetchDailyCloses(instrument, startDate, endDate)
   }
   // operator_manual / official lists are not price executors.
-  if (plan.source === 'operator_manual' || plan.source === 'kobis' || plan.source === 'lmarena') {
+  if (
+    plan.source === 'operator_manual' ||
+    plan.source === 'kobis' ||
+    plan.source === 'lmarena' ||
+    plan.source === 'api_football'
+  ) {
     return { ok: false as const, error: `${plan.source}: awaiting official snapshot` }
   }
   return { ok: false as const, error: `no grading executor for tier-1 source '${plan.tier1Kind}' yet` }
@@ -434,6 +441,9 @@ async function resolveOfficialOutcome(
   const plan = planForInstrument(instrument, round.category)
   if (plan.source === 'lmarena') {
     return resolveAirankOfficial(instrument, round.opened_at ?? round.created_at ?? null)
+  }
+  if (plan.source === 'api_football') {
+    return gradeFootballMatchInstrument(instrument, round.proposition_text ?? '')
   }
   if (plan.source !== 'kobis') return null
   const grade = await gradeKrBoxOfficeInstrument(instrument)

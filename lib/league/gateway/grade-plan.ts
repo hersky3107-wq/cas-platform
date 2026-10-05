@@ -42,6 +42,7 @@ export type GradePlan =
   | { source: 'operator_manual' }
   | { source: 'kobis'; tier1: GradeSource }
   | { source: 'lmarena'; tier1: GradeSource }
+  | { source: 'api_football'; tier1: GradeSource }
   | { source: 'unsupported'; tier1Kind: string }
 
 /**
@@ -89,6 +90,9 @@ export function gradePlanFor(adapter: CategoryAdapter | null, instrument: string
   }
   if (tier1.tier === 1 && tier1.kind === 'official_api' && tier1.endpoint.startsWith('lmarena:')) {
     return { source: 'lmarena', tier1 }
+  }
+  if (tier1.tier === 1 && tier1.kind === 'official_api' && tier1.endpoint.startsWith('api-football:')) {
+    return { source: 'api_football', tier1 }
   }
   if (sources.some((s) => s.kind === 'operator_manual')) {
     return { source: 'operator_manual' }

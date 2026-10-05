@@ -15,10 +15,22 @@ type Draft = {
 
 const EMPTY_DRAFT: Draft = { verdict: '', evidenceUrl: '', note: '' }
 
+function footballEvidenceFromInstrument(instrument: string): string | null {
+  const parts = instrument.split(':')
+  if (parts[0] !== 'MATCH' || !String(parts[1] ?? '').startsWith('soccer_')) return null
+  const eventId = parts[2] ?? ''
+  const home = decodeURIComponent(parts[5] ?? '')
+  const away = decodeURIComponent(parts[6] ?? '')
+  const bits = [`fixture ${eventId || '—'}`]
+  if (home && away) bits.push(`${home} vs ${away}`)
+  return bits.join(' · ')
+}
+
 export default function LeagueManualGradePage() {
   const [authState, setAuthState] = useState<'checking' | 'denied' | 'allowed'>('checking')
   const [rounds, setRounds] = useState<ManualQueueItem[]>([])
   const [pendingCount, setPendingCount] = useState(0)
+  const [apiFootballUsage, setApiFootballUsage] = useState<{ day: string; requestCount: number } | null>(null)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
@@ -40,11 +52,17 @@ export default function LeagueManualGradePage() {
     setError(null)
     try {
       const res = await fetch('/api/admin/league/grade', { credentials: 'include' })
-      const body = (await res.json()) as { rounds?: ManualQueueItem[]; pendingCount?: number; error?: string }
+      const body = (await res.json()) as {
+        rounds?: ManualQueueItem[]
+        pendingCount?: number
+        apiFootballUsage?: { day: string; requestCount: number }
+        error?: string
+      }
       if (!res.ok) throw new Error(body.error ?? `request failed (${res.status})`)
       const next = body.rounds ?? []
       setRounds(next)
       setPendingCount(body.pendingCount ?? next.length)
+      setApiFootballUsage(body.apiFootballUsage ?? null)
       setSelectedId((current) => (current && next.some((r) => r.id === current) ? current : next[0]?.id ?? null))
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'failed to load queue')
@@ -326,6 +344,10 @@ export default function LeagueManualGradePage() {
           ) : (
             <span className="text-xs text-slate-500">채점 대기 0건</span>
           )}
+          <span className="text-xs text-slate-400">
+            API-Football today{apiFootballUsage ? ` ${apiFootballUsage.day}` : ''}:{' '}
+            {apiFootballUsage ? `${apiFootballUsage.requestCount} requests` : '—'}
+          </span>
         </div>
 
         {loading ? <p className="text-sm text-slate-400">불러오는 중…</p> : null}
@@ -452,6 +474,11 @@ export default function LeagueManualGradePage() {
                 <p className="mt-2 text-xs text-slate-400">
                   A측: {selected.side_a} · B측: {selected.side_b}
                 </p>
+                {footballEvidenceFromInstrument(selected.instrument) ? (
+                  <p className="mt-2 text-xs text-cyan-200/90">
+                    API-Football evidence: {footballEvidenceFromInstrument(selected.instrument)}
+                  </p>
+                ) : null}
 
                 {selected.null_seats.length > 0 ? (
                   <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">

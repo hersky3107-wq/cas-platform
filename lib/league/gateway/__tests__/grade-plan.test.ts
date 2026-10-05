@@ -159,4 +159,11 @@ describe('the reconciliation engine actually consults the plan (consumption proo
     const queue = readFileSync(join(__dirname, '../../manual-grade/queue.ts'), 'utf8')
     expect(queue).toContain("plan.source === 'lmarena'")
   })
+
+  it('API-Football official path is wired and not parked at resolves_at', () => {
+    expect(src).toContain("plan.source === 'api_football'")
+    expect(src).toContain('gradeFootballMatchInstrument')
+    const queue = readFileSync(join(__dirname, '../../manual-grade/queue.ts'), 'utf8')
+    expect(queue).toContain("plan.source === 'api_football'")
+  })
 })

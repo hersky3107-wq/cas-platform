@@ -11,6 +11,7 @@ import type { SportsInstrumentParts } from './sports-catalog'
 import {
   decodeSportsInstrument,
   encodeSportsInstrument,
+  FOOTBALL_RESOLVES_AFTER_KICKOFF_MS,
   isSoccerLeague,
   leagueLabelEn,
   opponentTeamOf,
@@ -69,7 +70,8 @@ export function buildSportsRankedRoundInput(
   const parts = decodeSportsInstrument(instrument)
   if (!parts) return null
   const kickoffIso = new Date(parts.kickoffMs).toISOString()
-  const resolvesAt = new Date(parts.kickoffMs + SPORTS_RESOLVES_AFTER_KICKOFF_MS).toISOString()
+  const afterMs = isSoccerLeague(parts.league) ? FOOTBALL_RESOLVES_AFTER_KICKOFF_MS : SPORTS_RESOLVES_AFTER_KICKOFF_MS
+  const resolvesAt = new Date(parts.kickoffMs + afterMs).toISOString()
   const subject = subjectTeamOf(parts)
   const horizon = uiHorizon && isUiHorizon(uiHorizon) ? uiHorizon : horizonForKickoff(kickoffIso, now)
   const encoded = encodeSportsInstrument(parts)

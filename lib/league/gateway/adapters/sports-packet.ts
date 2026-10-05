@@ -4,6 +4,8 @@
  * users predict days ahead, when a confirmed lineup does not exist yet.
  */
 
+import type { FootballMatchFacts } from '../../sports/api-football-packet'
+import { formatFootballMatchFacts } from '../../sports/api-football-packet'
 import { teamsMatch } from '../../sports/lineup-logic'
 import type { DevigResult, FixtureStats, SportsFixtureCacheRow } from '../../sports/types'
 import type { CategoryPacket, PacketBuildContext, PacketRound } from '../types'
@@ -41,8 +43,15 @@ export type SportsPacketIo = {
   listUpcomingFixtures(now?: Date): Promise<
     Array<{ fixture_id: string; league: string; home: string; away: string; kickoff: string }>
   >
+  searchFootballFixtures?(query: string, now?: Date): Promise<
+    Array<{ fixture_id: string; league: string; home: string; away: string; kickoff: string }>
+  >
   readFixture(eventId: string): Promise<SportsFixtureCacheRow | null>
   fetchFixtureStats(eventId: string): Promise<FixtureStats | null>
+  fetchFootballFacts?(
+    eventId: string,
+    hint?: { home: string; away: string; kickoffIso: string },
+  ): Promise<FootballMatchFacts | null>
   getResearchPacket(args: {
     round: PacketRound
     budgetRemainingUsd: number
@@ -267,31 +276,41 @@ export function assembleSportsInjection(args: {
   cache: SportsFixtureCacheRow | null
   stats: FixtureStats | null
   research: SportsResearchPacket
+  football?: FootballMatchFacts | null
 }): string {
   const { parts } = args
   const subject = subjectTeamOf(parts)
   const opponent = opponentTeamOf(parts)
   const kickoffIso = new Date(parts.kickoffMs).toISOString()
-  const sportNote = isSoccerLeague(parts.league)
+  const football = isSoccerLeague(parts.league)
+  const sportNote = football
     ? 'Regular time 90 minutes + stoppage. Draw = No.'
     : 'Official final result (extras count when they are official).'
+  const resolveNote = football ? 'Resolves ~3h after kickoff.' : 'Resolves ~2.5h after kickoff.'
   const lines: string[] = [
-    'SPORTS PACKET — closed book. Read the favorite edge AND the underdog\'s priced chance. Informational analysis only. Not gambling advice.',
+    football
+      ? 'SPORTS PACKET — closed book. Football facts only in this block. Informational analysis only. Not gambling advice.'
+      : 'SPORTS PACKET — closed book. Read the favorite edge AND the underdog\'s priced chance. Informational analysis only. Not gambling advice.',
     `Proposition: ${args.round.proposition_text}`,
     `Subject: ${subject}`,
     `Opponent: ${opponent}`,
     `Kickoff: ${kickoffIso}`,
     `Competition: ${leagueLabelEn(parts.league)}`,
-    `Resolution: ${sportNote} Resolves ~2.5h after kickoff.`,
-    '',
-    ...formatMarketBaseline(args.cache?.devigged_odds ?? null, subject),
-    '',
-    ...formatBothSides(parts, args.cache?.devigged_odds ?? null, args.stats ?? args.cache?.stats ?? null),
-    '',
-    ...formatStats(args.stats ?? args.cache?.stats ?? null, parts.home, parts.away),
-    '',
-    ...formatFindings(args.research),
+    `Resolution: ${sportNote} ${resolveNote}`,
   ]
+  if (football) {
+    lines.push('', ...formatFootballMatchFacts(args.football ?? null))
+  } else {
+    lines.push(
+      '',
+      ...formatMarketBaseline(args.cache?.devigged_odds ?? null, subject),
+      '',
+      ...formatBothSides(parts, args.cache?.devigged_odds ?? null, args.stats ?? args.cache?.stats ?? null),
+      '',
+      ...formatStats(args.stats ?? args.cache?.stats ?? null, parts.home, parts.away),
+    )
+  }
+  lines.push('', ...formatFindings(args.research))
   return lines.join('\n')
 }
 
@@ -315,9 +334,16 @@ export function formatSportsCrowBrief(
 export async function buildSportsPacket(ctx: PacketBuildContext, io: SportsPacketIo): Promise<CategoryPacket> {
   const parts = decodeSportsInstrument(ctx.round.instrument)
   const queries = parts ? sportsSearchQueries(parts) : []
-  const [cache, stats, research] = await Promise.all([
+  const [cache, stats, football, research] = await Promise.all([
     parts ? io.readFixture(parts.eventId).catch(() => null) : Promise.resolve(null),
     parts ? io.fetchFixtureStats(parts.eventId).catch(() => null) : Promise.resolve(null),
+    parts && isSoccerLeague(parts.league) && io.fetchFootballFacts
+      ? io.fetchFootballFacts(parts.eventId, {
+          home: parts.home,
+          away: parts.away,
+          kickoffIso: new Date(parts.kickoffMs).toISOString(),
+        }).catch(() => null)
+      : Promise.resolve(null),
     io.getResearchPacket({
       round: ctx.round,
       budgetRemainingUsd: ctx.costCapUsd,
@@ -326,7 +352,7 @@ export async function buildSportsPacket(ctx: PacketBuildContext, io: SportsPacke
     }),
   ])
   const injection = parts
-    ? assembleSportsInjection({ round: ctx.round, parts, cache, stats, research })
+    ? assembleSportsInjection({ round: ctx.round, parts, cache, stats, research, football })
     : `SPORTS PACKET — UNAVAILABLE (instrument ${ctx.round.instrument})`
   return {
     injection,

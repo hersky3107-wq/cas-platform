@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdmin, requireAdminUser } from '@/lib/admin/require-admin'
 import { applyManualGrade, applyManualGradesBulk, countNeedsGrading, listNeedsGradingQueue } from '@/lib/league/manual-grade'
+import { readApiFootballUsageToday } from '@/lib/league/sports/api-football'
 import { isManualVerdict, type BulkGradeItem } from '@/lib/league/manual-grade/types'
 
 export const runtime = 'nodejs'
@@ -10,8 +11,12 @@ export async function GET(req: Request) {
   const forbidden = await requireAdmin(req)
   if (forbidden) return forbidden
   try {
-    const [rounds, pendingCount] = await Promise.all([listNeedsGradingQueue(), countNeedsGrading()])
-    return NextResponse.json({ rounds, pendingCount })
+    const [rounds, pendingCount, apiFootballUsage] = await Promise.all([
+      listNeedsGradingQueue(),
+      countNeedsGrading(),
+      readApiFootballUsageToday().catch(() => ({ day: new Date().toISOString().slice(0, 10), requestCount: 0 })),
+    ])
+    return NextResponse.json({ rounds, pendingCount, apiFootballUsage })
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'failed to load grading queue' },

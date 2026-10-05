@@ -151,6 +151,16 @@ export function RecordRoomBody({
   )
 }
 
+function footballGradeEvidenceLine(instrument: string, actualOutcome: string | null): string | null {
+  const parts = instrument.split(':')
+  if (parts[0] !== 'MATCH' || !String(parts[1] ?? '').startsWith('soccer_')) return null
+  const eventId = parts[2] ?? ''
+  if (actualOutcome && /API-Football fixture|fixture \d+|af-\d+/.test(actualOutcome)) {
+    return `API-Football: ${actualOutcome}`
+  }
+  return eventId ? `API-Football fixture ${eventId}` : null
+}
+
 function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: LeagueUiPack; locale: LeagueLocale }) {
   const auditWindow =
     headerWindow({
@@ -187,6 +197,11 @@ function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: Leag
       {entry.actual_outcome ? (
         <p className="mt-1 text-[11px] text-league-fg-muted">
           {t.recordRoom.outcomeLabel}: {auditWindow}
+        </p>
+      ) : null}
+      {footballGradeEvidenceLine(entry.instrument, entry.actual_outcome) ? (
+        <p className="mt-1 text-[11px] text-league-fg-muted">
+          {footballGradeEvidenceLine(entry.instrument, entry.actual_outcome)}
         </p>
       ) : null}
       {entry.models.length > 0 ? (

@@ -13,6 +13,7 @@ import {
   subjectTeamOf,
   type SportsInstrumentParts,
 } from './gateway/adapters/sports-catalog'
+import { FOOTBALL_LEAGUE_LABEL_KO } from './sports/api-football-leagues'
 import type { SportsLeagueKey } from './sports/types'
 
 type TeamKo = { short: string; full: string }
@@ -34,6 +35,13 @@ const TEAM_KO: Record<string, TeamKo> = {
   'Chicago Cubs': { short: '시카고 컵스', full: '시카고 컵스' },
   'Atlanta Braves': { short: '애틀랜타 브레이브스', full: '애틀랜타 브레이브스' },
   'Houston Astros': { short: '휴스턴 애스트로스', full: '휴스턴 애스트로스' },
+  'Ulsan HD': { short: '울산', full: '울산 HD' },
+  'Jeonbuk Motors': { short: '전북', full: '전북 현대' },
+  'Pohang Steelers': { short: '포항', full: '포항 스틸러스' },
+  'FC Seoul': { short: '서울', full: 'FC 서울' },
+  'Kashima Antlers': { short: '가시마', full: '가시마 앤틀러스' },
+  Urawa: { short: '우라와', full: '우라와 레즈' },
+  'Yokohama F. Marinos': { short: '요코하마 마리노스', full: '요코하마 F. 마리노스' },
   'Tottenham Hotspur': { short: '토트넘', full: '토트넘 홋스퍼' },
   Arsenal: { short: '아스날', full: '아스날' },
   'Manchester City': { short: '맨시티', full: '맨체스터 시티' },
@@ -104,8 +112,10 @@ export function displaySportsTeam(
   return form === 'full' ? row.full : row.short
 }
 
-export function sportsLeagueLabel(league: SportsLeagueKey, locale: LeagueLocale): string {
-  if (locale === 'ko') return LEAGUE_KO[league]
+export function sportsLeagueLabel(league: string, locale: LeagueLocale): string {
+  if (locale === 'ko') {
+    return LEAGUE_KO[league as SportsLeagueKey] ?? FOOTBALL_LEAGUE_LABEL_KO[league] ?? leagueLabelEn(league)
+  }
   return leagueLabelEn(league)
 }
 

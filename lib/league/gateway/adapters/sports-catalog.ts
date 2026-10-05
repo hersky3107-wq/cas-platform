@@ -5,6 +5,7 @@
  * a match that is not public.
  */
 
+import { FOOTBALL_LEAGUE_LABEL_EN, isFootballInstrumentLeague } from '../../sports/api-football-leagues'
 import { teamsMatch } from '../../sports/lineup-logic'
 import { isSportsLeagueKey, type SportsLeagueKey } from '../../sports/types'
 import { detectBettingFraming } from '../betting-framing'
@@ -12,7 +13,7 @@ import { detectBettingFraming } from '../betting-framing'
 export type SportsSide = 'home' | 'away'
 
 export type SportsInstrumentParts = {
-  league: SportsLeagueKey
+  league: string
   eventId: string
   side: SportsSide
   kickoffMs: number
@@ -22,13 +23,18 @@ export type SportsInstrumentParts = {
 
 export type SportsFixtureLite = {
   fixture_id: string
-  league: SportsLeagueKey
+  league: string
   home: string
   away: string
   kickoff: string
 }
 
 export const SPORTS_RESOLVES_AFTER_KICKOFF_MS = 2.5 * 60 * 60 * 1000
+export const FOOTBALL_RESOLVES_AFTER_KICKOFF_MS = 3 * 60 * 60 * 1000
+
+export function isSportsInstrumentLeague(league: string): boolean {
+  return isSportsLeagueKey(league) || isFootballInstrumentLeague(league)
+}
 
 export const SOCCER_LEAGUES: readonly SportsLeagueKey[] = [
   'soccer_epl',
@@ -41,7 +47,7 @@ export const SOCCER_LEAGUES: readonly SportsLeagueKey[] = [
 export const MMA_LEAGUES: readonly SportsLeagueKey[] = ['mma_mixed_martial_arts']
 
 export function isSoccerLeague(league: string): boolean {
-  return (SOCCER_LEAGUES as readonly string[]).includes(league)
+  return (SOCCER_LEAGUES as readonly string[]).includes(league) || isFootballInstrumentLeague(league)
 }
 
 export function isMmaLeague(league: string): boolean {
@@ -59,8 +65,16 @@ const LEAGUE_LABEL_EN: Record<SportsLeagueKey, string> = {
   mma_mixed_martial_arts: 'UFC',
 }
 
-export function leagueLabelEn(league: SportsLeagueKey): string {
-  return LEAGUE_LABEL_EN[league]
+export function leagueLabelEn(league: string): string {
+  if (league in LEAGUE_LABEL_EN) return LEAGUE_LABEL_EN[league as SportsLeagueKey]
+  if (FOOTBALL_LEAGUE_LABEL_EN[league]) return FOOTBALL_LEAGUE_LABEL_EN[league]
+  if (league.startsWith('soccer_')) {
+    return league
+      .replace(/^soccer_/, '')
+      .replace(/_/g, ' ')
+      .replace(/\b\w/g, (c) => c.toUpperCase())
+  }
+  return league
 }
 
 type AliasRow = { aliases: readonly string[]; canonical: string }
@@ -120,6 +134,14 @@ const TEAM_ALIASES: readonly AliasRow[] = [
   { aliases: ['los angeles lakers', 'lakers', '레이커스'], canonical: 'Los Angeles Lakers' },
   { aliases: ['boston celtics', 'celtics', '셀틱스'], canonical: 'Boston Celtics' },
   { aliases: ['golden state warriors', 'warriors', '워리어스'], canonical: 'Golden State Warriors' },
+  { aliases: ['울산', 'ulsan', 'ulsan hyundai', 'ulsan hd'], canonical: 'Ulsan HD' },
+  { aliases: ['전북', 'jeonbuk', 'jeonbuk hyundai', 'jeonbuk motors'], canonical: 'Jeonbuk Motors' },
+  { aliases: ['포항', 'pohang', 'pohang steelers'], canonical: 'Pohang Steelers' },
+  { aliases: ['서울', 'fc 서울', 'fc seoul'], canonical: 'FC Seoul' },
+  { aliases: ['수원', 'suwon', 'suwon samsung', 'suwon fc'], canonical: 'Suwon' },
+  { aliases: ['가시마', 'kashima', 'kashima antlers'], canonical: 'Kashima Antlers' },
+  { aliases: ['우라와', 'urawa', 'urawa reds'], canonical: 'Urawa' },
+  { aliases: ['요코하마 f. 마리노스', '요코하마 마리노스', 'yokohama f. marinos', 'yokohama f marinos'], canonical: 'Yokohama F. Marinos' },
 ]
 
 const ATHLETES: readonly AliasRow[] = [
@@ -167,7 +189,7 @@ export function decodeSportsInstrument(instrument: string | null | undefined): S
   const kickoffMs = Number(parts[4])
   const home = decodeURIComponent(parts[5] ?? '')
   const away = decodeURIComponent(parts[6] ?? '')
-  if (!isSportsLeagueKey(league)) return null
+  if (!isSportsInstrumentLeague(league)) return null
   if (!eventId || (side !== 'home' && side !== 'away')) return null
   if (!Number.isFinite(kickoffMs) || kickoffMs <= 0) return null
   if (!home || !away) return null

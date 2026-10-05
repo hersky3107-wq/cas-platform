@@ -4,6 +4,7 @@ import {
   decodeSportsInstrument,
   encodeSportsInstrument,
   extractSportsMentions,
+  FOOTBALL_RESOLVES_AFTER_KICKOFF_MS,
   SPORTS_RESOLVES_AFTER_KICKOFF_MS,
 } from '../adapters/sports-catalog'
 import { formatSportsProposition } from '../adapters/sports-compose'
@@ -151,13 +152,13 @@ describe('sports CategoryAdapter', () => {
     expect(round.proposition_text).toMatch(/draw is No/i)
     expect(round.proposition_text).not.toMatch(/아스날|손흥민|토토|배당|핸디캡|픽/)
     expect(round.resolution_rule).toMatch(/regular time/)
-    expect(Date.parse(round.resolves_at)).toBe(KICKOFF_MS + SPORTS_RESOLVES_AFTER_KICKOFF_MS)
+    expect(Date.parse(round.resolves_at)).toBe(KICKOFF_MS + FOOTBALL_RESOLVES_AFTER_KICKOFF_MS)
     const parts = decodeSportsInstrument(round.instrument)!
     expect(formatSportsProposition(parts)).toBe(round.proposition_text)
   })
 
-  it('parks sports rounds on the operator_manual / needs_grading ladder', () => {
-    const instrument = encodeSportsInstrument({
+  it('grades football MATCH via API-Football and parks other sports on operator_manual', () => {
+    const soccer = encodeSportsInstrument({
       league: 'soccer_epl',
       eventId: 'evt-ars-tot',
       side: 'home',
@@ -165,10 +166,55 @@ describe('sports CategoryAdapter', () => {
       home: 'Arsenal',
       away: 'Tottenham Hotspur',
     })
-    const sources = adapter.gradeSources(slotsFor(instrument))
-    expect(sources[0]).toEqual({ tier: 1, kind: 'perplexity_sourced', require_url: true })
-    expect(sources[2]).toEqual({ tier: 3, kind: 'operator_manual', require_url: true })
-    expect(gradePlanFor(adapter, instrument)).toEqual({ source: 'operator_manual' })
+    const soccerSources = adapter.gradeSources(slotsFor(soccer))
+    expect(soccerSources[0]).toEqual({ tier: 1, kind: 'official_api', endpoint: 'api-football:fixture' })
+    expect(soccerSources[2]).toEqual({ tier: 3, kind: 'operator_manual', require_url: true })
+    expect(gradePlanFor(adapter, soccer)).toEqual({
+      source: 'api_football',
+      tier1: { tier: 1, kind: 'official_api', endpoint: 'api-football:fixture' },
+    })
+
+    const mlb = encodeSportsInstrument({
+      league: 'baseball_mlb',
+      eventId: 'evt-lad-nyy',
+      side: 'home',
+      kickoffMs: Date.parse('2026-10-05T00:10:00.000Z'),
+      home: 'Los Angeles Dodgers',
+      away: 'New York Yankees',
+    })
+    expect(adapter.gradeSources(slotsFor(mlb))[0]).toEqual({
+      tier: 1,
+      kind: 'perplexity_sourced',
+      require_url: true,
+    })
+    expect(gradePlanFor(adapter, mlb)).toEqual({ source: 'operator_manual' })
+  })
+
+  it('uses API-Football as the primary football slate for Korean club names', async () => {
+    const footballAdapter = createSportsAdapter(
+      {
+        ...SLATE_IO,
+        searchFootballFixtures: async () => [
+          {
+            fixture_id: 'af-867946',
+            league: 'soccer_korea_kleague1',
+            home: 'Ulsan HD',
+            away: 'Jeonbuk Motors',
+            kickoff: '2026-10-06T06:00:00.000Z',
+          },
+        ],
+      },
+      () => new Date('2026-09-27T00:00:00.000Z'),
+    )
+    const hit = await footballAdapter.resolveEntity('울산 전북', 'ko')
+    expect(hit.ok).toBe(true)
+    if (!hit.ok) return
+    const parts = decodeSportsInstrument(hit.entity_id)
+    expect(parts?.league).toBe('soccer_korea_kleague1')
+    expect(parts?.home).toBe('Ulsan HD')
+    expect(parts?.away).toBe('Jeonbuk Motors')
+    expect(parts?.side).toBe('home')
+    expect(hit.skip_confirm).toBe(true)
   })
 })
 
@@ -253,17 +299,75 @@ describe('sports packet assembly', () => {
         tier: 'high',
       },
     })
-    expect(injection).toContain('MARKET BASELINE')
-    expect(injection).toContain('not a required vote')
+    expect(injection).toContain('FOOTBALL MATCH FACTS')
     expect(injection).toContain('BOTH SIDES')
-    expect(injection).toContain('Underdog live chance: Tottenham Hotspur is still priced at 11.5%')
-    expect(injection).toContain('Home advantage in this single game belongs to Arsenal')
-    expect(injection).not.toMatch(/Pinnacle|DraftKings|FanDuel|Bet365|bookTitle|Book:/)
-    expect(injection).toContain('70.0%')
-    expect(injection).toMatch(/MARKET BASELINE/i)
-    expect(injection).toContain('xG')
+    expect(injection).toContain('none measured')
     expect(injection).toContain('[projected]')
+    expect(injection).not.toMatch(/MARKET BASELINE|Pinnacle|DraftKings|FanDuel|Bet365|bookTitle|Book:|decimalOdds/i)
+    expect(injection).not.toContain('70.0%')
     expect(injection).not.toMatch(/토토|배당|핸디캡|픽|베팅/)
+  })
+
+  it('keeps bookmaker odds in the MLB official packet (non-football)', () => {
+    const parts = decodeSportsInstrument(
+      encodeSportsInstrument({
+        league: 'baseball_mlb',
+        eventId: 'evt-lad-nyy',
+        side: 'home',
+        kickoffMs: Date.parse('2026-10-05T00:10:00.000Z'),
+        home: 'Los Angeles Dodgers',
+        away: 'New York Yankees',
+      }),
+    )!
+    const injection = assembleSportsInjection({
+      round: {
+        proposition_text: 'Will the Los Angeles Dodgers win the MLB game against the New York Yankees?',
+        category: 'sports',
+        instrument: encodeSportsInstrument(parts),
+        horizon: '1w',
+        resolution_rule: 'official',
+        resolves_at: new Date(Date.parse('2026-10-05T00:10:00.000Z') + SPORTS_RESOLVES_AFTER_KICKOFF_MS).toISOString(),
+      },
+      parts,
+      cache: {
+        fixture_id: 'evt-lad-nyy',
+        league: 'baseball_mlb',
+        teams: { home: 'Los Angeles Dodgers', away: 'New York Yankees' },
+        kickoff: '2026-10-05T00:10:00.000Z',
+        devigged_odds: {
+          method: 'shin',
+          bookKey: 'pinnacle',
+          bookTitle: 'Pinnacle',
+          bookClass: 'sharp',
+          booksum: 1.04,
+          overroundPct: 4,
+          shinZ: 0.02,
+          outcomes: [
+            { name: 'Los Angeles Dodgers', decimalOdds: 1.7, rawImplied: 0.588, probability: 0.56 },
+            { name: 'New York Yankees', decimalOdds: 2.2, rawImplied: 0.455, probability: 0.44 },
+          ],
+          limitation: null,
+        },
+        lineups: null,
+        stats: null,
+        fetched_at: '2026-09-27T00:00:00.000Z',
+        ttl: '2026-09-27T05:00:00.000Z',
+      },
+      stats: null,
+      research: {
+        available: false,
+        cached: false,
+        cacheKey: 'k',
+        queries: [],
+        findings: [],
+        costUsd: 0,
+        tier: 'high',
+      },
+    })
+    expect(injection).toContain('MARKET BASELINE')
+    expect(injection).toContain('56.0%')
+    expect(injection).not.toMatch(/Pinnacle|DraftKings|bookTitle/)
+    expect(injection).not.toContain('FOOTBALL MATCH FACTS')
   })
 
   it('adds a confirmed-pitcher search for MLB', () => {

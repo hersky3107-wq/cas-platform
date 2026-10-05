@@ -1,5 +1,5 @@
 import { isUiHorizon } from '../../horizon'
-import { isSportsLeagueKey } from '../../sports/types'
+import { isSportsInstrumentLeague } from './sports-catalog'
 import { detectBettingFraming } from '../betting-framing'
 import { refusalMessageKey } from '../refusal-copy'
 import { targetRefusalCode } from '../target-resolve'
@@ -19,6 +19,7 @@ import type {
 import {
   decodeSportsInstrument,
   encodeSportsInstrument,
+  isSoccerLeague,
   subjectTeamOf,
   type SportsFixtureLite,
 } from './sports-catalog'
@@ -61,7 +62,7 @@ function asLaunchSlate(
 ): SportsFixtureLite[] {
   const out: SportsFixtureLite[] = []
   for (const row of rows) {
-    if (!isSportsLeagueKey(row.league)) continue
+    if (!isSportsInstrumentLeague(row.league)) continue
     if (!row.fixture_id || !row.home || !row.away || !row.kickoff) continue
     out.push({
       fixture_id: row.fixture_id,
@@ -114,7 +115,11 @@ export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () =
       }
 
       const now = nowFn()
-      const slate = asLaunchSlate(await io.listUpcomingFixtures(now))
+      const [oddsRows, footballRows] = await Promise.all([
+        io.listUpcomingFixtures(now),
+        io.searchFootballFixtures ? io.searchFootballFixtures(raw, now).catch(() => []) : Promise.resolve([]),
+      ])
+      const slate = asLaunchSlate([...footballRows, ...oddsRows])
       const hit = resolveSportsTarget(raw, slate, now)
       if (hit.kind === 'picks') return clarifyInstruments(hit.options)
       if (hit.kind !== 'ready') return { ok: false, refuse: refuse(targetRefusalCode(hit.kind)) }
@@ -168,7 +173,15 @@ export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () =
       return built
     },
 
-    gradeSources(_slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {
+    gradeSources(slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {
+      const parts = decodeSportsInstrument(slots.entity_id)
+      if (parts && isSoccerLeague(parts.league)) {
+        return [
+          { tier: 1, kind: 'official_api', endpoint: 'api-football:fixture' },
+          { tier: 2, kind: 'perplexity_sourced', require_url: true },
+          { tier: 3, kind: 'operator_manual', require_url: true },
+        ]
+      }
       return [
         { tier: 1, kind: 'perplexity_sourced', require_url: true },
         { tier: 2, kind: 'perplexity_sourced', require_url: true },
