@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/db/supabase";
 import { AdminNav } from "@/app/admin/AdminNav";
+import { ReplayTrackTables, type ReplayCompareCell, type ReplayCostRow } from "@/components/admin/ReplayTrackTables";
 
 const OWNER_EMAIL = "hersky3107@gmail.com";
 
@@ -131,6 +132,8 @@ export default function AdminPage() {
   const [gradingError, setGradingError] = useState<string | null>(null);
   const [gradingReport, setGradingReport] = useState<GradingReport | null>(null);
   const [trackRecord, setTrackRecord] = useState<TrackRecordCell[] | null>(null);
+  const [replayCells, setReplayCells] = useState<ReplayCompareCell[]>([]);
+  const [replayCosts, setReplayCosts] = useState<ReplayCostRow[]>([]);
   const [trackRecordError, setTrackRecordError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -170,6 +173,10 @@ export default function AdminPage() {
 
         const trackJson = (await trackRes.json().catch(() => null)) as {
           cells?: TrackRecordCell[];
+          replay?: {
+            cells?: ReplayCompareCell[];
+            costs?: ReplayCostRow[];
+          };
           error?: string;
         };
         if (!trackRes.ok) {
@@ -177,6 +184,8 @@ export default function AdminPage() {
           setTrackRecordError(trackJson?.error ?? "Track record request failed");
         } else {
           setTrackRecord(trackJson.cells ?? []);
+          setReplayCells(trackJson.replay?.cells ?? []);
+          setReplayCosts(trackJson.replay?.costs ?? []);
           setTrackRecordError(null);
         }
       } catch (e: unknown) {
@@ -658,6 +667,7 @@ export default function AdminPage() {
               ) : (
                 <p className="mt-2 text-xs text-slate-500">채점된 라운드가 없거나 SQL이 아직 적용되지 않았습니다.</p>
               )}
+              <ReplayTrackTables cells={replayCells} costs={replayCosts} />
             </div>
           </div>
         </section>

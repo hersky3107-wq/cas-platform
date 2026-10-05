@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin/require-admin'
 import { loadConsensusTrackRecord } from '@/lib/league/consensus-record-summary'
+import { loadReplayAdmin } from '@/lib/league/extra/lesson-notes.server'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -10,7 +11,8 @@ export async function GET(req: Request) {
   if (forbidden) return forbidden
   try {
     const cells = await loadConsensusTrackRecord()
-    return NextResponse.json({ cells })
+    const replay = await loadReplayAdmin().catch(() => ({ cells: [], costs: [] }))
+    return NextResponse.json({ cells, replay })
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'failed to load track record' },

@@ -393,7 +393,7 @@ export function lookupRosterEntry(modelId: string): RosterEntry | undefined {
   return ROSTER_BY_MODEL_ID.get(modelId)
 }
 
-/** Official 40 + extra 4 — generation progress and streaming shells. */
+/** Official 40 + extra seats — generation progress and streaming shells. */
 export function getProgressRosterIds(): string[] {
   return [...LEAGUE_ROSTER.map((entry) => entry.model_id), ...extraSeatIds()]
 }
@@ -403,7 +403,12 @@ export function lookupRosterDisplay(modelId: string): { brand: string; model_id:
   const live = lookupRosterEntry(modelId)
   if (live) return { brand: formatRosterBrand(live), model_id: rosterModelIdentifier(live) }
   const extra = lookupExtraSeat(modelId)
-  if (extra) return { brand: extra.brand, model_id: extra.model_id }
+  if (extra) {
+    return {
+      brand: extra.brand,
+      model_id: extra.model_id === 'replay' ? 'Claude Opus 5.5' : extra.model_id,
+    }
+  }
   const retired = RETIRED_ROSTER_DISPLAY[modelId]
   if (!retired) return undefined
   return { brand: formatRosterBrand(retired), model_id: modelId }

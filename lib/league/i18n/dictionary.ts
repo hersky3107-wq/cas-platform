@@ -206,7 +206,7 @@ export type LeagueUiPack = {
     diverge: string
     recordTitle: string
     recordPending: string
-    seat: Record<'divination' | 'sentiment' | 'history' | 'consensus' | 'crow', string>
+    seat: Record<'divination' | 'sentiment' | 'history' | 'consensus' | 'crow' | 'replay', string>
     /** Crow identity: a lower hit rate is expected. Not a defect. */
     crowNote: string
   }
@@ -926,7 +926,7 @@ const en: LeagueUiPack = {
     diverge: 'differs',
     recordTitle: 'Extra record',
     recordPending: 'Record after grading',
-    seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market odds', crow: 'Crow' },
+    seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market odds', crow: 'Crow', replay: 'Review · Claude Opus 5.5' },
     crowNote: 'The crow watches the risk the crowd skips. A lower hit rate is its identity.',
   },
   sportsMarket: {
@@ -1547,7 +1547,7 @@ const ko: LeagueUiPack = {
     diverge: '다름',
     recordTitle: '엑스트라 성적',
     recordPending: '채점 후 성적 집계',
-    seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '컨센서스', crow: '까마귀' },
+    seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '컨센서스', crow: '까마귀', replay: '복기 · Claude Opus 5.5' },
     crowNote: '까마귀는 군중이 놓친 위험을 본다. 승률이 낮은 편이 이 자리의 정체다.',
   },
   sportsMarket: {
@@ -2163,7 +2163,7 @@ const ja: LeagueUiPack = {
     diverge: '相違',
     recordTitle: 'エクストラ成績',
     recordPending: '採点後に成績を集計',
-    seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: 'コンセンサス', crow: 'カラス' },
+    seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: 'コンセンサス', crow: 'カラス', replay: '復習 · Claude Opus 5.5' },
     crowNote: 'カラスは群衆が見落とすリスクを見る。的中率が低めなのがこの席の性質。',
   },
   sportsMarket: {
@@ -2776,7 +2776,7 @@ const zhTW: LeagueUiPack = {
     diverge: '不同',
     recordTitle: 'Extra 成績',
     recordPending: '評分後再彙整成績',
-    seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '共識', crow: '烏鴉' },
+    seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '共識', crow: '烏鴉', replay: '覆盤 · Claude Opus 5.5' },
     crowNote: '烏鴉看的是群眾忽略的風險。勝率偏低是這個席位的本色。',
   },
   sportsMarket: {
@@ -3387,7 +3387,7 @@ const fr: LeagueUiPack = {
     diverge: 'diverge',
     recordTitle: 'Bilan Extra',
     recordPending: 'Bilan après notation',
-    seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Consensus', crow: 'Corbeau' },
+    seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Consensus', crow: 'Corbeau', replay: 'Revue · Claude Opus 5.5' },
     crowNote: 'Le corbeau voit le risque que la foule oublie. Un taux plus bas est son identité.',
   },
   sportsMarket: {
@@ -4015,7 +4015,7 @@ const es: LeagueUiPack = {
     diverge: 'difiere',
     recordTitle: 'Historial Extra',
     recordPending: 'Historial tras la calificación',
-    seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Consenso', crow: 'Cuervo' },
+    seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Consenso', crow: 'Cuervo', replay: 'Repaso · Claude Opus 5.5' },
     crowNote: 'El cuervo ve el riesgo que la multitud pasa por alto. Una tasa más baja es su identidad.',
   },
   sportsMarket: {
@@ -4643,7 +4643,7 @@ const ar: LeagueUiPack = {
     diverge: 'يختلف',
     recordTitle: 'سجل إكسترا',
     recordPending: 'يُجمع السجل بعد التقييم',
-    seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'إجماع السوق', crow: 'غراب' },
+    seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'إجماع السوق', crow: 'غراب', replay: 'مراجعة · Claude Opus 5.5' },
     crowNote: 'الغراب يرى الخطر الذي يغفل عنه الجمهور. معدل إصابة أدنى هو هويته.',
   },
   sportsMarket: {
@@ -5264,7 +5264,7 @@ const pt: LeagueUiPack = {
     diverge: 'diverge',
     recordTitle: 'Histórico Extra',
     recordPending: 'Histórico após a pontuação',
-    seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Consenso', crow: 'Corvo' },
+    seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Consenso', crow: 'Corvo', replay: 'Revisão · Claude Opus 5.5' },
     crowNote: 'O corvo vê o risco que a multidão ignora. Uma taxa mais baixa é a identidade dele.',
   },
   sportsMarket: {

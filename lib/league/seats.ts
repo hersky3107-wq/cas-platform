@@ -800,7 +800,7 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
   },
 
   // ==========================================================================
-  // EXTRA (외전 - 5 Seats)
+  // EXTRA (외전 - 6 Seats)
   // ==========================================================================
   {
     seatId: 'extra:divination',
@@ -879,6 +879,22 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
         modelId: 'crow',
         modelLabel: '까마귀',
         activeFrom: '2026-09-27',
+      },
+    ],
+  },
+  {
+    seatId: 'extra:replay',
+    tier: 'extra',
+    brand: '복기',
+    brandSlug: 'replay',
+    camp: 'other',
+    currentModelId: 'replay',
+    displayName: 'Claude Opus 5.5',
+    tenures: [
+      {
+        modelId: 'replay',
+        modelLabel: 'Claude Opus 5.5',
+        activeFrom: '2026-10-05',
       },
     ],
   },

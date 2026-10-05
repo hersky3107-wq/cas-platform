@@ -11,9 +11,9 @@ import {
 } from '../seats'
 
 describe('LEAGUE_SEATS registry', () => {
-  it('contains the 40 official roster seats plus 5 extra seats', () => {
+  it('contains the 40 official roster seats plus 6 extra seats', () => {
     const seats = getAllSeats()
-    expect(seats.length).toBe(45)
+    expect(seats.length).toBe(46)
 
     const premier = seats.filter((s) => s.tier === 'premier')
     const challenger = seats.filter((s) => s.tier === 'challenger')
@@ -25,7 +25,7 @@ describe('LEAGUE_SEATS registry', () => {
     expect(challenger.length).toBe(10)
     expect(world.length).toBe(14)
     expect(scout.length).toBe(6)
-    expect(extra.length).toBe(5)
+    expect(extra.length).toBe(6)
   })
 
   it('correctly maps known retired models to their official seats', () => {

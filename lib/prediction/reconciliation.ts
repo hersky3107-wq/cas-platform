@@ -13,6 +13,7 @@ import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
 import { getOfficialClose, getOfficialClosesBetween } from '@/lib/league/korea-market-data'
 import { reconcileTwelfthDataAnchor } from '@/lib/league/korea-stock-reconcile'
 import { stampConsensusIsCorrect } from '@/lib/league/consensus-correctness'
+import { scheduleLessonRefresh } from '@/lib/league/extra/lesson-refresh'
 import {
   createGradingEngine,
   GRADING_SWEEP_SCAN_CAP,
@@ -225,6 +226,7 @@ export const supabaseGradingStore: GradingStore = {
         `[prediction/grading] round ${roundId} consensus_is_correct not stamped: ${e instanceof Error ? e.message : e}`,
       )
     })
+    scheduleLessonRefresh(roundId)
     return { ok: true }
   },
 
@@ -269,6 +271,7 @@ export const supabaseGradingStore: GradingStore = {
     if (!data || data.length === 0) {
       return { ok: false as const, error: 'round was graded or voided by another pass' }
     }
+    scheduleLessonRefresh(roundId)
     return { ok: true as const }
   },
 

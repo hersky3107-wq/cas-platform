@@ -12,6 +12,7 @@ import {
   type LeagueGenerationJob,
 } from '@/lib/league/generation/job-store'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { scheduleLessonRefresh } from '@/lib/league/extra/lesson-refresh'
 import { parseVoidRoundArgs, type VoidRoundArgs } from './void-round-args'
 
 export { parseVoidRoundArgs, type VoidRoundArgs }
@@ -101,6 +102,7 @@ export async function applyVoidRound(plan: VoidRoundPlan): Promise<
     return { ok: false, error: 'round was graded or voided by another pass' }
   }
   const refundedCredits = await refundChargedJobsForRound(plan.roundId)
+  scheduleLessonRefresh(plan.roundId)
   return { ok: true, refundedCredits }
 }
 

@@ -77,6 +77,19 @@ import {
   type ConsensusCaller,
   type ConsensusLeagueInput,
 } from './consensus'
+import {
+  REPLAY_MAX_COMPLETION_TOKENS,
+  REPLAY_MODEL_OVERRIDE,
+  REPLAY_TIMEOUT_MS,
+  buildReplaySystemPrompt,
+  buildReplayUserPrompt,
+  leagueSideFromReplay,
+  normalizePickProbability,
+  appliedLessonFromText,
+  parseReplayOutput,
+  type ReplayHistoryRow,
+} from './replay'
+import { loadLessonNotesForPrompt } from './lesson-notes.server'
 import { EXTRA_SEAT_IDS, getExtraRoster, isExtraSeatId, lookupExtraSeat, type ExtraSeat, type ExtraSeatId } from './seats'
 import {
   claimNextLaunchableIndex,
@@ -202,6 +215,15 @@ export type GenerateExtraSeatsOpts = {
   marketMatcher?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>
   /** Test seam — default calls first-party Mistral Medium 3.5. */
   crowCaller?: CrowCaller
+  /** Test seam — default calls first-party Anthropic claude-opus-5-5. */
+  replayCaller?: (args: { systemPrompt: string; userPrompt: string }) => Promise<{
+    text: string | null
+    promptTokens: number | null
+    completionTokens: number | null
+    costUsd: number | null
+    costIsEstimated: boolean
+    error?: string
+  }>
   /**
    * Official-run reuse: dates + closes already fetched for the shared packet.
    * Extra-only / extra-stage ticks fetch the series themselves when omitted.
@@ -260,6 +282,7 @@ async function upsertExtraPrediction(row: {
   fail_reason?: NoAnswerFailReason | null
   error?: string | null
   market?: ConsensusMarketRecord | null
+  applied_lesson?: string | null
 }): Promise<void> {
   const base = {
     round_id: row.roundId,
@@ -287,8 +310,15 @@ async function upsertExtraPrediction(row: {
         ? (row.fail_reason ?? classifyNoAnswerFailReason({ error: row.error }))
         : null,
   }
-  const payload = row.market ? { ...base, ...row.market } : base
+  const withLesson = row.applied_lesson ? { ...base, applied_lesson: row.applied_lesson } : base
+  const payload = row.market ? { ...withLesson, ...row.market } : withLesson
   const { error } = await supabaseAdmin.from('model_predictions').upsert(payload, { onConflict: 'round_id,model_id' })
+  if (error && /applied_lesson/i.test(error.message)) {
+    const without = row.market ? { ...base, ...row.market } : base
+    const retry = await supabaseAdmin.from('model_predictions').upsert(without, { onConflict: 'round_id,model_id' })
+    if (retry.error) throw new Error(`extra seat upsert ${row.model_id}: ${retry.error.message}`)
+    return
+  }
   if (error && row.market && missingConsensusColumns(error.message)) {
     const retry = await supabaseAdmin.from('model_predictions').upsert(base, { onConflict: 'round_id,model_id' })
     if (retry.error) throw new Error(`extra seat upsert ${row.model_id}: ${retry.error.message}`)
@@ -1353,6 +1383,167 @@ async function runCrowSeat(
   }
 }
 
+type ReplayCaller = NonNullable<GenerateExtraSeatsOpts['replayCaller']>
+
+function defaultReplayCaller(): ReplayCaller {
+  return async ({ systemPrompt, userPrompt }) => {
+    const res = await runSingleAiProvider({
+      supabase: supabaseAdmin,
+      authSupabase: supabaseAdmin,
+      sessionId: null,
+      userId: null,
+      provider: 'anthropic',
+      prompt: userPrompt,
+      systemPrompt,
+      skipLanguageInjection: true,
+      maxCompletionTokens: REPLAY_MAX_COMPLETION_TOKENS,
+      modelOverride: REPLAY_MODEL_OVERRIDE,
+      timeoutMs: REPLAY_TIMEOUT_MS,
+    })
+    const promptTokens = res.promptTokens ?? 0
+    const completionTokens = res.completionTokens ?? 0
+    const estimate = Number(((promptTokens / 1_000_000) * 15 + (completionTokens / 1_000_000) * 75).toFixed(6))
+    const billed = typeof res.costUsd === 'number' ? res.costUsd : null
+    return {
+      text: res.text,
+      promptTokens: res.promptTokens,
+      completionTokens: res.completionTokens,
+      costUsd: billed ?? estimate,
+      costIsEstimated: billed == null,
+      error: res.error,
+    }
+  }
+}
+
+async function loadReplayHistory(): Promise<ReplayHistoryRow[]> {
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select('predicted_direction, is_correct, predicted_at, prediction_rounds!inner(proposition_text)')
+    .eq('model_id', 'replay')
+    .not('is_correct', 'is', null)
+    .order('predicted_at', { ascending: false })
+    .limit(10)
+  if (error || !data) return []
+  return (data as Record<string, unknown>[]).map((row) => {
+    const round = row.prediction_rounds as { proposition_text?: string } | { proposition_text?: string }[] | null
+    const proposition = Array.isArray(round) ? round[0]?.proposition_text : round?.proposition_text
+    return {
+      proposition: proposition ?? '',
+      side: String(row.predicted_direction ?? ''),
+      correct: row.is_correct === true,
+      date: String(row.predicted_at ?? '').slice(0, 10),
+    }
+  })
+}
+
+async function runReplaySeat(round: ExtraRoundRow, call: ReplayCaller): Promise<ExtraSeatOutcome> {
+  const seat = lookupExtraSeat('replay')!
+  const brandTable = isBrandTableInstrument(round.instrument)
+  const notes = await loadLessonNotesForPrompt(round.category, round.horizon?.trim() || '1d').catch(() => ({
+    categoryNote: null,
+    globalNote: null,
+  }))
+  const ownHistory = await loadReplayHistory().catch(() => [])
+  const input = {
+    proposition: round.proposition_text,
+    instrument: round.instrument,
+    horizon: round.horizon?.trim() || '1d',
+    category: round.category,
+    subjectName: round.subject_label?.trim() || round.instrument,
+    propositionKind: round.proposition_kind ?? null,
+    packet: round.closed_book_packet_text ?? null,
+    categoryNote: notes.categoryNote,
+    globalNote: notes.globalNote,
+    ownHistory,
+  }
+  try {
+    const raw = await call({
+      systemPrompt: buildReplaySystemPrompt(brandTable),
+      userPrompt: buildReplayUserPrompt(input),
+    })
+    if (raw.error) throw new Error(raw.error)
+    if (brandTable) {
+      const candidates = extractBrandTableCandidates(round.closed_book_packet_text)
+      const parsed = parseBrandTablePick(raw.text, candidates)
+      if (!parsed.ok) throw new Error(parsed.reason)
+      const normalized = normalizePickProbability(parsed.probability)
+      const lesson = appliedLessonFromText(raw.text)
+      const costUsd = Number((raw.costUsd ?? 0).toFixed(6))
+      await upsertExtraPrediction({
+        roundId: round.id,
+        category: round.category,
+        model_id: 'replay',
+        brand: seat.brand,
+        direction: 'yes',
+        probability: normalized.probability,
+        qualifier_text: parsed.pick,
+        reasoning_snippet: parsed.rationale,
+        cost_usd: costUsd,
+        estimated_cost_usd: costUsd,
+        prompt_tokens: raw.promptTokens,
+        completion_tokens: raw.completionTokens,
+        applied_lesson: lesson,
+      })
+      return {
+        ...baseOutcome('replay', seat.brand),
+        direction: 'yes',
+        probability: normalized.probability,
+        qualifier_text: parsed.pick,
+        reasoning_snippet: parsed.rationale,
+        cost_usd: costUsd,
+        prompt_tokens: raw.promptTokens,
+        completion_tokens: raw.completionTokens,
+        status: 'ok',
+      }
+    }
+    const parsed = parseReplayOutput(raw.text)
+    if (!parsed) throw new Error('replay seat: unparseable')
+    const direction = leagueSideFromReplay(parsed.verdict, round.proposition_kind)
+    const costUsd = Number((raw.costUsd ?? 0).toFixed(6))
+    await upsertExtraPrediction({
+      roundId: round.id,
+      category: round.category,
+      model_id: 'replay',
+      brand: seat.brand,
+      direction,
+      probability: parsed.confidence,
+      qualifier_text: null,
+      reasoning_snippet: parsed.rationale,
+      cost_usd: costUsd,
+      estimated_cost_usd: costUsd,
+      prompt_tokens: raw.promptTokens,
+      completion_tokens: raw.completionTokens,
+      applied_lesson: parsed.appliedLesson,
+    })
+    return {
+      ...baseOutcome('replay', seat.brand),
+      direction,
+      probability: parsed.confidence,
+      reasoning_snippet: parsed.rationale,
+      cost_usd: costUsd,
+      prompt_tokens: raw.promptTokens,
+      completion_tokens: raw.completionTokens,
+      status: 'ok',
+    }
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : 'replay seat failed'
+    await upsertExtraPrediction({
+      roundId: round.id,
+      category: round.category,
+      model_id: 'replay',
+      brand: seat.brand,
+      direction: null,
+      probability: null,
+      qualifier_text: null,
+      reasoning_snippet: null,
+      cost_usd: 0,
+      estimated_cost_usd: 0,
+      error: message,
+    })
+    return { ...baseOutcome('replay', seat.brand), status: 'error', error: message.slice(0, 500) }
+  }
+}
+
 export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<ExtraSeatOutcome[]> {
   const excluded = new Set(opts.excludeModelIds ?? [])
   const pending = getExtraRoster().filter((seat) => !excluded.has(seat.model_id))
@@ -1367,7 +1558,9 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
   const sentimentCall = opts.sentimentCaller ?? defaultSentimentCaller()
   const consensusCall = opts.consensusCaller ?? defaultConsensusCaller()
   const crowCall = opts.crowCaller ?? defaultCrowCaller()
+  const replayCall = opts.replayCaller ?? defaultReplayCaller()
   const runSeat = (seat: ExtraSeat): Promise<ExtraSeatOutcome> => {
+    if (seat.kind === 'replay') return runReplaySeat(round, replayCall)
     if (isBrandTableInstrument(round.instrument)) {
       if (seat.kind === 'consensus') return runBrandTablePickSeat(round, 'consensus', consensusCall, opts.marketMatcher)
       if (seat.kind === 'crow') return runBrandTablePickSeat(round, 'crow', crowCall)
@@ -1398,6 +1591,7 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
 }
 
 function extraSeatTimeoutMs(seat: ExtraSeat): number {
+  if (seat.model_id === 'replay') return REPLAY_TIMEOUT_MS
   if (seat.model_id === 'crow') return CROW_TIMEOUT_MS
   if (seat.model_id === 'divination') return 30_000
   const engine =
@@ -1414,6 +1608,7 @@ function extraSeatTimeoutMs(seat: ExtraSeat): number {
 }
 
 function extraSeatRoute(seat: ExtraSeat): string {
+  if (seat.model_id === 'replay') return 'anthropic'
   if (seat.model_id === 'divination') return 'divination'
   const engine =
     seat.model_id === 'history'

@@ -94,11 +94,11 @@ function adapterOut(over: Partial<LeagueDivinationAdapterOutput> = {}): LeagueDi
 }
 
 describe('extra roster', () => {
-  it('keeps the official 40 and adds five extra seats below scout', () => {
+  it('keeps the official 40 and adds six extra seats below scout', () => {
     expect(LEAGUE_ROSTER).toHaveLength(40)
-    expect(LEAGUE_EXTRA_ROSTER).toHaveLength(5)
-    expect(EXTRA_SEAT_IDS).toEqual(['divination', 'sentiment', 'history', 'consensus', 'crow'])
-    expect(LEAGUE_EXTRA_ROSTER.map((s) => s.badge)).toEqual(['🔮', '📰', '📜', '💰', '🐦‍⬛'])
+    expect(LEAGUE_EXTRA_ROSTER).toHaveLength(6)
+    expect(EXTRA_SEAT_IDS).toEqual(['divination', 'sentiment', 'history', 'consensus', 'crow', 'replay'])
+    expect(LEAGUE_EXTRA_ROSTER.map((s) => s.badge)).toEqual(['🔮', '📰', '📜', '💰', '🐦‍⬛', '🧠'])
     expect(LEAGUE_EXTRA_ROSTER.every((s) => s.league_tier === 'extra')).toBe(true)
     expect(extraSeatBadge('divination')).toBe('🔮')
   })
@@ -286,7 +286,7 @@ describe('extra vs 40-AI comparison (display only)', () => {
     expect(view.crowdDirection).toBe('up')
     expect(view.crowdCount).toBe(card.consensus.totalModels)
     expect(view.crowdCount).toBe(2)
-    expect(view.seats.map((s) => s.id)).toEqual(['divination', 'sentiment', 'history', 'consensus', 'crow'])
+    expect(view.seats.map((s) => s.id)).toEqual(['divination', 'sentiment', 'history', 'consensus', 'crow', 'replay'])
     expect(view.seats.find((s) => s.id === 'divination')).toMatchObject({
       direction: 'down',
       vsCrowd: 'diverge',

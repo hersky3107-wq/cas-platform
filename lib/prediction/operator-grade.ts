@@ -23,6 +23,7 @@
  */
 
 import { sidePairForKind, type AnswerSide } from '@/lib/league/answer-contract'
+import { scheduleLessonRefresh } from '@/lib/league/extra/lesson-refresh'
 import type { ResolutionDirection } from './resolution'
 import {
   formatOperatorOutcome,
@@ -154,6 +155,8 @@ export async function gradeFromOperatorEvidence(
     round.id,
     directionForDerivedSide(round.proposition_kind, mapped.derived_side)
   )
+
+  scheduleLessonRefresh(round.id)
 
   return {
     ok: true,

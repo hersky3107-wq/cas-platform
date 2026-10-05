@@ -348,6 +348,7 @@ describe('dictionary completeness', () => {
       expect(pack.extraCompare.seat.history.trim().length).toBeGreaterThan(0)
       expect(pack.extraCompare.seat.consensus.trim().length).toBeGreaterThan(0)
       expect(pack.extraCompare.seat.crow.trim().length).toBeGreaterThan(0)
+      expect(pack.extraCompare.seat.replay).toContain('Claude Opus 5.5')
       expect(pack.extraCompare.crowNote.trim().length).toBeGreaterThan(0)
     }
     const ko = getLeagueUiPack('ko')
