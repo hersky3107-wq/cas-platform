@@ -38,6 +38,8 @@ describe('name matching', () => {
   it('equates Odds-API and API-Sports spellings', () => {
     expect(teamsMatch('Brighton and Hove Albion', 'Brighton')).toBe(true)
     expect(teamsMatch('Tottenham Hotspur', 'Tottenham')).toBe(true)
+    expect(teamsMatch('Ulsan HD', 'Ulsan Hyundai FC')).toBe(true)
+    expect(teamsMatch('Jeonbuk Motors', 'Jeonbuk Hyundai Motors')).toBe(true)
     expect(normalizeTeamName('Manchester United')).toContain('utd')
   })
 })

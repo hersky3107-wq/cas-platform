@@ -157,7 +157,7 @@ export function isPopularFootballLeagueId(leagueId: number): boolean {
 }
 
 const REFUSED_NAME =
-  /amateur|youth|reserve|academy|primavera|u-?1[679]\b|u-?2[013]\b|u-?23\b|k3(?:리그|_|$|\b)|k4(?:리그|_|$|\b)|k league 3|j3(?:리그|_|$|\b)|jfl\b|japan football league|regionalliga|3\.\s*liga|league one|league two|national league|non-league|serie c|serie d|ligue 3|national 2|segunda federaci[oó]n|segunda b|semipro/i
+  /amateur|youth|reserve|academy|primavera|u-?1[679]\b|u-?2[013]\b|u-?23\b|k3(?:리그|_|$|\b)|k4(?:리그|_|$|\b)|k league 3|j3(?:리그|_|$|\b)|jfl\b|japan football league|regionalliga|3\.\s*liga|league one|league two|national league|non-league|serie c|serie d|ligue 3|national 2|segunda federaci[oó]n|segunda b|semipro|frauen|women'?s|wsl|femenin|femminile|damen|ladies/i
 
 export function isRefusedFootballCompetition(leagueId: number | null | undefined, leagueName?: string | null): boolean {
   if (leagueId != null && POPULAR_SET.has(leagueId)) return false

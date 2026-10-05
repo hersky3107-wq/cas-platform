@@ -91,6 +91,9 @@ function entityRefusalIsImmediate(code: RefusalCode): boolean {
     code === 'betting_framing' ||
     code === 'vague_target' ||
     code === 'past_event' ||
+    code === 'sports_lookup_failed' ||
+    code === 'sports_team_not_found' ||
+    code === 'sports_no_upcoming_fixture' ||
     code === 'vague_election' ||
     code === 'past_election' ||
     code === 'politics_window' ||

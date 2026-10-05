@@ -151,7 +151,7 @@ describe('sports CategoryAdapter', () => {
               {
                 fixture_id: 'af-1001',
                 league: 'soccer_korea_kleague1',
-                home: 'Ulsan HD',
+                home: 'Ulsan Hyundai FC',
                 away: 'FC Seoul',
                 kickoff: '2026-10-06T06:00:00.000Z',
               },
@@ -200,9 +200,15 @@ describe('sports CategoryAdapter', () => {
     expect(ulsan.ok).toBe(true)
     if (ulsan.ok) {
       const parts = decodeSportsInstrument(ulsan.entity_id)
-      expect(parts?.home).toBe('Ulsan HD')
+      expect(parts?.home).toBe('Ulsan Hyundai FC')
       expect(parts?.league).toBe('soccer_korea_kleague1')
       expect(parts?.side).toBe('home')
+    }
+
+    const hubExample = await footballAdapter.resolveEntity('울산이 다음 경기에서 이길까?', 'ko')
+    expect(hubExample.ok).toBe(true)
+    if (hubExample.ok) {
+      expect(decodeSportsInstrument(hubExample.entity_id)?.home).toBe('Ulsan Hyundai FC')
     }
 
     const jeonbuk = await footballAdapter.resolveEntity('K리그 전북 vs 포항', 'ko')
@@ -271,6 +277,45 @@ describe('sports CategoryAdapter', () => {
     const nba = await nbaSlate.resolveEntity('레이커스 셀틱스', 'ko')
     expect(nba.ok).toBe(true)
     if (nba.ok) expect(decodeSportsInstrument(nba.entity_id)?.league).toBe('basketball_nba')
+  })
+
+  it('distinguishes API failure, team-not-found, no-fixture, and unsupported competition', async () => {
+    const now = () => new Date('2026-09-27T00:00:00.000Z')
+    const mk = (reason: 'api_failure' | 'team_not_found' | 'no_upcoming_fixture' | 'non_public_fixture') =>
+      createSportsAdapter(
+        {
+          ...SLATE_IO,
+          searchFootballFixtures: async () => ({ fixtures: [], reason }),
+        },
+        now,
+      )
+
+    const api = await mk('api_failure').resolveEntity('울산이 다음 경기에서 이길까?', 'ko')
+    expect(api.ok).toBe(false)
+    if (!api.ok && 'refuse' in api) {
+      expect(api.refuse.code).toBe('sports_lookup_failed')
+      expect(refusalMessageForKey(api.refuse.message_i18n_key, 'ko')).toBe('잠시 후 다시 시도해 주세요')
+    }
+
+    const missing = await mk('team_not_found').resolveEntity('울산이 다음 경기에서 이길까?', 'ko')
+    expect(missing.ok).toBe(false)
+    if (!missing.ok && 'refuse' in missing) {
+      expect(missing.refuse.code).toBe('sports_team_not_found')
+      expect(refusalMessageForKey(missing.refuse.message_i18n_key, 'ko')).toBe(
+        '팀을 찾지 못했습니다. 팀 이름을 다시 확인해 주세요',
+      )
+    }
+
+    const empty = await mk('no_upcoming_fixture').resolveEntity('울산이 다음 경기에서 이길까?', 'ko')
+    expect(empty.ok).toBe(false)
+    if (!empty.ok && 'refuse' in empty) {
+      expect(empty.refuse.code).toBe('sports_no_upcoming_fixture')
+      expect(refusalMessageForKey(empty.refuse.message_i18n_key, 'ko')).toBe('35일 안에 예정된 경기가 없습니다')
+    }
+
+    const unsupported = await mk('non_public_fixture').resolveEntity('K3리그 울산시티즌 다음 경기', 'ko')
+    expect(unsupported.ok).toBe(false)
+    if (!unsupported.ok && 'refuse' in unsupported) expect(unsupported.refuse.code).toBe('non_public_fixture')
   })
 
   it('composes a 90-minute win / draw=No proposition with zero user substrings', async () => {
@@ -534,6 +579,7 @@ describe('sports mentions', () => {
       'Tottenham Hotspur',
     ])
     expect(extractSportsMentions('케이리그 울산 다음 경기').map((m) => m.canonical)).toEqual(['Ulsan HD'])
+    expect(extractSportsMentions('울산이 다음 경기에서 이길까?').map((m) => m.canonical)).toEqual(['Ulsan HD'])
     expect(extractSportsMentions('전북 현대 포항 스틸러스').map((m) => m.canonical)).toEqual([
       'Jeonbuk Motors',
       'Pohang Steelers',
@@ -555,6 +601,18 @@ describe('sports scope copy', () => {
       '양키스가 레드삭스를 이길까?',
       '울산이 다음 경기에서 이길까?',
     ])
+    for (const locale of LEAGUE_LOCALES) {
+      expect(refusalMessageForKey('league.gateway.refusal.sports_lookup_failed', locale).length).toBeGreaterThan(4)
+      expect(refusalMessageForKey('league.gateway.refusal.sports_team_not_found', locale).length).toBeGreaterThan(8)
+      expect(refusalMessageForKey('league.gateway.refusal.sports_no_upcoming_fixture', locale).length).toBeGreaterThan(8)
+    }
+    expect(refusalMessageForKey('league.gateway.refusal.sports_lookup_failed', 'ko')).toBe('잠시 후 다시 시도해 주세요')
+    expect(refusalMessageForKey('league.gateway.refusal.sports_team_not_found', 'ko')).toBe(
+      '팀을 찾지 못했습니다. 팀 이름을 다시 확인해 주세요',
+    )
+    expect(refusalMessageForKey('league.gateway.refusal.sports_no_upcoming_fixture', 'ko')).toBe(
+      '35일 안에 예정된 경기가 없습니다',
+    )
   })
 })
 

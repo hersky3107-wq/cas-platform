@@ -43,6 +43,9 @@ import { buildSportsPacket, type SportsPacketIo } from './sports-packet'
 const SPORTS_REFUSALS: readonly RefusalCode[] = [
   'betting_framing',
   'non_public_fixture',
+  'sports_lookup_failed',
+  'sports_team_not_found',
+  'sports_no_upcoming_fixture',
   'vague_target',
   'past_event',
   'ambiguous_entity',
@@ -52,6 +55,27 @@ const SPORTS_REFUSALS: readonly RefusalCode[] = [
   'jurisdiction_blocked',
   'low_confidence',
 ]
+
+type FootballSearchReason = 'ok' | 'api_failure' | 'team_not_found' | 'no_upcoming_fixture' | 'non_public_fixture'
+type FootballSearchRow = { fixture_id: string; league: string; home: string; away: string; kickoff: string }
+
+function unwrapFootballSearch(
+  raw:
+    | FootballSearchRow[]
+    | { fixtures: FootballSearchRow[]; reason: FootballSearchReason }
+    | FootballSearchRow[],
+): { rows: FootballSearchRow[]; reason: FootballSearchReason } {
+  if (Array.isArray(raw)) return { rows: raw, reason: 'ok' }
+  return { rows: raw.fixtures, reason: raw.reason }
+}
+
+function footballRefuseCode(reason: FootballSearchReason): RefusalCode | null {
+  if (reason === 'api_failure') return 'sports_lookup_failed'
+  if (reason === 'team_not_found') return 'sports_team_not_found'
+  if (reason === 'no_upcoming_fixture') return 'sports_no_upcoming_fixture'
+  if (reason === 'non_public_fixture') return 'non_public_fixture'
+  return null
+}
 
 function refuse(code: RefusalCode, safe_facts?: Record<string, string>): Refusal {
   return { code, message_i18n_key: refusalMessageKey(code), ...(safe_facts ? { safe_facts } : {}) }
@@ -116,22 +140,29 @@ export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () =
       }
 
       const now = nowFn()
-      const [oddsRows, footballRows] = await Promise.all([
+      const [oddsRows, footballRaw] = await Promise.all([
         io.listUpcomingFixtures(now),
-        io.searchFootballFixtures ? io.searchFootballFixtures(raw, now).catch(() => []) : Promise.resolve([]),
+        io.searchFootballFixtures
+          ? io.searchFootballFixtures(raw, now).catch(() => ({ fixtures: [], reason: 'api_failure' as const }))
+          : Promise.resolve({ fixtures: [], reason: 'ok' as const }),
       ])
-      const slate = asLaunchSlate([...footballRows, ...oddsRows])
+      const football = unwrapFootballSearch(footballRaw)
+      const slate = asLaunchSlate([...football.rows, ...oddsRows])
       const hit = resolveSportsTarget(raw, slate, now)
       if (hit.kind === 'picks') return clarifyInstruments(hit.options)
-      if (hit.kind !== 'ready') return { ok: false, refuse: refuse(targetRefusalCode(hit.kind)) }
-      const parts = decodeSportsInstrument(hit.entityId)
-      return {
-        ok: true,
-        entity_id: hit.entityId,
-        entity_kind: 'team_or_match',
-        label: parts ? subjectTeamOf(parts) : hit.label,
-        ...(hit.skipConfirm ? { skip_confirm: true } : {}),
+      if (hit.kind === 'ready') {
+        const parts = decodeSportsInstrument(hit.entityId)
+        return {
+          ok: true,
+          entity_id: hit.entityId,
+          entity_kind: 'team_or_match',
+          label: parts ? subjectTeamOf(parts) : hit.label,
+          ...(hit.skipConfirm ? { skip_confirm: true } : {}),
+        }
       }
+      const footballCode = footballRefuseCode(football.reason)
+      if (footballCode) return { ok: false, refuse: refuse(footballCode) }
+      return { ok: false, refuse: refuse(targetRefusalCode(hit.kind)) }
     },
 
     requiredSlots(entity): readonly string[] {

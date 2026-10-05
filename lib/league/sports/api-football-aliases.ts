@@ -18,7 +18,7 @@ export const FOOTBALL_TEAM_ALIASES: readonly FootballAliasRow[] = [
   { aliases: ['광주fc', '광주 fc', '광주', 'gwangju'], search: 'Gwangju' },
   { aliases: ['제주 sk', '제주 유나이티드', '제주', 'jeju united', 'jeju'], search: 'Jeju United' },
   { aliases: ['대구fc', '대구 fc', '대구', 'daegu'], search: 'Daegu' },
-  { aliases: ['가시마 앤틀러스', '가시마', 'kashima antlers', 'kashima'], search: 'Kashima Antlers' },
+  { aliases: ['가시마 앤틀러스', '가시마', 'kashima antlers', 'kashima'], search: 'Kashima' },
   { aliases: ['우라와 레즈', '우라와', 'urawa reds', 'urawa'], search: 'Urawa' },
   {
     aliases: ['요코하마 f. 마리노스', '요코하마 마리노스', '요코하마f마리노스', 'yokohama f. marinos', 'yokohama f marinos', 'yokohama marinos'],
@@ -30,7 +30,9 @@ export const FOOTBALL_TEAM_ALIASES: readonly FootballAliasRow[] = [
   { aliases: ['나고야 그램퍼스', '나고야', 'nagoya grampus', 'nagoya'], search: 'Nagoya Grampus' },
   { aliases: ['산프레체 히로시마', 'sanfrecce hiroshima'], search: 'Sanfrecce Hiroshima' },
   { aliases: ['비셀 고베', 'vissel kobe'], search: 'Vissel Kobe' },
-  { aliases: ['바이에른 뮌헨', '바이에른', 'bayern munich', 'bayern'], search: 'Bayern Munich' },
+  { aliases: ['바이에른 뮌헨', '바이에른', 'bayern munich', 'bayern'], search: 'Bayern' },
+  { aliases: ['토트넘', '토튼햄', 'tottenham hotspur', 'tottenham', 'spurs'], search: 'Tottenham' },
+  { aliases: ['아스날', '아스널', 'arsenal'], search: 'Arsenal' },
 ]
 
 export type FootballLeagueAliasHit = { alias: string; leagueIds: readonly number[] }
@@ -84,7 +86,14 @@ const TEAM_INDEX: Array<{ alias: string; search: string }> = (() => {
 const LEAGUE_INDEX = [...FOOTBALL_LEAGUE_ALIASES].sort((a, b) => b.alias.length - a.alias.length)
 
 const SEARCH_STOP =
-  /^(vs|and|the|fc|next|game|win|beat|will|who|wins|경기|다음|오늘|내일|이길까|이겨|누가|할까|승리|예측)$/i
+  /^(vs|and|the|fc|next|game|win|beat|will|who|wins|경기|경기에서|경기에|경기를|경기가|경기는|에서|에게|으로|다음|오늘|내일|이길까|이겨|누가|할까|승리|예측)$/i
+
+const TRAILING_PARTICLE = /(에서|으로|부터|까지|에게|한테|이|가|은|는|을|를|의|에|와|과|도|만)$/u
+
+function stripKoParticle(token: string): string {
+  const once = token.replace(TRAILING_PARTICLE, '')
+  return once.replace(TRAILING_PARTICLE, '') || token
+}
 
 export function resolveFootballSearchName(raw: string): string | null {
   const lower = raw.trim().toLowerCase()
@@ -162,6 +171,19 @@ export function leftoverFootballTokens(raw: string): string[] {
   }
   return rest
     .split(/[\s,./|:]+/)
-    .map((t) => t.replace(/[?？!！]+$/g, '').trim())
+    .map((t) => stripKoParticle(t.replace(/[?？!！]+$/g, '').trim()))
     .filter((t) => t.length >= 2 && !SEARCH_STOP.test(t))
+}
+
+/** English / alphanumeric team queries for API-Football `/teams?search=`. */
+export function footballTeamSearchQueries(raw: string): string[] {
+  const hits = extractFootballAliasHits(raw)
+  const out = [...hits]
+  for (const token of leftoverFootballTokens(raw)) {
+    const mapped = resolveFootballSearchName(token) ?? token
+    if (!/^[a-zA-Z0-9 .'-]+$/.test(mapped.trim())) continue
+    if (out.some((q) => q.toLowerCase() === mapped.toLowerCase())) continue
+    out.push(mapped)
+  }
+  return out.slice(0, 4)
 }

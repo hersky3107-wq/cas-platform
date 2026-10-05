@@ -214,10 +214,12 @@ export function resolveSportsTarget(
   const team = teams[0]!
   const hits = fixturesForTeam(dated, team)
   if (hits.length === 0) return { kind: missKind(fixturesForTeam(slate, team), now) }
-  if (hits.length === 1) {
+  const footballNext =
+    SCHEDULE_HINT.test(trimmed) && hits.length > 1 && hits.every((row) => row.league.startsWith('soccer_'))
+  if (hits.length === 1 || footballNext) {
     const inst = instrumentFor(hits[0]!, team)
     if (!inst) return { kind: 'unsupported' }
-    return { kind: 'ready', entityId: inst.id, label: inst.label }
+    return { kind: 'ready', entityId: inst.id, label: inst.label, ...(footballNext ? { skipConfirm: true } : {}) }
   }
   const options = hits
     .slice(0, MAX_TARGET_PICKS)

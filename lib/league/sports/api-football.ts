@@ -1,15 +1,26 @@
 import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { extractFootballAliasHits, extractFootballLeagueHits, leftoverFootballTokens, resolveFootballSearchName } from './api-football-aliases'
+import { extractFootballLeagueHits, footballTeamSearchQueries, resolveFootballSearchName } from './api-football-aliases'
 import {
   encodeApiFootballEventId,
   FOOTBALL_SEARCH_WINDOW_MS,
   footballLeagueKeyFromApiId,
-  footballPopularityRank,
   isRefusedFootballCompetition,
   parseApiFootballEventId,
 } from './api-football-leagues'
+import {
+  broadenTeamSearchQueries,
+  fixturesMatchingBothTeams,
+  headToHeadUpcomingPath,
+  isApiFootballSearchQuery,
+  rankTeamCandidates,
+  selectNextScheduledFixture,
+  teamUpcomingFallbackPath,
+  teamUpcomingPath,
+  teamsSearchPath,
+  type FootballSearchReason,
+} from './api-football-search'
 import {
   API_FOOTBALL_BASE,
   parseApiFootballErrors,
@@ -35,6 +46,11 @@ export type FootballSearchFixture = {
   home: string
   away: string
   kickoff: string
+}
+
+export type FootballSearchResult = {
+  fixtures: FootballSearchFixture[]
+  reason: FootballSearchReason
 }
 
 const CACHE_TABLE = 'api_football_http_cache'
@@ -203,11 +219,15 @@ export async function searchLeagues(q: string, now = new Date()) {
   return res
 }
 
-export async function searchTeams(q: string, now = new Date()): Promise<ApiFootballTeamRef[]> {
+export async function searchTeams(
+  q: string,
+  now = new Date(),
+): Promise<{ teams: ApiFootballTeamRef[]; error: string | null }> {
   const seeded = resolveFootballSearchName(q) ?? q
-  const res = await apiFootballGet(`/teams?search=${encodeURIComponent(seeded)}`, DAY, now)
-  if (!res.ok) return []
-  return parseApiFootballTeams(res.json)
+  if (!isApiFootballSearchQuery(seeded)) return { teams: [], error: null }
+  const res = await apiFootballGet(teamsSearchPath(seeded), DAY, now)
+  if (!res.ok) return { teams: [], error: res.error }
+  return { teams: parseApiFootballTeams(res.json), error: null }
 }
 
 export async function fetchStandings(leagueId: number, season: number, now = new Date()) {
@@ -218,6 +238,12 @@ export async function fetchStandings(leagueId: number, season: number, now = new
 
 export async function fetchHeadToHead(homeId: number, awayId: number, now = new Date()) {
   const res = await apiFootballGet(`/fixtures/headtohead?h2h=${homeId}-${awayId}&last=5`, DAY, now)
+  if (!res.ok) return { fixtures: [] as ApiFootballFixture[], error: res.error }
+  return { fixtures: parseApiFootballFixtures(res.json), error: null }
+}
+
+export async function fetchHeadToHeadUpcoming(homeId: number, awayId: number, now = new Date()) {
+  const res = await apiFootballGet(headToHeadUpcomingPath(homeId, awayId, now), HOUR, now)
   if (!res.ok) return { fixtures: [] as ApiFootballFixture[], error: res.error }
   return { fixtures: parseApiFootballFixtures(res.json), error: null }
 }
@@ -247,9 +273,18 @@ export async function fetchTeamStatistics(teamId: number, leagueId: number, seas
 }
 
 export async function fetchTeamUpcoming(teamId: number, now = new Date()) {
-  const res = await apiFootballGet(`/fixtures?team=${teamId}&next=12`, HOUR, now)
-  if (!res.ok) return { fixtures: [] as ApiFootballFixture[], error: res.error }
-  return { fixtures: parseApiFootballFixtures(res.json), error: null }
+  const primary = await apiFootballGet(teamUpcomingPath(teamId, now), HOUR, now)
+  if (primary.ok) {
+    const fixtures = parseApiFootballFixtures(primary.json)
+    if (fixtures.length) return { fixtures, error: null }
+  } else if (primary.error) {
+    const fallback = await apiFootballGet(teamUpcomingFallbackPath(teamId, now), HOUR, now)
+    if (!fallback.ok) return { fixtures: [] as ApiFootballFixture[], error: fallback.error }
+    return { fixtures: parseApiFootballFixtures(fallback.json), error: null }
+  }
+  const fallback = await apiFootballGet(teamUpcomingFallbackPath(teamId, now), HOUR, now)
+  if (!fallback.ok) return { fixtures: [] as ApiFootballFixture[], error: primary.ok ? null : primary.error }
+  return { fixtures: parseApiFootballFixtures(fallback.json), error: null }
 }
 
 export async function fetchFixturesByLeague(leagueId: number, now = new Date()) {
@@ -273,67 +308,94 @@ function inSearchWindow(dateIso: string, now: Date): boolean {
   return Number.isFinite(t) && t > now.getTime() - 3 * 60 * 60 * 1000 && t <= now.getTime() + FOOTBALL_SEARCH_WINDOW_MS
 }
 
-function allowedFixture(f: ApiFootballFixture): boolean {
-  return !isRefusedFootballCompetition(f.leagueId, f.leagueName)
-}
-
-export async function searchFootballFixtures(raw: string, now = new Date()): Promise<FootballSearchFixture[]> {
+export async function searchFootballFixtures(raw: string, now = new Date()): Promise<FootballSearchResult> {
   const leagueIds = extractFootballLeagueHits(raw)
-  const aliasHits = extractFootballAliasHits(raw)
-  const tokens = leftoverFootballTokens(raw)
-  const queries = [...aliasHits]
-  for (const token of tokens) {
-    if (queries.length >= 4) break
-    if (!queries.some((q) => q.toLowerCase() === token.toLowerCase())) queries.push(token)
-  }
+  const queries = footballTeamSearchQueries(raw)
 
-  const teams: ApiFootballTeamRef[] = []
+  if (!queries.length && !leagueIds.length) return { fixtures: [], reason: 'ok' }
+
+  let apiFailed = false
+  const groups: ApiFootballTeamRef[][] = []
   for (const q of queries) {
-    const found = await searchTeams(q, now)
-    if (found[0]) teams.push(found[0])
-  }
-
-  const seen = new Set<number>()
-  const fixtures: ApiFootballFixture[] = []
-  const push = (rows: readonly ApiFootballFixture[]) => {
-    for (const f of rows) {
-      if (!inSearchWindow(f.date, now) || !allowedFixture(f)) continue
-      if (seen.has(f.fixtureId)) continue
-      seen.add(f.fixtureId)
-      fixtures.push(f)
+    const seen = new Set<number>()
+    const pool: ApiFootballTeamRef[] = []
+    for (const s of broadenTeamSearchQueries(q)) {
+      const found = await searchTeams(s, now)
+      if (found.error) apiFailed = true
+      for (const t of found.teams) {
+        if (seen.has(t.id)) continue
+        seen.add(t.id)
+        pool.push(t)
+      }
     }
+    const ranked = rankTeamCandidates(pool, q).slice(0, 3)
+    if (ranked.length) groups.push(ranked)
+  }
+  const teams = groups.flat()
+
+  if (queries.length && !groups.length) {
+    return { fixtures: [], reason: apiFailed ? 'api_failure' : 'team_not_found' }
   }
 
-  if (leagueIds.length) {
-    for (const id of leagueIds.slice(0, 3)) {
-      const { fixtures: rows } = await fetchFixturesByLeague(id, now)
-      push(rows)
+  const collected: ApiFootballFixture[] = []
+  const fetchErrors: string[] = []
+  const take = (rows: readonly ApiFootballFixture[], error: string | null) => {
+    if (error) fetchErrors.push(error)
+    collected.push(...rows)
+  }
+
+  if (groups.length >= 2) {
+    const a = groups[0]![0]!
+    const b = groups[1]!.find((t) => t.id !== a.id) ?? groups[1]![0]!
+    const first = await fetchTeamUpcoming(a.id, now)
+    take(first.fixtures, first.error)
+    let pair = fixturesMatchingBothTeams(first.fixtures, a.id, b.id)
+    if (!pair.length) {
+      const second = await fetchTeamUpcoming(b.id, now)
+      take(second.fixtures, second.error)
+      pair = fixturesMatchingBothTeams([...first.fixtures, ...second.fixtures], a.id, b.id)
     }
-  }
-  if (teams.length >= 2) {
-    const h2h = await fetchHeadToHead(teams[0]!.id, teams[1]!.id, now)
-    push(h2h.fixtures)
-  }
-  for (const team of teams.slice(0, 2)) {
-    const upcoming = await fetchTeamUpcoming(team.id, now)
-    push(upcoming.fixtures)
+    if (!pair.length) {
+      const h2h = await fetchHeadToHeadUpcoming(a.id, b.id, now)
+      take(h2h.fixtures, h2h.error)
+      pair = fixturesMatchingBothTeams(h2h.fixtures, a.id, b.id)
+    }
+    const h2hPick = selectNextScheduledFixture(pair, now)
+    if (h2hPick) return { fixtures: [fixtureToLite(h2hPick)], reason: 'ok' }
+    if (fetchErrors.length && !collected.length) return { fixtures: [], reason: 'api_failure' }
+    if (collected.some((f) => isRefusedFootballCompetition(f.leagueId, f.leagueName) && inSearchWindow(f.date, now))) {
+      return { fixtures: [], reason: 'non_public_fixture' }
+    }
+    return { fixtures: [], reason: 'no_upcoming_fixture' }
   }
 
-  let picked = fixtures
-  if (leagueIds.length && teams.length) {
-    const inLeague = fixtures.filter((f) => leagueIds.includes(f.leagueId))
-    if (inLeague.length) picked = inLeague
+  if (teams.length >= 1) {
+    let sawRefused = false
+    for (const team of teams.slice(0, 3)) {
+      const upcoming = await fetchTeamUpcoming(team.id, now)
+      take(upcoming.fixtures, upcoming.error)
+      const next = selectNextScheduledFixture(upcoming.fixtures, now)
+      if (next) return { fixtures: [fixtureToLite(next)], reason: 'ok' }
+      if (upcoming.fixtures.some((f) => isRefusedFootballCompetition(f.leagueId, f.leagueName) && inSearchWindow(f.date, now))) {
+        sawRefused = true
+      }
+    }
+    if (fetchErrors.length && !collected.length) return { fixtures: [], reason: 'api_failure' }
+    if (sawRefused) return { fixtures: [], reason: 'non_public_fixture' }
+    return { fixtures: [], reason: 'no_upcoming_fixture' }
   }
-  if (!picked.length) return []
 
-  return picked
-    .sort((a, b) => {
-      const rank = footballPopularityRank(a.leagueId) - footballPopularityRank(b.leagueId)
-      if (rank !== 0) return rank
-      return Date.parse(a.date) - Date.parse(b.date)
-    })
-    .slice(0, 12)
-    .map(fixtureToLite)
+  for (const id of leagueIds.slice(0, 3)) {
+    const { fixtures: rows, error } = await fetchFixturesByLeague(id, now)
+    take(rows, error)
+  }
+  const next = selectNextScheduledFixture(collected, now)
+  if (next) return { fixtures: [fixtureToLite(next)], reason: 'ok' }
+  if (fetchErrors.length && !collected.length) return { fixtures: [], reason: 'api_failure' }
+  if (collected.some((f) => isRefusedFootballCompetition(f.leagueId, f.leagueName) && inSearchWindow(f.date, now))) {
+    return { fixtures: [], reason: 'non_public_fixture' }
+  }
+  return { fixtures: [], reason: leagueIds.length ? 'no_upcoming_fixture' : 'ok' }
 }
 
 export async function loadFootballMatchFacts(

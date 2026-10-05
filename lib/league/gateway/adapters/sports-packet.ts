@@ -43,8 +43,15 @@ export type SportsPacketIo = {
   listUpcomingFixtures(now?: Date): Promise<
     Array<{ fixture_id: string; league: string; home: string; away: string; kickoff: string }>
   >
-  searchFootballFixtures?(query: string, now?: Date): Promise<
-    Array<{ fixture_id: string; league: string; home: string; away: string; kickoff: string }>
+  searchFootballFixtures?(
+    query: string,
+    now?: Date,
+  ): Promise<
+    | Array<{ fixture_id: string; league: string; home: string; away: string; kickoff: string }>
+    | {
+        fixtures: Array<{ fixture_id: string; league: string; home: string; away: string; kickoff: string }>
+        reason: 'ok' | 'api_failure' | 'team_not_found' | 'no_upcoming_fixture' | 'non_public_fixture'
+      }
   >
   readFixture(eventId: string): Promise<SportsFixtureCacheRow | null>
   fetchFixtureStats(eventId: string): Promise<FixtureStats | null>

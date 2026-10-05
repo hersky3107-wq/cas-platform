@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { extractFootballAliasHits, extractFootballLeagueHits, leftoverFootballTokens, resolveFootballSearchName } from '../api-football-aliases'
+import { extractFootballAliasHits, extractFootballLeagueHits, footballTeamSearchQueries, leftoverFootballTokens, resolveFootballSearchName } from '../api-football-aliases'
 import { isRefusedFootballCompetition, isRefusedFootballLeagueKey } from '../api-football-leagues'
 import { footballLeagueKeyFromApiId, parseApiFootballEventId } from '../api-football-leagues'
 import {
@@ -52,7 +52,7 @@ describe('K League / J League aliases', () => {
     expect(resolveFootballSearchName('포항')).toBe('Pohang Steelers')
     expect(resolveFootballSearchName('서울')).toBe('FC Seoul')
     expect(resolveFootballSearchName('수원')).toBe('Suwon')
-    expect(resolveFootballSearchName('가시마')).toBe('Kashima Antlers')
+    expect(resolveFootballSearchName('가시마')).toBe('Kashima')
     expect(resolveFootballSearchName('우라와')).toBe('Urawa')
     expect(resolveFootballSearchName('요코하마 F. 마리노스')).toBe('Yokohama F. Marinos')
     expect(extractFootballAliasHits('울산 전북')).toEqual(['Ulsan', 'Jeonbuk Motors'])
@@ -85,6 +85,10 @@ describe('K League / J League aliases', () => {
     expect(extractFootballLeagueHits('분데스리가 바이에른 다음 경기')).toEqual([78])
     expect(leftoverFootballTokens('케이리그 울산 다음 경기 이길까?')).toEqual([])
     expect(extractFootballAliasHits('케이리그 울산 다음 경기 이길까?')).toEqual(['Ulsan'])
+    expect(leftoverFootballTokens('울산이 다음 경기에서 이길까?')).toEqual([])
+    expect(extractFootballAliasHits('울산이 다음 경기에서 이길까?')).toEqual(['Ulsan'])
+    expect(footballTeamSearchQueries('울산이 다음 경기에서 이길까?')).toEqual(['Ulsan'])
+    expect(footballTeamSearchQueries('토트넘 아스날')).toEqual(['Tottenham', 'Arsenal'])
   })
 
   it('refuses amateur / lower-tier competitions and keeps professional keys open', () => {
@@ -94,6 +98,7 @@ describe('K League / J League aliases', () => {
     expect(isRefusedFootballLeagueKey('soccer_k3_league')).toBe(true)
     expect(isRefusedFootballCompetition(null, 'EFL League Two')).toBe(true)
     expect(isRefusedFootballCompetition(null, 'J3 League')).toBe(true)
+    expect(isRefusedFootballCompetition(null, 'Frauen Bundesliga')).toBe(true)
   })
 })
 
