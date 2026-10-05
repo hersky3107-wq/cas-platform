@@ -101,24 +101,31 @@ function pred(overrides: Partial<PredictionRow>): PredictionRow {
 }
 
 describe('lesson stats', () => {
-  it('drops voided rounds and legacy same-day windows', () => {
+  it('drops voided rounds and legacy same-day 24h spots, not auto-graded equities', () => {
     const stats = computeLessonStats([
       lessonRound(),
       lessonRound({ gradingStatus: 'voided', instrument: 'VOID', consensusIsCorrect: false }),
       lessonRound({
-        unresolvableReason: 'legacy_same_day_window',
-        instrument: 'LEGACY',
-        consensusIsCorrect: false,
-        actualOutcome: 'down',
+        gradingStatus: 'auto',
+        instrument: 'AAPL',
+        anchorSessionDate: null,
+        consensusIsCorrect: true,
       }),
-      lessonRound({ gradingStatus: 'pending', instrument: 'OPEN' }),
+      lessonRound({
+        category: 'gold_metal',
+        instrument: 'XAU/USD',
+        anchorSessionDate: '2026-10-01',
+        resolutionSessionDate: '2026-10-01',
+        consensusIsCorrect: true,
+      }),
+      lessonRound({ gradingStatus: 'pending', instrument: 'OPEN', actualOutcome: null, consensusIsCorrect: null }),
     ])
-    expect(stats.n).toBe(1)
-    expect(stats.outcomeFrequencies).toEqual({ up: 1 })
-    expect(stats.aiOverall).toEqual({ hits: 1, n: 1 })
+    expect(stats.n).toBe(2)
+    expect(stats.outcomeFrequencies).toEqual({ up: 2 })
+    expect(stats.aiOverall).toEqual({ hits: 2, n: 2 })
     expect(stats.last5Wrong).toEqual([])
-    expect(stats.extras.replay).toEqual({ hits: 1, n: 1 })
-    expect(stats.replay).toEqual({ hits: 1, n: 1 })
+    expect(stats.extras.replay).toEqual({ hits: 2, n: 2 })
+    expect(stats.replay).toEqual({ hits: 2, n: 2 })
   })
 
   it('bands confidence and majority share, and scores disagreement', () => {

@@ -6,6 +6,7 @@ import 'server-only'
 
 import { runSingleAiProvider } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
+import { selectGradedConsensusTrackRounds } from '../graded-consensus-rounds'
 import { isExtraSeat } from './seats'
 import {
   computeLessonStats,
@@ -90,12 +91,14 @@ export async function loadLessonSourceRounds(): Promise<LessonSourceRound[]> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
     .select(
-      'id, category, horizon, instrument, opened_at, grading_status, unresolvable_reason, actual_outcome, consensus_is_correct, consensus_majority_direction, consensus_aggregate_direction, consensus_aggregate_probability',
+      'id, category, horizon, instrument, opened_at, grading_status, unresolvable_reason, actual_outcome, consensus_is_correct, consensus_majority_direction, consensus_aggregate_direction, consensus_aggregate_probability, anchor_session_date, resolution_session_date',
     )
-    .eq('grading_status', 'graded')
     .not('actual_outcome', 'is', null)
   if (error) throw new Error(error.message)
-  const rounds = (data ?? []) as Record<string, unknown>[]
+  const rounds = selectGradedConsensusTrackRounds((data ?? []) as Record<string, unknown>[]) as Record<
+    string,
+    unknown
+  >[]
   const ids = rounds.map((row) => String(row.id))
   const predictions: Record<string, unknown>[] = []
   for (let i = 0; i < ids.length; i += 200) {
@@ -118,6 +121,7 @@ export async function loadLessonSourceRounds(): Promise<LessonSourceRound[]> {
     const preds = byRound.get(String(row.id)) ?? []
     const majority = row.consensus_majority_direction == null ? null : String(row.consensus_majority_direction)
     return {
+      id: String(row.id ?? ''),
       category: String(row.category ?? ''),
       horizon: String(row.horizon ?? ''),
       instrument: String(row.instrument ?? ''),
@@ -125,7 +129,10 @@ export async function loadLessonSourceRounds(): Promise<LessonSourceRound[]> {
       gradingStatus: String(row.grading_status ?? ''),
       unresolvableReason: row.unresolvable_reason == null ? null : String(row.unresolvable_reason),
       actualOutcome: row.actual_outcome == null ? null : String(row.actual_outcome),
-      consensusIsCorrect: typeof row.consensus_is_correct === 'boolean' ? row.consensus_is_correct : null,
+      anchorSessionDate: row.anchor_session_date == null ? null : String(row.anchor_session_date),
+      resolutionSessionDate: row.resolution_session_date == null ? null : String(row.resolution_session_date),
+      consensusIsCorrect:
+        typeof row.consensus_is_correct === 'boolean' ? row.consensus_is_correct : null,
       majorityDirection: majority,
       aggregateDirection: row.consensus_aggregate_direction == null ? null : String(row.consensus_aggregate_direction),
       aggregateProbability:

@@ -1,13 +1,15 @@
 /**
  * Program-computed lesson stats. The LLM only phrases these numbers.
- * Voided rounds and legacy same-day windows never enter the sample.
+ * Sample matches admin track record (see graded-consensus-rounds).
  */
 
 import { firstOutcomeToken } from '../consensus-snapshot'
+import { isGradedConsensusTrackRound } from '../graded-consensus-rounds'
 import { isExtraSeatId, type ExtraSeatId } from './seats'
 
 export const LESSON_EXTRA_IDS = ['crow', 'consensus', 'history', 'sentiment', 'divination', 'replay'] as const
 
+/** @deprecated Use legacy-same-day-24h selector; kept for tests mentioning void reason text. */
 export const LEGACY_SAME_DAY_REASON = 'legacy_same_day_window'
 
 export type LessonHit = { hits: number; n: number }
@@ -32,6 +34,7 @@ export type LessonStats = {
 }
 
 export type LessonSourceRound = {
+  id?: string
   category: string
   horizon: string
   instrument: string
@@ -39,6 +42,8 @@ export type LessonSourceRound = {
   gradingStatus: string
   unresolvableReason: string | null
   actualOutcome: string | null
+  anchorSessionDate?: string | null
+  resolutionSessionDate?: string | null
   consensusIsCorrect: boolean | null
   majorityDirection: string | null
   aggregateDirection: string | null
@@ -48,10 +53,20 @@ export type LessonSourceRound = {
   extras: Partial<Record<ExtraSeatId, boolean | null>>
 }
 
-export function isExcludedLessonRound(round: Pick<LessonSourceRound, 'gradingStatus' | 'unresolvableReason'>): boolean {
-  if (round.gradingStatus === 'voided') return true
-  if (round.unresolvableReason === LEGACY_SAME_DAY_REASON) return true
-  return false
+export function isExcludedLessonRound(round: LessonSourceRound): boolean {
+  return !isGradedConsensusTrackRound({
+    id: round.id,
+    category: round.category,
+    horizon: round.horizon,
+    instrument: round.instrument,
+    grading_status: round.gradingStatus,
+    actual_outcome: round.actualOutcome,
+    consensus_is_correct: round.consensusIsCorrect,
+    anchor_session_date: round.anchorSessionDate,
+    resolution_session_date: round.resolutionSessionDate,
+    unresolvable_reason: round.unresolvableReason,
+    opened_at: round.openedAt,
+  })
 }
 
 function emptyHit(): LessonHit {
@@ -108,27 +123,24 @@ export function computeLessonStats(rounds: readonly LessonSourceRound[]): Lesson
   const wrong: { openedAt: string; row: LessonWrongRound }[] = []
   for (const round of rounds) {
     if (isExcludedLessonRound(round)) continue
-    if (round.gradingStatus !== 'graded') continue
     stats.n += 1
     const actual = actualToken(round.actualOutcome)
     if (actual) stats.outcomeFrequencies[actual] = (stats.outcomeFrequencies[actual] ?? 0) + 1
-    if (round.consensusIsCorrect != null) {
-      bump(stats.aiOverall, round.consensusIsCorrect)
-      const band = confidenceBand(round.aggregateProbability)
-      if (band) bump(stats.byConfidenceBand[band], round.consensusIsCorrect)
-      const share = shareBand(round.majoritySharePct)
-      if (share) bump(stats.byMajorityShare[share], round.consensusIsCorrect)
-      if (round.consensusIsCorrect === false) {
-        wrong.push({
-          openedAt: round.openedAt,
-          row: {
-            instrument: round.instrument,
-            date: round.openedAt.slice(0, 10),
-            majoritySide: round.majorityDirection,
-            actual,
-          },
-        })
-      }
+    bump(stats.aiOverall, round.consensusIsCorrect === true)
+    const band = confidenceBand(round.aggregateProbability)
+    if (band) bump(stats.byConfidenceBand[band], round.consensusIsCorrect === true)
+    const share = shareBand(round.majoritySharePct)
+    if (share) bump(stats.byMajorityShare[share], round.consensusIsCorrect === true)
+    if (round.consensusIsCorrect === false) {
+      wrong.push({
+        openedAt: round.openedAt,
+        row: {
+          instrument: round.instrument,
+          date: round.openedAt.slice(0, 10),
+          majoritySide: round.majorityDirection,
+          actual,
+        },
+      })
     }
     const maj = round.majorityDirection?.trim().toLowerCase()
     const agg = round.aggregateDirection?.trim().toLowerCase()

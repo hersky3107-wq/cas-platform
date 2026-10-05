@@ -2,6 +2,7 @@ import 'server-only'
 
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { officialRowsForConsensus } from '@/lib/league/extra/seats'
+import { selectGradedConsensusTrackRounds } from '@/lib/league/graded-consensus-rounds'
 
 export type TrackRecordCell = {
   category: string
@@ -32,10 +33,8 @@ export async function loadConsensusTrackRecord(): Promise<TrackRecordCell[]> {
     throw new Error(error.message)
   }
 
-  const graded = (rounds ?? []).filter(
-    (r) => r.grading_status !== 'voided' && String(r.actual_outcome ?? '').trim() !== '',
-  )
-  const ids = graded.map((r) => r.id)
+  const graded = selectGradedConsensusTrackRounds(rounds ?? [])
+  const ids = graded.map((r) => r.id as string)
   const preds: { round_id: string; model_id: string; league_tier: string | null; is_correct: boolean | null }[] = []
   for (let i = 0; i < ids.length; i += 200) {
     const chunk = ids.slice(i, i + 200)
@@ -56,10 +55,8 @@ export async function loadConsensusTrackRecord(): Promise<TrackRecordCell[]> {
     const rs = graded.filter((r) => r.category === category && r.horizon === horizon)
     const idSet = new Set(rs.map((r) => r.id))
     let cHit = 0
-    let cN = 0
+    let cN = rs.length
     for (const r of rs) {
-      if (r.consensus_is_correct === null || r.consensus_is_correct === undefined) continue
-      cN += 1
       if (r.consensus_is_correct) cHit += 1
     }
     const modelRows = official.filter((p) => idSet.has(p.round_id))
