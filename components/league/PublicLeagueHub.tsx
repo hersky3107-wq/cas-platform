@@ -976,6 +976,14 @@ function ComingSoonPanel({
           </button>
         ))}
       </div>
+      {categoryId === 'sports' ? (
+        <p className="mt-3 text-left text-[11px] leading-relaxed text-slate-500">{t.disclaimer.sports}</p>
+      ) : null}
+      {categoryId === 'real_estate' ? (
+        <p className="mt-3 text-left text-[11px] leading-relaxed text-slate-500">
+          {t.disclaimer.realEstate} {t.disclaimer.realEstateScope}
+        </p>
+      ) : null}
     </div>
   )
 }

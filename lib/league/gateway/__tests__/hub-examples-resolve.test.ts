@@ -131,9 +131,6 @@ describe('hub examples resolve offline', () => {
       const code = refused(hit)
       if (code) misses.push(`${row.locale} ${row.hub}: ${code} — ${row.text}`)
     }
-    const sports = misses.filter((line) => line.includes(' sports:'))
-    const koEn = misses.filter((line) => /^(ko|en) /.test(line))
-    expect(sports, sports.join('\n')).toEqual([])
-    expect(koEn, koEn.join('\n')).toEqual([])
+    expect(misses, misses.join('\n')).toEqual([])
   })
 })

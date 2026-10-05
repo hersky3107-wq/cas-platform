@@ -1,5 +1,6 @@
 import { isUiHorizon } from '../../horizon'
 import { detectBettingFraming } from '../betting-framing'
+import { bridgePromptToEnglish } from '../prompt-bridge'
 import { refusalMessageKey } from '../refusal-copy'
 import type {
   CategoryAdapter,
@@ -74,7 +75,7 @@ export function createEntertainmentAdapter(
     entity_kinds: ['award'],
     observation_shape: 'name_match',
 
-    async resolveEntity(raw: string): Promise<EntityResolution> {
+    async resolveEntity(raw: string, locale = 'en'): Promise<EntityResolution> {
       if (detectBettingFraming(raw, { category: 'entertainment_awards' })) {
         return { ok: false, refuse: refuse('betting_framing') }
       }
@@ -83,7 +84,8 @@ export function createEntertainmentAdapter(
       if (SUBJECTIVE.test(raw) && !SUCCESS.test(raw)) return { ok: false, refuse: refuse('subjective_show') }
 
       const now = nowFn()
-      const decoded = decodeEntertainmentInstrument(raw.trim())
+      const bridged = (await bridgePromptToEnglish(raw, locale)).text
+      const decoded = decodeEntertainmentInstrument(bridged)
       if (decoded) {
         if (decoded.resolvesAtMs <= now.getTime() - 6 * 60 * 60 * 1000) {
           return { ok: false, refuse: refuse('past_show') }
@@ -98,7 +100,7 @@ export function createEntertainmentAdapter(
       }
 
       const slate = await io.listUpcoming(now)
-      const hit = resolveEntertainmentTarget(raw, slate, now)
+      const hit = resolveEntertainmentTarget(bridged, slate, now)
       if (hit.kind === 'picks') {
         return {
           ok: false,

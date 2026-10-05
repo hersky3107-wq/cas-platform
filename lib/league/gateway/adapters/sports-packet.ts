@@ -9,6 +9,8 @@ import { formatFootballMatchFacts } from '../../sports/api-football-packet'
 import { teamsMatch } from '../../sports/lineup-logic'
 import type { DevigResult, FixtureStats, SportsFixtureCacheRow } from '../../sports/types'
 import type { CategoryPacket, PacketBuildContext, PacketRound } from '../types'
+import { formatDomesticBaseballPacket, decodeDomesticBaseballInstrument } from '../../sports/domestic-baseball'
+import { isDomesticBaseballLeague } from '../../sports/types'
 import {
   decodeSportsInstrument,
   isSoccerLeague,
@@ -59,6 +61,10 @@ export type SportsPacketIo = {
     eventId: string,
     hint?: { home: string; away: string; kickoffIso: string },
   ): Promise<FootballMatchFacts | null>
+  searchDomesticBaseball?(
+    query: string,
+    now?: Date,
+  ): Promise<Array<{ league: 'baseball_kbo' | 'baseball_cpbl'; home: string; away: string; kickoffMs: number; venue: string | null; subject: string }>>
   getResearchPacket(args: {
     round: PacketRound
     budgetRemainingUsd: number
@@ -69,6 +75,13 @@ export type SportsPacketIo = {
 
 export function sportsSearchQueries(parts: SportsInstrumentParts): Array<{ q: string; lang: string }> {
   const kickoffDay = new Date(parts.kickoffMs).toISOString().slice(0, 10)
+  if (isDomesticBaseballLeague(parts.league)) {
+    return [
+      { q: `${parts.home} ${parts.away} 선발투수 엔트리 말소 등록 ${kickoffDay}`, lang: 'ko' },
+      { q: `${parts.home} ${parts.away} 최근 성적 상대 전적 순위 포스트시즌 ${kickoffDay}`, lang: 'ko' },
+      { q: `${parts.home} vs ${parts.away} announced starting pitcher injury roster ${kickoffDay}`, lang: 'en' },
+    ]
+  }
   const queries: Array<{ q: string; lang: string }> = [
     { q: `${parts.home} 예상 선발 부상자 ${kickoffDay}`, lang: 'ko' },
     { q: `${parts.away} 예상 선발 부상자 ${kickoffDay}`, lang: 'ko' },
@@ -348,10 +361,11 @@ export function formatSportsCrowBrief(
 
 export async function buildSportsPacket(ctx: PacketBuildContext, io: SportsPacketIo): Promise<CategoryPacket> {
   const parts = decodeSportsInstrument(ctx.round.instrument)
+  const domesticLeague = Boolean(parts && isDomesticBaseballLeague(parts.league))
   const queries = parts ? sportsSearchQueries(parts) : []
   const [cache, stats, football, research] = await Promise.all([
-    parts ? io.readFixture(parts.eventId).catch(() => null) : Promise.resolve(null),
-    parts ? io.fetchFixtureStats(parts.eventId).catch(() => null) : Promise.resolve(null),
+    parts && !domesticLeague ? io.readFixture(parts.eventId).catch(() => null) : Promise.resolve(null),
+    parts && !domesticLeague ? io.fetchFixtureStats(parts.eventId).catch(() => null) : Promise.resolve(null),
     parts && isSoccerLeague(parts.league) && io.fetchFootballFacts
       ? io.fetchFootballFacts(parts.eventId, {
           home: parts.home,
@@ -366,9 +380,15 @@ export async function buildSportsPacket(ctx: PacketBuildContext, io: SportsPacke
       forcedQueries: queries,
     }),
   ])
-  const injection = parts
-    ? assembleSportsInjection({ round: ctx.round, parts, cache, stats, research, football })
-    : `SPORTS PACKET — UNAVAILABLE (instrument ${ctx.round.instrument})`
+  const domestic = parts && isDomesticBaseballLeague(parts.league) ? decodeDomesticBaseballInstrument(ctx.round.instrument) : null
+  const injection = domestic
+    ? formatDomesticBaseballPacket(
+        { ...domestic, venue: domestic.venue },
+        research.findings.map((finding) => finding.summary),
+      )
+    : parts
+      ? assembleSportsInjection({ round: ctx.round, parts, cache, stats, research, football })
+      : `SPORTS PACKET — UNAVAILABLE (instrument ${ctx.round.instrument})`
   return {
     injection,
     researchCacheKey: research.cacheKey,

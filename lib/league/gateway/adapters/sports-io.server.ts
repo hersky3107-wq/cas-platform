@@ -3,6 +3,7 @@ import 'server-only'
 import { getResearchPacket } from '../../research'
 import { loadFootballMatchFacts, resolveFixtureIdForParts, searchFootballFixtures } from '../../sports/api-football'
 import { fetchOddsEvents, fetchFixtureStats, listLeagueCache, readFixtureCache } from '../../sports/server'
+import { gamesFromSearchText, parseDomesticBaseballIntent } from '../../sports/domestic-baseball'
 import { LAUNCH_SPORTS_LEAGUES, isSportsLeagueKey } from '../../sports/types'
 import type { SportsPacketIo } from './sports-packet'
 
@@ -31,8 +32,31 @@ async function fetchFootballFacts(
   return loadFootballMatchFacts(id)
 }
 
+async function searchDomesticBaseball(query: string, now: Date) {
+  const intent = parseDomesticBaseballIntent(query)
+  if (!intent) return []
+  const packet = await getResearchPacket({
+    round: {
+      instrument: 'MATCH:baseball_kbo:lookup',
+      category: 'sports',
+      proposition_text: query,
+      horizon: '1d',
+      resolution_rule: 'final result including extra innings',
+      resolves_at: new Date(now.getTime() + 7 * 86_400_000).toISOString(),
+    },
+    budgetRemainingUsd: 0.05,
+    forcedQueries: [
+      { q: query, lang: 'ko' },
+      { q: `${query} 일정 경기장`, lang: 'ko' },
+    ],
+  }).catch(() => null)
+  const text = (packet?.findings ?? []).map((finding) => finding.summary).join('\n')
+  return gamesFromSearchText(text, now, intent)
+}
+
 export const LIVE_SPORTS_IO: SportsPacketIo = {
   listUpcomingFixtures,
+  searchDomesticBaseball,
   searchFootballFixtures,
   readFixture: (eventId) => readFixtureCache(eventId),
   fetchFixtureStats: (eventId) => fetchFixtureStats(eventId),

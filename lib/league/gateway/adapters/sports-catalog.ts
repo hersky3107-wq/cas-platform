@@ -6,7 +6,7 @@
 
 import { FOOTBALL_LEAGUE_LABEL_EN, isFootballInstrumentLeague } from '../../sports/api-football-leagues'
 import { teamsMatch } from '../../sports/lineup-logic'
-import { isSportsLeagueKey, type SportsLeagueKey } from '../../sports/types'
+import { isDomesticBaseballLeague, isSportsLeagueKey, type SportsLeagueKey } from '../../sports/types'
 import { detectBettingFraming } from '../betting-framing'
 
 export type SportsSide = 'home' | 'away'
@@ -32,7 +32,7 @@ export const SPORTS_RESOLVES_AFTER_KICKOFF_MS = 2.5 * 60 * 60 * 1000
 export const FOOTBALL_RESOLVES_AFTER_KICKOFF_MS = 3 * 60 * 60 * 1000
 
 export function isSportsInstrumentLeague(league: string): boolean {
-  return isSportsLeagueKey(league) || isFootballInstrumentLeague(league)
+  return isSportsLeagueKey(league) || isFootballInstrumentLeague(league) || isDomesticBaseballLeague(league)
 }
 
 export const SOCCER_LEAGUES: readonly SportsLeagueKey[] = [
@@ -75,6 +75,8 @@ const LEAGUE_LABEL_EN: Record<SportsLeagueKey, string> = {
 }
 
 export function leagueLabelEn(league: string): string {
+  if (league === 'baseball_kbo') return 'KBO'
+  if (league === 'baseball_cpbl') return 'CPBL'
   if (league in LEAGUE_LABEL_EN) return LEAGUE_LABEL_EN[league as SportsLeagueKey]
   if (FOOTBALL_LEAGUE_LABEL_EN[league]) return FOOTBALL_LEAGUE_LABEL_EN[league]
   if (league.startsWith('soccer_')) {
@@ -190,7 +192,53 @@ const ALIAS_INDEX: Array<{ alias: string; canonical: string; kind: 'athlete' | '
 
 export { detectBettingFraming }
 
+function kstCompact(ms: number): string {
+  const shifted = new Date(ms + 9 * 3600_000)
+  const y = shifted.getUTCFullYear()
+  const m = String(shifted.getUTCMonth() + 1).padStart(2, '0')
+  const d = String(shifted.getUTCDate()).padStart(2, '0')
+  const hh = String(shifted.getUTCHours()).padStart(2, '0')
+  const mm = String(shifted.getUTCMinutes()).padStart(2, '0')
+  return `${y}-${m}-${d}T${hh}${mm}`
+}
+
+function decodeDomesticMatch(instrument: string): SportsInstrumentParts | null {
+  const parts = instrument.split(':')
+  if (parts.length !== 6 || parts[0] !== 'MATCH' || !isDomesticBaseballLeague(parts[1] ?? '')) return null
+  const stamp = parts[2] ?? ''
+  const match = stamp.match(/^(\d{4})-(\d{2})-(\d{2})T(\d{2})(\d{2})$/)
+  if (!match) return null
+  const kickoffMs = Date.parse(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:00+09:00`)
+  if (!Number.isFinite(kickoffMs)) return null
+  const home = safeDecode(parts[3] ?? '')
+  const away = safeDecode(parts[4] ?? '')
+  const subject = safeDecode(parts[5] ?? '')
+  if (!home || !away || !subject) return null
+  const side = subject === away && subject !== home ? 'away' : 'home'
+  return { league: parts[1]!, eventId: stamp, side, kickoffMs, home, away }
+}
+
+function safeDecode(value: string): string {
+  try {
+    return decodeURIComponent(value)
+  } catch {
+    return value
+  }
+}
+
 export function encodeSportsInstrument(parts: SportsInstrumentParts): string {
+  if (isDomesticBaseballLeague(parts.league)) {
+    const stamp = kstCompact(parts.kickoffMs)
+    const subject = parts.side === 'home' ? parts.home : parts.away
+    return [
+      'MATCH',
+      parts.league,
+      stamp,
+      encodeURIComponent(parts.home),
+      encodeURIComponent(parts.away),
+      encodeURIComponent(subject),
+    ].join(':')
+  }
   return [
     'MATCH',
     parts.league,
@@ -204,6 +252,8 @@ export function encodeSportsInstrument(parts: SportsInstrumentParts): string {
 
 export function decodeSportsInstrument(instrument: string | null | undefined): SportsInstrumentParts | null {
   if (!instrument) return null
+  const domestic = decodeDomesticMatch(instrument)
+  if (domestic) return domestic
   const parts = instrument.split(':')
   if (parts.length !== 7 || parts[0] !== 'MATCH') return null
   const league = parts[1] ?? ''

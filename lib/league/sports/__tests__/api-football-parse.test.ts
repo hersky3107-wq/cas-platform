@@ -88,7 +88,12 @@ describe('K League / J League aliases', () => {
     expect(leftoverFootballTokens('울산이 다음 경기에서 이길까?')).toEqual([])
     expect(extractFootballAliasHits('울산이 다음 경기에서 이길까?')).toEqual(['Ulsan'])
     expect(footballTeamSearchQueries('울산이 다음 경기에서 이길까?')).toEqual(['Ulsan'])
+    expect(footballTeamSearchQueries('ウルサンは次の試合に勝つ？')).toEqual(['Ulsan'])
+    expect(footballTeamSearchQueries('蔚山下一場會贏嗎？')).toEqual(['Ulsan'])
+    expect(footballTeamSearchQueries('هل تفوز أولسان في مباراتها القادمة؟')).toEqual(['Ulsan'])
     expect(footballTeamSearchQueries('토트넘 아스날')).toEqual(['Tottenham', 'Arsenal'])
+    expect(footballTeamSearchQueries('O Arsenal vence o próximo jogo?')).toEqual(['Arsenal'])
+    expect(footballTeamSearchQueries('Ulsan gagnera-t-il son prochain match ?')).toEqual(['Ulsan'])
   })
 
   it('refuses amateur / lower-tier competitions and keeps professional keys open', () => {

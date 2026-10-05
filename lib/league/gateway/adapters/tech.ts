@@ -1,4 +1,5 @@
 import { isUiHorizon } from '../../horizon'
+import { bridgePromptToEnglish } from '../prompt-bridge'
 import { refusalMessageKey } from '../refusal-copy'
 import type {
   CategoryAdapter,
@@ -132,7 +133,7 @@ export function createTechAdapter(io: TechPacketIo, nowFn: () => Date = () => ne
     observation_shape: 'occurrence',
 
     async resolveEntity(raw: string, locale: string, _viewer?: GatewayViewer): Promise<EntityResolution> {
-      const trimmed = raw.trim()
+      const trimmed = (await bridgePromptToEnglish(raw, locale)).text
       if (isAirankInstrument(trimmed) && decodeAirankInstrument(trimmed)) {
         const parts = decodeAirankInstrument(trimmed)!
         return {

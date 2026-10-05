@@ -703,6 +703,8 @@ export type LeagueUiPack = {
     openRoundNote: string
     /** Background job accepted, waiting for a runner slot. */
     generationQueued: string
+    /** Queued card: "대기 N번째 · 약 M분" and the other locales. */
+    queueLine: (position: number, minutes: number) => string
     /** Board filling: N of TOTAL roster seats resolved (tiles + dropped). */
     generationProgress: (answered: number, total: number) => string
     /** Seat-resolution complete — every active seat rendered or dropped. */
@@ -948,10 +950,11 @@ const en: LeagueUiPack = {
     short: 'Info only — not investment advice. You are responsible for your own decisions.',
     long: 'These are AI model opinions shown for information and entertainment purposes only. They are not investment, financial, legal, or professional advice, and no model here is a licensed advisor. Markets are unpredictable and AI models can be — and often are — wrong. You are solely responsible for any decision you make.',
     realEstate:
-      'Statistical reference only — not a formal appraisal. Region- and instrument-level outlook; not a valuation of any specific property.',
+      'Forecasts of published public price indexes only. Not brokerage, appraisal, or investment advice, and not the price of any specific property. Figures are published statistics and can lag their release. Decisions are yours.',
     realEstateScope: 'Specific complexes, listings, and addresses are not predicted. Official regional indexes only.',
     extraExperimental: 'For entertainment and experiment only — not a basis for investment decisions.',
-    sports: 'Informational analysis only. This is not gambling advice.',
+    sports:
+      'Informational analysis only. This is not gambling advice. This compares AI forecasts for information and entertainment. It is not a betting service, provides no odds or betting links, and does not encourage gambling. Illegal sports betting is prohibited by law (Korea: National Sports Promotion Act, 국민체육진흥법); follow the laws where you are. Results are not guaranteed.',
     electionManualClose: 'Under election law, this prediction is not shown until voting ends.',
     neutralReference: 'Reference material comparing AI model forecasts; results are not guaranteed.',
   },
@@ -1341,6 +1344,7 @@ const en: LeagueUiPack = {
     openingRound: 'Opening\u2026',
     openRoundNote: 'One payment per round. Once opened, you can come back to it any time \u2014 including after grading \u2014 at no extra charge.',
     generationQueued: 'In line \u2014 your round starts shortly. You can close this screen; it keeps running.',
+    queueLine: (position, minutes) => `Queue position ${position} · about ${minutes} min`,
     generationProgress: (answered, total) => `Models answering \u00b7 ${answered}/${total}`,
     generationComplete: (total) => `${total} predictions ready`,
     generationWaitingNote: 'AIs are formulating predictions \u00b7 Please wait a moment',
@@ -1574,10 +1578,12 @@ const ko: LeagueUiPack = {
   disclaimer: {
     short: '정보 제공 목적일 뿐 투자 조언이 아닙니다. 모든 결정의 책임은 본인에게 있습니다.',
     long: '본 콘텐츠는 여러 AI 모델의 의견을 정보 및 오락 목적으로 제공하는 것이며, 투자·금융·법률·전문 자문이 아닙니다. 여기 등장하는 어떤 모델도 인가받은 자문가가 아닙니다. 시장은 예측할 수 없으며 AI 모델의 예측은 자주, 그리고 크게 틀릴 수 있습니다. 이를 근거로 내리는 모든 결정의 책임은 전적으로 본인에게 있습니다.',
-    realEstate: '통계적 참고용이며 감정평가가 아닙니다. 개별 부동산 가치 산정이 아닙니다.',
+    realEstate:
+      '공개된 가격 지수만 예측합니다. 중개·감정·투자 자문이 아니며, 특정 물건의 가격이 아닙니다. 발표된 통계이며 공표 시차가 있습니다. 판단과 책임은 이용자에게 있습니다.',
     realEstateScope: '특정 단지·매물·주소는 예측하지 않습니다. 지역 공식 지수만 다룹니다.',
     extraExperimental: '오락·실험 목적, 투자 판단 근거 아님',
-    sports: '정보성 분석입니다. 도박을 권유하지 않습니다.',
+    sports:
+      '정보·오락 목적의 AI 예측 비교입니다. 도박 서비스가 아니며 도박 사이트 주소를 제공하지 않고 도박을 권하지 않습니다. 불법 스포츠 도박은 국민체육진흥법으로 금지되며, 이용자는 현지 법률을 따라야 합니다. 결과는 보장되지 않습니다.',
     electionManualClose: '선거 관련 법령에 따라 투표 종료 시까지 이 예측은 공개되지 않습니다.',
     neutralReference: 'AI 모델들의 예측을 비교하는 참고 자료이며 결과를 보장하지 않습니다.',
   },
@@ -1961,6 +1967,7 @@ const ko: LeagueUiPack = {
     openingRound: '여는 중…',
     openRoundNote: '라운드당 1회 결제입니다. 한 번 열면 채점 이후를 포함해 언제든 추가 비용 없이 다시 볼 수 있습니다.',
     generationQueued: '대기열에 등록되었습니다 — 곧 시작됩니다. 화면을 닫아도 계속 진행됩니다.',
+    queueLine: (position, minutes) => `대기 ${position}번째 · 약 ${minutes}분`,
     generationProgress: (answered, total) => `모델 응답 수집 중 · ${answered}/${total}`,
     generationComplete: (total) => `${total}개 예측 완료`,
     generationWaitingNote: 'AI들이 예측 중입니다 · 잠시만 기다려 주세요',
@@ -2192,10 +2199,12 @@ const ja: LeagueUiPack = {
   disclaimer: {
     short: '情報提供のみを目的としており、投資助言ではありません。ご自身の判断と責任でご利用ください。',
     long: 'この内容は複数のAIモデルの見解を情報提供・娯楽目的で示したものであり、投資・金融・法律・専門的な助言ではありません。ここに登場するモデルはいずれも認可を受けたアドバイザーではありません。市場は予測不可能であり、AIモデルの予測は誤ることが多々あります。これに基づく判断の責任はすべてご自身が負うものとします。',
-    realEstate: '統計的な参考情報であり、鑑定評価ではありません。個別不動産の価格算定ではありません。',
+    realEstate:
+      '公表された価格指数のみを予測します。仲介・鑑定・投資助言ではなく、特定物件の価格でもありません。公表統計であり発表までの時差があります。判断と責任は利用者にあります。',
     realEstateScope: '特定の団地・物件・住所は予測しません。地域の公式指数のみを扱います。',
     extraExperimental: '娯楽・実験目的であり、投資判断の根拠ではありません。',
-    sports: '情報分析です。賭博の勧誘ではありません。',
+    sports:
+      '情報・娯楽目的のAI予測比較です。賭博サービスではなく、オッズや賭博サイトへのリンクは提供せず、賭博を勧めません。違法なスポーツ賭博は法律で禁止されています（韓国：国民体育振興法）。利用地の法律に従ってください。結果は保証されません。',
     electionManualClose: '選挙関連法令により、投票終了までこの予測は公開されません。',
     neutralReference: 'AIモデルの予測を比較する参考資料であり、結果を保証するものではありません。',
   },
@@ -2577,6 +2586,7 @@ const ja: LeagueUiPack = {
     openingRound: '開いています…',
     openRoundNote: 'ラウンドごとに1回のお支払いです。一度開けば、採点後も含めていつでも追加料金なしで再閲覧できます。',
     generationQueued: '順番待ちに登録されました — まもなく開始します。画面を閉じても処理は続きます。',
+    queueLine: (position, minutes) => `待ち ${position}番目 · 約${minutes}分`,
     generationProgress: (answered, total) => `モデルの回答を収集中・${answered}/${total}`,
     generationComplete: (total) => `${total}件の予測が完了`,
     generationWaitingNote: 'AIが予測を生成中です・少々お待ちください',
@@ -2807,10 +2817,12 @@ const zhTW: LeagueUiPack = {
   disclaimer: {
     short: '僅供參考，非投資建議。所有決定的責任由您自行承擔。',
     long: '本內容為多個 AI 模型的意見，僅供資訊與娛樂用途，並非投資、財務、法律或專業建議；此處任何模型皆非持牌顧問。市場無法預測，AI 模型的判斷經常出錯。您必須自行承擔依此做出之任何決定的全部責任。',
-    realEstate: '僅供統計參考，並非正式估價。僅涵蓋區域／標的層級，不對個別不動產估價。',
+    realEstate:
+      '僅預測已公布的公共價格指數。並非仲介、估價或投資建議，也不是任何特定不動產的價格。資料為公布統計，公布有時差。決定由使用者自行負責。',
     realEstateScope: '不預測特定社區、物件或地址。僅涵蓋地區官方指數。',
     extraExperimental: '僅供娛樂與實驗，不得作為投資判斷依據。',
-    sports: '僅供資訊分析，並非賭博勸誘。',
+    sports:
+      '本內容為資訊與娛樂目的之AI預測比較。並非博弈服務，不提供賠率或博弈連結，亦不鼓勵賭博。非法運動博弈受法律禁止（韓國：國民體育振興法），使用者須遵守所在地法律。結果不保證。',
     electionManualClose: '依選舉相關法令，投票結束前不公開此預測。',
     neutralReference: '本內容為比較各AI模型預測之參考資料，不保證預測結果。',
   },
@@ -3189,6 +3201,7 @@ const zhTW: LeagueUiPack = {
     openingRound: '開啟中…',
     openRoundNote: '每回合僅收費一次。開啟後可隨時重看（包含評分後），不再另外收費。',
     generationQueued: '已進入佇列 — 即將開始。關閉畫面也會繼續進行。',
+    queueLine: (position, minutes) => `排隊第 ${position} 位 · 約 ${minutes} 分鐘`,
     generationProgress: (answered, total) => `正在收集模型回覆・${answered}/${total}`,
     generationComplete: (total) => `${total} 則預測完成`,
     generationWaitingNote: 'AI 正在進行預測・請稍候',
@@ -3421,10 +3434,11 @@ const fr: LeagueUiPack = {
     short: 'Information uniquement, ceci n\u2019est pas un conseil en investissement. Vous êtes seul responsable de vos décisions.',
     long: 'Ce contenu présente les avis de plusieurs modèles d\u2019IA à titre purement informatif et de divertissement. Il ne s\u2019agit pas d\u2019un conseil en investissement, financier, juridique ou professionnel, et aucun modèle ici n\u2019est un conseiller agréé. Les marchés sont imprévisibles et les modèles d\u2019IA peuvent se tromper, et se trompent souvent. Vous assumez l\u2019entière responsabilité de toute décision prise sur cette base.',
     realEstate:
-      'Référence statistique uniquement — pas une expertise immobilière. Horizon régional ou d\u2019instrument, pas une évaluation d\u2019un bien précis.',
+      'Prévisions d’indices publics de prix uniquement. Ni courtage, ni expertise, ni conseil en investissement, et pas le prix d’un bien précis. Données statistiques publiées, avec un délai de publication. Les décisions vous appartiennent.',
     realEstateScope: 'Les complexes, annonces et adresses précises ne sont pas prédits. Index régionaux officiels uniquement.',
     extraExperimental: 'À des fins de divertissement et d’expérience uniquement — pas un fondement de décision d’investissement.',
-    sports: 'Analyse informative uniquement. Ceci n’est pas une incitation au jeu.',
+    sports:
+      'Comparaison d’informations et de divertissement des prévisions d’IA. Ce n’est pas un service de paris : aucune cote ni lien de pari n’est fourni, et les jeux d’argent ne sont pas encouragés. Les paris sportifs illégaux sont interdits par la loi (Corée : loi de promotion du sport national) ; respectez les lois de votre pays. Les résultats ne sont pas garantis.',
     electionManualClose: 'Conformément au droit électoral, cette prédiction n’est pas affichée avant la clôture du scrutin.',
     neutralReference: 'Document de référence comparant les prévisions des modèles d\'IA ; les résultats ne sont pas garantis.',
   },
@@ -3815,6 +3829,7 @@ const fr: LeagueUiPack = {
     openingRound: 'Ouverture\u2026',
     openRoundNote: 'Paiement unique par manche. Une fois ouverte, vous pouvez y revenir à tout moment — même après notation — sans frais supplémentaires.',
     generationQueued: 'En file d\u2019attente — votre manche démarre sous peu. Vous pouvez fermer cet écran, le traitement continue.',
+    queueLine: (position, minutes) => `File : ${position}e · environ ${minutes} min`,
     generationProgress: (answered, total) => `Réponses des modèles \u00b7 ${answered}/${total}`,
     generationComplete: (total) => `${total} prédictions prêtes`,
     generationWaitingNote: 'Les IA génèrent leurs prédictions \u00b7 Veuillez patienter',
@@ -4055,10 +4070,11 @@ const es: LeagueUiPack = {
     short: 'Solo información, no es asesoramiento de inversión. Usted es responsable de sus propias decisiones.',
     long: 'Este contenido muestra opiniones de varios modelos de IA con fines informativos y de entretenimiento únicamente. No constituye asesoramiento de inversión, financiero, legal ni profesional, y ninguno de estos modelos es un asesor autorizado. Los mercados son impredecibles y los modelos de IA pueden equivocarse, y a menudo lo hacen. Usted es el único responsable de cualquier decisión que tome con base en esta información.',
     realEstate:
-      'Solo referencia estadística, no es una tasación formal. Perspectiva de región o instrumento, no la valoración de un inmueble concreto.',
+      'Solo pronósticos de índices públicos de precios. No es intermediación, tasación ni asesoramiento de inversión, ni el precio de un inmueble concreto. Son estadísticas publicadas y pueden publicarse con retraso. Las decisiones son suyas.',
     realEstateScope: 'No se predicen complejos, anuncios ni direcciones concretas. Solo índices regionales oficiales.',
     extraExperimental: 'Solo entretenimiento y experimento — no es base para una decisión de inversión.',
-    sports: 'Análisis informativo. No es una incitación al juego.',
+    sports:
+      'Comparación informativa y de entretenimiento de pronósticos de IA. No es un servicio de apuestas: no hay cuotas ni enlaces de apuestas, y no se fomenta el juego. Las apuestas deportivas ilegales están prohibidas por la ley (Corea: Ley de promoción del deporte nacional); cumpla las leyes de su país. Los resultados no están garantizados.',
     electionManualClose: 'Conforme a la ley electoral, esta predicción no se muestra hasta que termine la votación.',
     neutralReference: 'Material de referencia que compara pronósticos de modelos de IA; no se garantizan los resultados.',
   },
@@ -4449,6 +4465,7 @@ const es: LeagueUiPack = {
     openingRound: 'Abriendo\u2026',
     openRoundNote: 'Pago único por ronda. Una vez abierta, puedes volver a verla cuando quieras — incluso tras la calificación — sin costo adicional.',
     generationQueued: 'En cola — tu ronda comienza en breve. Puedes cerrar esta pantalla; sigue en marcha.',
+    queueLine: (position, minutes) => `Cola: puesto ${position} · unos ${minutes} min`,
     generationProgress: (answered, total) => `Recogiendo respuestas de los modelos \u00b7 ${answered}/${total}`,
     generationComplete: (total) => `${total} predicciones listas`,
     generationWaitingNote: 'Las IA están generando predicciones \u00b7 Por favor, espera un momento',
@@ -4688,10 +4705,12 @@ const ar: LeagueUiPack = {
   disclaimer: {
     short: 'لأغراض المعلومات فقط، وليست نصيحة استثمارية. أنت المسؤول عن قراراتك الخاصة.',
     long: 'يعرض هذا المحتوى آراء عدة نماذج ذكاء اصطناعي لأغراض المعلومات والترفيه فقط. وهو لا يمثل نصيحة استثمارية أو مالية أو قانونية أو مهنية، وليس أي نموذج هنا مستشارًا مرخصًا. الأسواق غير قابلة للتنبؤ، وقد تخطئ نماذج الذكاء الاصطناعي، بل وتخطئ كثيرًا. أنت وحدك المسؤول عن أي قرار تتخذه بناءً على ذلك.',
-    realEstate: 'مرجع إحصائي فقط — وليس تقييمًا رسميًا. نظرة على المنطقة أو الأداة، لا تقدير لعقار بعينه.',
+    realEstate:
+      'توقعات لمؤشرات الأسعار العامة المنشورة فقط. ليست وساطة أو تقييمًا أو نصيحة استثمار، وليست سعر عقار بعينه. البيانات إحصاءات منشورة وقد تتأخر عن الإصدار. القرار مسؤوليتك.',
     realEstateScope: 'لا نتنبأ بمجمعات أو عروض أو عناوين محددة. المؤشرات الإقليمية الرسمية فقط.',
     extraExperimental: 'للترفيه والتجربة فقط، وليس أساسًا لقرار استثماري.',
-    sports: 'تحليل معلوماتي فقط. ليس دعوة للمقامرة.',
+    sports:
+      'مقارنة معلوماتية وترفيهية لتوقعات الذكاء الاصطناعي. ليست خدمة مراهنة، ولا تُقدَّم احتمالات أو روابط مراهنة، ولا تُشجَّع المقامرة. المراهنة الرياضية غير القانونية محظورة (كوريا: قانون تعزيز الرياضة الوطنية)؛ التزموا بقوانين بلدكم. النتائج غير مضمونة.',
     electionManualClose: 'وفق قوانين الانتخابات، لا يُعرض هذا التوقع حتى انتهاء التصويت.',
     neutralReference: 'مادة مرجعية لمقارنة توقعات نماذج الذكاء الاصطناعي؛ النتائج غير مضمونة.',
   },
@@ -5073,6 +5092,7 @@ const ar: LeagueUiPack = {
     openingRound: 'جارٍ الفتح…',
     openRoundNote: 'دفعة واحدة لكل جولة. بعد فتحها يمكنك العودة إليها في أي وقت — حتى بعد التقييم — دون رسوم إضافية.',
     generationQueued: 'في قائمة الانتظار — ستبدأ جولتك قريبًا. يمكنك إغلاق هذه الشاشة وسيستمر التنفيذ.',
+    queueLine: (position, minutes) => `الانتظار ${position} · حوالي ${minutes} د`,
     generationProgress: (answered, total) => `جارٍ جمع إجابات النماذج · ${answered}/${total}`,
     generationComplete: (total) => `اكتملت ${total} تنبؤات`,
     generationWaitingNote: 'النماذج الذكية تُجري التنبؤات الآن · يُرجى الانتظار قليلًا',
@@ -5312,10 +5332,11 @@ const pt: LeagueUiPack = {
     short: 'Apenas informação — não é recomendação de investimento. Você é responsável pelas próprias decisões.',
     long: 'Estas são opiniões de modelos de IA exibidas apenas para fins informativos e de entretenimento. Não são aconselhamento de investimento, financeiro, jurídico ou profissional, e nenhum modelo aqui é um consultor licenciado. Os mercados são imprevisíveis e os modelos de IA podem errar — e erram com frequência. Você é o único responsável por qualquer decisão que tomar.',
     realEstate:
-      'Referência estatística apenas — não é uma avaliação formal. Perspectiva por região e instrumento; não é a avaliação de nenhum imóvel específico.',
+      'Apenas previsões de índices públicos de preços. Não é corretagem, avaliação ou aconselhamento de investimento, nem o preço de um imóvel específico. São estatísticas publicadas e podem sair com atraso. As decisões são suas.',
     realEstateScope: 'Não prevemos condomínios, anúncios ou endereços específicos. Somente índices regionais oficiais.',
     extraExperimental: 'Apenas entretenimento e experimento — não é base para decisão de investimento.',
-    sports: 'Análise informativa. Não é incentivo a jogo.',
+    sports:
+      'Comparação informativa e de entretenimento de previsões de IA. Não é um serviço de apostas: não há odds nem links de apostas, e o jogo não é incentivado. Apostas esportivas ilegais são proibidas por lei (Coreia: Lei de promoção do desporto nacional); siga as leis do seu país. Os resultados não são garantidos.',
     electionManualClose: 'De acordo com a legislação eleitoral, esta previsão não é exibida até o fim da votação.',
     neutralReference: 'Material de referência comparando previsões de modelos de IA; os resultados não são garantidos.',
   },
@@ -5701,6 +5722,7 @@ const pt: LeagueUiPack = {
     openingRound: 'Abrindo\u2026',
     openRoundNote: 'Pagamento único por rodada. Depois de aberta, você pode revê-la a qualquer momento — inclusive após a avaliação — sem custo extra.',
     generationQueued: 'Na fila — sua rodada começa em instantes. Pode fechar esta tela; o processo continua.',
+    queueLine: (position, minutes) => `Fila: ${position}º · cerca de ${minutes} min`,
     generationProgress: (answered, total) => `Coletando respostas dos modelos \u00b7 ${answered}/${total}`,
     generationComplete: (total) => `${total} previsões prontas`,
     generationWaitingNote: 'As IAs estão gerando previsões \u00b7 Por favor, aguarde um momento',

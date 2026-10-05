@@ -2,6 +2,7 @@ import { isUiHorizon } from '../../horizon'
 import { groupForCountry } from '../../jurisdiction/country-groups'
 import { raceBlackoutActive } from '../../politics/kr-calendar'
 import { detectBettingFraming } from '../betting-framing'
+import { bridgePromptToEnglish } from '../prompt-bridge'
 import { refusalMessageKey } from '../refusal-copy'
 import type {
   CategoryAdapter,
@@ -83,6 +84,8 @@ export function createPoliticsAdapter(io: PoliticsPacketIo, nowFn: () => Date = 
       if (detectBettingFraming(raw, { category: 'politics_election' })) {
         return { ok: false, refuse: refuse('betting_framing') }
       }
+      const bridged = await bridgePromptToEnglish(raw, _locale)
+      raw = bridged.text
       const now = nowFn()
 
       const decoded = decodePoliticsInstrument(raw.trim())

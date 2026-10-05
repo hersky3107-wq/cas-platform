@@ -46,6 +46,37 @@ export const LEAGUE_JOB_SWEEP_BATCH_SIZE = 10
 export const LEAGUE_JOB_MAX_RUNNING = 3
 
 /**
+ * Override the running-job cap without a deploy. Default stays 3 so a process
+ * that does not set the env matches the tests and the previous production
+ * behavior. Raise it only where the shared provider gate is in use.
+ */
+export function leagueJobMaxRunning(): number {
+  const raw = Number(process.env.LEAGUE_JOB_MAX_RUNNING)
+  if (!Number.isFinite(raw) || raw < 1) return LEAGUE_JOB_MAX_RUNNING
+  return Math.min(32, Math.floor(raw))
+}
+
+/** Assumed minutes one running slot needs, for the queued-card ETA. */
+export const LEAGUE_JOB_SLOT_MINUTES = 5
+
+/**
+ * 1-based queue position among jobs created earlier, plus a coarse ETA.
+ * jobsAhead = (position - 1) + currently running. ETA is
+ * ceil(jobsAhead / maxRunning) * 5 minutes.
+ */
+export function queueWaitEstimate(input: {
+  queuedAhead: number
+  running: number
+  maxRunning?: number
+}): { position: number; etaMinutes: number } {
+  const position = Math.max(1, Math.floor(input.queuedAhead) + 1)
+  const slots = Math.max(1, input.maxRunning ?? leagueJobMaxRunning())
+  const jobsAhead = Math.max(0, position - 1) + Math.max(0, Math.floor(input.running))
+  const etaMinutes = Math.ceil(jobsAhead / slots) * LEAGUE_JOB_SLOT_MINUTES
+  return { position, etaMinutes }
+}
+
+/**
  * Press-time backpressure: with this many jobs already queued+running, a NEW
  * generation press is refused with 503 BEFORE any charge. At ~4-6 min per
  * job and 3 running at a time, job #10 would wait ~15+ minutes — refusing

@@ -25,6 +25,8 @@ import {
   type SportsFixtureLite,
 } from './sports-catalog'
 import { resolveSportsTarget } from './sports-target'
+import { parseDomesticBaseballIntent, resolveDomesticBaseball } from '../../sports/domestic-baseball'
+import { isDomesticBaseballLeague } from '../../sports/types'
 import {
   buildSportsRankedRoundInput,
   horizonForKickoff,
@@ -140,6 +142,23 @@ export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () =
       }
 
       const now = nowFn()
+      const domestic = parseDomesticBaseballIntent(raw)
+      if (domestic && io.searchDomesticBaseball) {
+        const games = await io.searchDomesticBaseball(raw, now).catch(() => null)
+        if (!games) return { ok: false, refuse: refuse('sports_lookup_failed') }
+        const hit = resolveDomesticBaseball(domestic, games, now)
+        if (hit.kind === 'picks') return clarifyInstruments(hit.options)
+        if (hit.kind === 'ready') {
+          return {
+            ok: true,
+            entity_id: hit.instrument,
+            entity_kind: 'team_or_match',
+            label: hit.label,
+          }
+        }
+        return { ok: false, refuse: refuse('sports_no_upcoming_fixture') }
+      }
+
       const [oddsRows, footballRaw] = await Promise.all([
         io.listUpcomingFixtures(now),
         io.searchFootballFixtures
@@ -207,6 +226,13 @@ export function createSportsAdapter(io: SportsPacketIo, nowFn: () => Date = () =
 
     gradeSources(slots: NormalizeSlots): readonly [GradeSource, GradeSource, GradeSource] {
       const parts = decodeSportsInstrument(slots.entity_id)
+      if (parts && isDomesticBaseballLeague(parts.league)) {
+        return [
+          { tier: 1, kind: 'perplexity_sourced', require_url: true },
+          { tier: 2, kind: 'operator_manual', require_url: true },
+          { tier: 3, kind: 'operator_manual', require_url: true },
+        ]
+      }
       if (parts && isSoccerLeague(parts.league)) {
         return [
           { tier: 1, kind: 'official_api', endpoint: 'api-football:fixture' },

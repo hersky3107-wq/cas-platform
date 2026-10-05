@@ -15,6 +15,8 @@ import {
   subjectTeamOf,
   type SportsInstrumentParts,
 } from './gateway/adapters/sports-catalog'
+import { displayDomesticTeam } from './sports/domestic-baseball'
+import { isDomesticBaseballLeague } from './sports/types'
 import { FOOTBALL_LEAGUE_LABEL_KO } from './sports/api-football-leagues'
 import type { SportsLeagueKey } from './sports/types'
 
@@ -186,6 +188,8 @@ export function displaySportsTeam(
   form: 'short' | 'full' = 'short',
 ): string {
   const key = canonicalTeam(name)
+  const domestic = displayDomesticTeam(key, locale) ?? displayDomesticTeam(name, locale)
+  if (domestic && (locale === 'ko' || locale === 'ja' || locale === 'zh-TW')) return domestic
   if (locale === 'ja') return TEAM_JA[key] ?? TEAM_JA[name] ?? name
   if (locale !== 'ko') return name
   const row = lookupKo(name)
@@ -195,7 +199,7 @@ export function displaySportsTeam(
 
 /** Football and NFL can finish level. NHL's official result includes OT/SO. */
 export function sportsDrawPossible(league: string): boolean {
-  return isSoccerLeague(league) || isNflLeague(league)
+  return isSoccerLeague(league) || isNflLeague(league) || isDomesticBaseballLeague(league)
 }
 
 const DRAW_OR_LOSS: Record<LeagueLocale, (subject: string) => string> = {
@@ -215,6 +219,8 @@ export function drawOrLossLabel(subject: string, locale: LeagueLocale): string {
 
 export function sportsLeagueLabel(league: string, locale: LeagueLocale): string {
   if (locale === 'ko') {
+    if (league === 'baseball_kbo') return 'KBO'
+    if (league === 'baseball_cpbl') return 'CPBL'
     return LEAGUE_KO[league as SportsLeagueKey] ?? FOOTBALL_LEAGUE_LABEL_KO[league] ?? leagueLabelEn(league)
   }
   return leagueLabelEn(league)
@@ -265,6 +271,9 @@ export function formatSportsPropositionLocalized(parts: SportsInstrumentParts, l
     if (soccer) return `${subject}가 ${opponent}와의 ${competition} 경기에서 정규시간(90분+추가시간, 무승부는 패)에 이길까?`
     if (nfl) return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 무승부는 패.`
     if (nhl) return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장·승부치기 포함 최종 결과.`
+    if (isDomesticBaseballLeague(parts.league)) {
+      return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장 포함 최종 결과. 무승부는 패.`
+    }
     return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까?`
   }
   if (locale === 'ja') {
@@ -302,6 +311,9 @@ export function formatSportsPropositionLocalized(parts: SportsInstrumentParts, l
     if (nfl) return `${subject} vai vencer o jogo de ${competition} contra ${opponent}? Um empate é Não.`
     if (nhl) return `${subject} vai vencer o jogo de ${competition} contra ${opponent} (resultado final, incluindo prorrogação e pênaltis)?`
     return `${subject} vai vencer o jogo de ${competition} contra ${opponent}?`
+  }
+  if (isDomesticBaseballLeague(parts.league)) {
+    return `Will ${subject} win the ${competition} game against ${opponent}? Final result, including extra innings. A tie is No.`
   }
   if (soccer) {
     return `Will ${subject} win the ${competition} match against ${opponent} in regular time (90 minutes plus stoppage; a draw is No)?`

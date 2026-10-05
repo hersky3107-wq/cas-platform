@@ -91,6 +91,8 @@ export function CardBody({
           answered={data.generation?.answered ?? liveProgress?.answered ?? 0}
           rosterSize={data.generation?.rosterSize ?? liveProgress?.rosterSize ?? getProgressRosterIds().length}
           complete={data.generation?.complete ?? liveProgress?.complete ?? false}
+          queuePosition={data.generation?.queuePosition}
+          etaMinutes={data.generation?.etaMinutes}
           t={t}
         />
       ) : null}

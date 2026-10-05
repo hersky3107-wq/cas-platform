@@ -206,6 +206,17 @@ export async function countRunningGenerationJobs(nowIso: string): Promise<number
   return count ?? 0
 }
 
+/** Queued jobs created strictly before this one. Position is this count + 1. */
+export async function countQueuedAhead(createdAt: string): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from(JOBS)
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'queued')
+    .lt('created_at', createdAt)
+  if (error) throw new Error(`countQueuedAhead: ${error.message}`)
+  return count ?? 0
+}
+
 /** All live work (queued + running) — press-time backpressure reads this. */
 export async function countActiveGenerationJobs(): Promise<number> {
   const { count, error } = await supabaseAdmin

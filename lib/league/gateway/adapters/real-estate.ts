@@ -17,6 +17,7 @@ import { buildRealEstateRankedRoundInput, horizonForProperty } from './real-esta
 import { decodePropertyInstrument, propositionKindForProperty } from './real-estate-catalog'
 import { buildRealEstatePacket, type RealEstatePacketIo } from './real-estate-packet'
 import { propertyPickQuestion, resolvePropertyTarget } from './real-estate-target'
+import { bridgePromptToEnglish } from '../prompt-bridge'
 
 /**
  * Regional house-price INDEX adapter.
@@ -54,8 +55,9 @@ export function createRealEstateAdapter(
     entity_kinds: ['index'],
     observation_shape: 'name_match',
 
-    async resolveEntity(raw: string): Promise<EntityResolution> {
-      const hit = resolvePropertyTarget(raw, nowFn())
+    async resolveEntity(raw: string, locale = 'en'): Promise<EntityResolution> {
+      const text = (await bridgePromptToEnglish(raw, locale)).text
+      const hit = resolvePropertyTarget(text, nowFn())
       if (hit.kind === 'specific_property') return { ok: false, refuse: refuse('specific_property') }
       if (hit.kind === 'brokerage_advice') return { ok: false, refuse: refuse('brokerage_advice') }
       if (hit.kind === 'reit') return { ok: false, refuse: refuse('unsupported_entity') }

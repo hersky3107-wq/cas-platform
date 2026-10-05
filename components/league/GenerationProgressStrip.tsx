@@ -9,6 +9,8 @@ export type GenerationProgressStripProps = {
   rosterSize: number
   complete: boolean
   t: LeagueUiPack
+  queuePosition?: number
+  etaMinutes?: number
 }
 
 /**
@@ -21,6 +23,8 @@ export function GenerationProgressStrip({
   rosterSize,
   complete,
   t,
+  queuePosition,
+  etaMinutes,
 }: GenerationProgressStripProps) {
   const [phase, setPhase] = useState<'work' | 'done' | 'gone'>(complete ? 'done' : 'work')
 
@@ -74,7 +78,11 @@ export function GenerationProgressStrip({
       <div className="flex items-center gap-2.5">
         <HourglassMotif />
         <p className="min-w-0 flex-1 text-xs font-medium leading-relaxed text-emerald-950">
-          {queued ? t.hub.generationQueued : t.hub.generationProgress(n, total)}
+          {queued
+            ? queuePosition && etaMinutes != null
+              ? `${t.hub.generationQueued} ${t.hub.queueLine(queuePosition, etaMinutes)}`
+              : t.hub.generationQueued
+            : t.hub.generationProgress(n, total)}
         </p>
         <span className="shrink-0 font-mono text-[11px] font-semibold tabular-nums text-emerald-800">
           {pct}%

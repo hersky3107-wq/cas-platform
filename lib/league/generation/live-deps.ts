@@ -4,7 +4,7 @@ import { addCreditsBalance } from '@/lib/credits-server'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { ensureLeagueRoundPacket, generatePredictions, persistLeagueConsensusFromDb } from '@/lib/league/orchestrator'
 import { leagueParallelTiersEnabled } from '@/lib/league/generation/parallel-policy'
-import { createProviderCallGate } from '@/lib/league/generation/provider-gate'
+import { sharedProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { extraSeatIds } from '@/lib/league/extra/seats'
 import { getRoster, type LeagueTier } from '@/lib/league/roster'
 import {
@@ -95,7 +95,7 @@ export function createLeagueRunnerDeps(schedule: (task: () => Promise<void>) => 
     schedule,
     parallelTiers: leagueParallelTiersEnabled(),
     ensurePacket: (roundId) => ensureLeagueRoundPacket(roundId),
-    createCallGate: () => createProviderCallGate(),
+    createCallGate: () => sharedProviderCallGate(),
   }
 }
 

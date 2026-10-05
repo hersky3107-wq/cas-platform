@@ -11,6 +11,7 @@ import { isUiHorizon, type UiHorizon } from '../../horizon'
 import { sportsAllPropositions } from '../../sports-display'
 import type { ComposedRound } from '../types'
 import type { SportsInstrumentParts } from './sports-catalog'
+import { isDomesticBaseballLeague } from '../../sports/types'
 import {
   decodeSportsInstrument,
   encodeSportsInstrument,
@@ -52,6 +53,9 @@ export function formatSportsProposition(parts: SportsInstrumentParts): string {
   }
   if (isNhlLeague(parts.league)) {
     return `Will ${subject} win the ${competition} game against ${opponent} (final result, including overtime and the shootout)?`
+  }
+  if (isDomesticBaseballLeague(parts.league)) {
+    return `Will ${subject} win the ${competition} game against ${opponent}? Final result, including extra innings. A tie is No.`
   }
   return `Will ${subject} win the ${competition} game against ${opponent}?`
 }

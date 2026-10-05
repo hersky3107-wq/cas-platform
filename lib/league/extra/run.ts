@@ -123,6 +123,7 @@ import { leaderboardStoreArena, LMARENA_SOURCE } from '../ai-ranking/ingest'
 import { brandsInCamp, isAirankCamp } from '../ai-ranking/brands'
 import { isEntertainmentLedgerCategory } from './entertainment-category'
 import { isRealEstateLedgerCategory } from './real-estate-category'
+import { isDomesticBaseballLeague } from '../sports/types'
 import { isPoliticsLedgerCategory } from './politics-category'
 import { isSportsLedgerCategory } from './sports-category'
 import { decodeEntertainmentInstrument } from '../gateway/adapters/entertainment-catalog'
@@ -1119,6 +1120,9 @@ async function runConsensusSeat(
   matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('consensus')!
+  if (isDomesticBaseballLeague(round.instrument.split(':')[1] ?? '')) {
+    return persistConsensusAbstain(round.id, round.category, seat.brand, CONSENSUS_NO_SIGNAL_REASON)
+  }
   if (isRealEstateLedgerCategory(round.category)) {
     return persistConsensusAbstain(
       round.id,

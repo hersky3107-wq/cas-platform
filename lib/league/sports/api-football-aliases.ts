@@ -6,7 +6,7 @@
 export type FootballAliasRow = { aliases: readonly string[]; search: string }
 
 export const FOOTBALL_TEAM_ALIASES: readonly FootballAliasRow[] = [
-  { aliases: ['울산 hd', '울산 현대', '울산', 'ulsan hyundai', 'ulsan hd', 'ulsan'], search: 'Ulsan' },
+  { aliases: ['울산 hd', '울산 현대', '울산', 'ulsan hyundai', 'ulsan hd', 'ulsan', 'ウルサン', '蔚山', 'أولسان'], search: 'Ulsan' },
   { aliases: ['전북 현대', '전북', 'jeonbuk hyundai', 'jeonbuk motors', 'jeonbuk'], search: 'Jeonbuk Motors' },
   { aliases: ['포항 스틸러스', '포항', 'pohang steelers', 'pohang'], search: 'Pohang Steelers' },
   { aliases: ['fc서울', 'fc 서울', '서울', 'fc seoul'], search: 'FC Seoul' },
@@ -86,7 +86,7 @@ const TEAM_INDEX: Array<{ alias: string; search: string }> = (() => {
 const LEAGUE_INDEX = [...FOOTBALL_LEAGUE_ALIASES].sort((a, b) => b.alias.length - a.alias.length)
 
 const SEARCH_STOP =
-  /^(vs|and|the|fc|next|game|win|beat|will|who|wins|경기|경기에서|경기에|경기를|경기가|경기는|에서|에게|으로|다음|오늘|내일|이길까|이겨|누가|할까|승리|예측)$/i
+  /^(vs|and|the|fc|next|game|games?|win|beat|will|who|wins|their|match|matches|vence|vencem|jogo|jogos|proximo|próximo|partido|partida|os|les|los|el|la|경기|경기에서|경기에|경기를|경기가|경기는|에서|에게|으로|다음|오늘|내일|이길까|이겨|누가|할까|승리|예측)$/i
 
 const TRAILING_PARTICLE = /(에서|으로|부터|까지|에게|한테|이|가|은|는|을|를|의|에|와|과|도|만)$/u
 
@@ -178,6 +178,7 @@ export function leftoverFootballTokens(raw: string): string[] {
 /** English / alphanumeric team queries for API-Football `/teams?search=`. */
 export function footballTeamSearchQueries(raw: string): string[] {
   const hits = extractFootballAliasHits(raw)
+  if (hits.length) return hits.slice(0, 4)
   const out = [...hits]
   for (const token of leftoverFootballTokens(raw)) {
     const mapped = resolveFootballSearchName(token) ?? token

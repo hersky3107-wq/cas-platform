@@ -10,6 +10,8 @@ import { decodeAirankInstrument } from '@/lib/league/ai-ranking/instrument'
 import { buildPublicRankedRoundInput } from '@/lib/league/public-round-input'
 import { droppedRosterModelIds, rosterGenerationProgress } from '@/lib/league/generation-progress'
 import {
+  countQueuedAhead,
+  countRunningGenerationJobs,
   findActiveJobForRound,
   hasPaidRoundAccess,
   isRoundComplete,
@@ -17,6 +19,7 @@ import {
   listRoundModelRows,
   wasRefundedForRound,
 } from '@/lib/league/generation/job-store'
+import { leagueJobMaxRunning, queueWaitEstimate } from '@/lib/league/generation/policy'
 import { getProgressRosterIds } from '@/lib/league/roster'
 import {
   authorizeRoundForViewer,
@@ -180,11 +183,20 @@ async function generationStateFor(card: CardData): Promise<CardGenerationState |
   }
 
   const progress = await rosterProgressForRound(roundId)
+  const queued = active.status === 'queued'
+  const wait = queued
+    ? queueWaitEstimate({
+        queuedAhead: await countQueuedAhead(active.created_at),
+        running: await countRunningGenerationJobs(new Date().toISOString()),
+        maxRunning: leagueJobMaxRunning(),
+      })
+    : null
   return {
-    status: active.status === 'queued' ? 'queued' : 'running',
+    status: queued ? 'queued' : 'running',
     stage: active.stage,
     ...progress,
     refunded: false,
+    ...(wait ? { queuePosition: wait.position, etaMinutes: wait.etaMinutes } : {}),
   }
 }
 

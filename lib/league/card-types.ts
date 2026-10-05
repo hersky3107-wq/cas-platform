@@ -331,6 +331,10 @@ export type CardGenerationState = {
    * purchase — the locked state says so instead of a stuck button.
    */
   refunded: boolean
+  /** 1-based place among queued jobs created earlier. Present while queued. */
+  queuePosition?: number
+  /** Coarse wait: ceil((position - 1 + running) / maxRunning) * 5 minutes. */
+  etaMinutes?: number
 }
 
 /**

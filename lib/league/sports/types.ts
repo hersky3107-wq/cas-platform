@@ -33,6 +33,16 @@ export function isSportsLeagueKey(value: string): value is SportsLeagueKey {
   return (LAUNCH_SPORTS_LEAGUES as readonly string[]).includes(value)
 }
 
+/** Search-resolved leagues. Not on the Odds API slate (no paid odds call). */
+export const DOMESTIC_BASEBALL_LEAGUES = ['baseball_kbo', 'baseball_cpbl'] as const
+export type DomesticBaseballLeague = (typeof DOMESTIC_BASEBALL_LEAGUES)[number]
+
+export function isDomesticBaseballLeague(value: string): value is DomesticBaseballLeague {
+  return (DOMESTIC_BASEBALL_LEAGUES as readonly string[]).includes(value)
+}
+
+export const DOMESTIC_BASEBALL_WINDOW_MS = 7 * 86_400_000
+
 export type LineupConfidence = 'projected' | 'pending' | 'confirmed'
 
 export type DevigMethod = 'multiplicative' | 'shin'

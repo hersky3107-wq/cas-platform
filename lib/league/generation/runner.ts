@@ -38,7 +38,7 @@ import {
   LEAGUE_JOB_HEARTBEAT_SECONDS,
   LEAGUE_JOB_LEASE_SECONDS,
   LEAGUE_JOB_MAX_ATTEMPTS,
-  LEAGUE_JOB_MAX_RUNNING,
+  leagueJobMaxRunning,
   LEAGUE_JOB_STALE_HEARTBEAT_SECONDS,
   LEAGUE_JOB_SWEEP_BATCH_SIZE,
   LEAGUE_JOB_TICK_BUDGET_MS,
@@ -596,7 +596,7 @@ export async function sweepLeagueGenerationJobs(
 
   const runningBefore = await deps.store.countRunningJobs(now.toISOString())
   const parallel = deps.parallelTiers === true
-  const budget = generationClaimBudget(runningBefore, parallel, LEAGUE_JOB_MAX_RUNNING)
+  const budget = generationClaimBudget(runningBefore, parallel, leagueJobMaxRunning())
   if (budget === 0) {
     return { candidates: 0, claimed: 0, runningBefore, results: [] }
   }

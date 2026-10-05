@@ -16,6 +16,7 @@ import { normalizeCacheKey, quotaUnitsFor, quotaWouldBreach } from './abuse'
 import { searchCategoryCandidates } from './candidate-search.server'
 import { createLlmNormalizer, type NormalizerLlmCall } from './normalize-llm'
 import { NORMALIZER_MAX_TOKENS, NORMALIZER_MODEL } from './normalize-prompt'
+import { PROMPT_BRIDGE_SYSTEM, setPromptBridgeCaller } from './prompt-bridge'
 import type { NormalizerRequest, PromptNormalizer } from './normalizer'
 import type { GatewayDeps } from './shell'
 import type { GatewayViewer } from './types'
@@ -74,7 +75,11 @@ export async function reserveNormalizeQuota(args: {
 }
 
 export function createLiveGatewayDeps(userId: string): GatewayDeps {
-  const llm = createLlmNormalizer(createLiveNormalizerCall(userId))
+  const llmCall = createLiveNormalizerCall(userId)
+  setPromptBridgeCaller(async (text) =>
+    llmCall({ system: PROMPT_BRIDGE_SYSTEM, user: text, model: NORMALIZER_MODEL, isRetry: false }),
+  )
+  const llm = createLlmNormalizer(llmCall)
   return {
     adapterFor: (id) => adapterForCategoryId(id),
     normalizer: createCachedNormalizer(llm),

@@ -37,23 +37,30 @@ export type ProviderCallGate = {
 export function createProviderCallGate(limits?: {
   maxInFlight?: number
   maxOpenRouter?: number
+  /** Optional per-route caps. Routes omitted here share only the overall cap. */
+  routeCaps?: Readonly<Record<string, number>>
 }): ProviderCallGate {
   const maxInFlight = limits?.maxInFlight ?? PARALLEL_MAX_IN_FLIGHT
   const maxOpenRouter = limits?.maxOpenRouter ?? PARALLEL_OPENROUTER_MAX_IN_FLIGHT
+  const routeCaps = limits?.routeCaps
   let inFlight = 0
   let openRouterInFlight = 0
   let maxInFlightSeen = 0
   let maxOpenRouterSeen = 0
+  const routeInFlight = new Map<string, number>()
   const waiters: Waiter[] = []
 
   function fits(route: string): boolean {
     if (inFlight >= maxInFlight) return false
     if (route === OPENROUTER_ROUTE && openRouterInFlight >= maxOpenRouter) return false
+    const cap = routeCaps?.[route]
+    if (cap != null && (routeInFlight.get(route) ?? 0) >= cap) return false
     return true
   }
 
   function grant(route: string): void {
     inFlight += 1
+    routeInFlight.set(route, (routeInFlight.get(route) ?? 0) + 1)
     if (route === OPENROUTER_ROUTE) openRouterInFlight += 1
     if (inFlight > maxInFlightSeen) maxInFlightSeen = inFlight
     if (openRouterInFlight > maxOpenRouterSeen) maxOpenRouterSeen = openRouterInFlight
@@ -97,8 +104,30 @@ export function createProviderCallGate(limits?: {
     },
     release(route: string) {
       inFlight = Math.max(0, inFlight - 1)
+      routeInFlight.set(route, Math.max(0, (routeInFlight.get(route) ?? 0) - 1))
       if (route === OPENROUTER_ROUTE) openRouterInFlight = Math.max(0, openRouterInFlight - 1)
       pump()
     },
   }
+}
+
+/** Modest caps shared by every generation job in this process. */
+const SHARED_ROUTE_CAPS: Readonly<Record<string, number>> = {
+  google: 6,
+  anthropic: 4,
+  openai: 6,
+  xai: 4,
+  perplexity: 4,
+}
+
+let sharedGate: ProviderCallGate | null = null
+
+/** One gate for the process, so raising the job cap does not multiply per-job semaphores. */
+export function sharedProviderCallGate(): ProviderCallGate {
+  if (!sharedGate) sharedGate = createProviderCallGate({ routeCaps: SHARED_ROUTE_CAPS })
+  return sharedGate
+}
+
+export function resetSharedProviderCallGateForTests(): void {
+  sharedGate = null
 }
