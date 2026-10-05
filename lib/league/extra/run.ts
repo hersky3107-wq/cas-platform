@@ -3,7 +3,8 @@
  * History may read the PRICE SERIES only (dates + closes).
  * Sentiment searches web-visible news/opinion only — no series, no packet.
  * Consensus searches money-positioning (options / prediction markets / COT /
- * institutional targets) only — no series, no packet.
+ * institutional targets) only — no series, no packet. Tech and ai_models may
+ * take a Kalshi or Polymarket price on this seat alone; official packets stay odds-free.
  * Crow reads a fact brief only: sports cache baseline + both sides, the KRSTOCK
  * price path plus the investor-flows block, or the price path plus the packet's
  * computed CROWDING block. Never the research prose, never invented numbers.
@@ -86,6 +87,17 @@ import { rosterProviderRoute, type ProviderCallGate } from '../generation/provid
 import { visibleLeagueText } from '../visible-disclosure'
 import { selfVendorFlags } from '../ai-ranking/self-vendor'
 import { isAirankInstrument, parseAirankInstrument } from '../ai-ranking/instrument'
+import { matchConsensusMarket, type ConsensusMarketRound } from './market-pick.server'
+import {
+  marketRationale,
+  marketSide,
+  recordForMatch,
+  recordForNone,
+  recordForSearch,
+  consensusMarketEligible,
+  type AcceptedMarketMatch,
+  type ConsensusMarketRecord,
+} from './market-match'
 import {
   extractBrandTableCandidates,
   isBrandTableInstrument,
@@ -160,6 +172,7 @@ type ExtraRoundRow = {
   created_at: string | null
   proposition_kind: string | null
   subject_label: string | null
+  resolves_at?: string | null
   /** Crow reads only its computed CROWDING block; other seats never touch it. */
   closed_book_packet_text?: string | null
 }
@@ -182,6 +195,11 @@ export type GenerateExtraSeatsOpts = {
   sentimentCaller?: SentimentCaller
   /** Test seam — default calls extra Perplexity `sonar` (money signals). */
   consensusCaller?: ConsensusCaller
+  /**
+   * Consensus extra seat only. Default searches Kalshi + Polymarket for
+   * tech / ai_models. Pass a stub in tests. Official packets never see this.
+   */
+  marketMatcher?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>
   /** Test seam — default calls first-party Mistral Medium 3.5. */
   crowCaller?: CrowCaller
   /**
@@ -203,7 +221,7 @@ export type GenerateExtraSeatsOpts = {
 async function loadRound(roundId: string): Promise<ExtraRoundRow> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, proposition_text, category, instrument, horizon, opened_at, created_at, proposition_kind, subject_label, closed_book_packet_text')
+    .select('id, proposition_text, category, instrument, horizon, opened_at, created_at, proposition_kind, subject_label, resolves_at, closed_book_packet_text')
     .eq('id', roundId)
     .single()
   if (error || !data) {
@@ -241,37 +259,46 @@ async function upsertExtraPrediction(row: {
   completion_tokens?: number | null
   fail_reason?: NoAnswerFailReason | null
   error?: string | null
+  market?: ConsensusMarketRecord | null
 }): Promise<void> {
-  const { error } = await supabaseAdmin.from('model_predictions').upsert(
-    {
-      round_id: row.roundId,
-      seat_id: `extra:${row.model_id}`,
-      model_id: row.model_id,
-      brand: row.brand,
-      camp: 'other',
-      league_tier: 'extra',
-      predicted_direction: row.direction,
-      predicted_value: row.probability,
-      predicted_magnitude_pct: null,
-      predicted_qualifier_text: row.qualifier_text,
-      reasoning_snippet: visibleLeagueText(row.category, row.reasoning_snippet),
-      reasoning_text: null,
-      ...(await extraSelfVendorColumns(row.roundId, row.category, row.model_id, row.brand)),
-      prompt_tokens: row.prompt_tokens ?? null,
-      completion_tokens: row.completion_tokens ?? null,
-      reasoning_tokens: null,
-      cost_usd: row.cost_usd,
-      estimated_cost_usd: row.estimated_cost_usd,
-      server_side_tools_used: null,
-      predicted_at: new Date().toISOString(),
-      fail_reason:
-        row.direction == null
-          ? (row.fail_reason ?? classifyNoAnswerFailReason({ error: row.error }))
-          : null,
-    },
-    { onConflict: 'round_id,model_id' },
-  )
+  const base = {
+    round_id: row.roundId,
+    seat_id: `extra:${row.model_id}`,
+    model_id: row.model_id,
+    brand: row.brand,
+    camp: 'other',
+    league_tier: 'extra',
+    predicted_direction: row.direction,
+    predicted_value: row.probability,
+    predicted_magnitude_pct: null,
+    predicted_qualifier_text: row.qualifier_text,
+    reasoning_snippet: visibleLeagueText(row.category, row.reasoning_snippet),
+    reasoning_text: null,
+    ...(await extraSelfVendorColumns(row.roundId, row.category, row.model_id, row.brand)),
+    prompt_tokens: row.prompt_tokens ?? null,
+    completion_tokens: row.completion_tokens ?? null,
+    reasoning_tokens: null,
+    cost_usd: row.cost_usd,
+    estimated_cost_usd: row.estimated_cost_usd,
+    server_side_tools_used: null,
+    predicted_at: new Date().toISOString(),
+    fail_reason:
+      row.direction == null
+        ? (row.fail_reason ?? classifyNoAnswerFailReason({ error: row.error }))
+        : null,
+  }
+  const payload = row.market ? { ...base, ...row.market } : base
+  const { error } = await supabaseAdmin.from('model_predictions').upsert(payload, { onConflict: 'round_id,model_id' })
+  if (error && row.market && missingConsensusColumns(error.message)) {
+    const retry = await supabaseAdmin.from('model_predictions').upsert(base, { onConflict: 'round_id,model_id' })
+    if (retry.error) throw new Error(`extra seat upsert ${row.model_id}: ${retry.error.message}`)
+    return
+  }
   if (error) throw new Error(`extra seat upsert ${row.model_id}: ${error.message}`)
+}
+
+function missingConsensusColumns(message: string): boolean {
+  return /consensus_(source|market_id|market_outcome|implied_probability|relevance)/i.test(message)
 }
 
 async function silentBrandTableAbstain(
@@ -304,10 +331,44 @@ async function runBrandTablePickSeat(
     completionTokens?: number | null
     error?: string
   }>,
+  matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat(modelId)!
+  if (modelId === 'consensus') {
+    const matched = await resolveConsensusMarket(round, matchMarkets)
+    if (matched?.brand) {
+      const pct = Math.round(matched.impliedYes * 100)
+      const rationale = marketRationale(matched)
+      await upsertExtraPrediction({
+        roundId: round.id,
+        category: round.category,
+        model_id: modelId,
+        brand: seat.brand,
+        direction: 'yes',
+        probability: pct,
+        qualifier_text: matched.brand,
+        reasoning_snippet: rationale,
+        cost_usd: 0,
+        estimated_cost_usd: 0,
+        market: recordForMatch(matched),
+      })
+      return {
+        ...baseOutcome(modelId, seat.brand),
+        direction: 'yes',
+        probability: pct,
+        qualifier_text: matched.brand,
+        reasoning_snippet: rationale,
+        status: 'ok',
+      }
+    }
+  }
   const candidates = extractBrandTableCandidates(round.closed_book_packet_text)
-  if (candidates.length < 2) return silentBrandTableAbstain(round, modelId)
+  if (candidates.length < 2) {
+    if (modelId === 'consensus') {
+      return persistConsensusAbstain(round.id, round.category, seat.brand, CONSENSUS_NO_SIGNAL_REASON)
+    }
+    return silentBrandTableAbstain(round, modelId)
+  }
   try {
     const raw = await call({
       systemPrompt: BRAND_TABLE_PICK_PROMPT,
@@ -315,7 +376,12 @@ async function runBrandTablePickSeat(
     })
     if (raw.error) throw new Error(raw.error)
     const parsed = parseBrandTablePick(raw.text, candidates)
-    if (!parsed.ok) return silentBrandTableAbstain(round, modelId)
+    if (!parsed.ok) {
+      if (modelId === 'consensus') {
+        return persistConsensusAbstain(round.id, round.category, seat.brand, CONSENSUS_NO_SIGNAL_REASON)
+      }
+      return silentBrandTableAbstain(round, modelId)
+    }
     const costUsd = Number((raw.costUsd ?? 0).toFixed(6))
     await upsertExtraPrediction({
       roundId: round.id,
@@ -330,6 +396,7 @@ async function runBrandTablePickSeat(
       estimated_cost_usd: costUsd,
       prompt_tokens: raw.promptTokens,
       completion_tokens: raw.completionTokens,
+      market: modelId === 'consensus' ? recordForSearch() : null,
     })
     return {
       ...baseOutcome(modelId, seat.brand),
@@ -914,6 +981,7 @@ async function persistConsensusAbstain(
   brand: string,
   rationale: string,
   cost?: { costUsd: number; estimated: number; promptTokens: number | null; completionTokens: number | null; costIsEstimated: boolean },
+  market: ConsensusMarketRecord | null = recordForNone(),
 ): Promise<ExtraSeatOutcome> {
   await upsertExtraPrediction({
     roundId,
@@ -928,6 +996,7 @@ async function persistConsensusAbstain(
     estimated_cost_usd: cost?.estimated ?? 0,
     prompt_tokens: cost?.promptTokens ?? null,
     completion_tokens: cost?.completionTokens ?? null,
+    market,
   })
   return {
     ...baseOutcome('consensus', brand),
@@ -942,7 +1011,74 @@ async function persistConsensusAbstain(
   }
 }
 
-async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Promise<ExtraSeatOutcome> {
+async function resolveConsensusMarket(
+  round: ExtraRoundRow,
+  matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
+): Promise<AcceptedMarketMatch | null> {
+  if (!consensusMarketEligible(round.category, round.instrument)) return null
+  const matcher = matchMarkets ?? matchConsensusMarket
+  return matcher(round).catch(() => null)
+}
+
+async function persistMatchedConsensus(
+  round: ExtraRoundRow,
+  brand: string,
+  matched: AcceptedMarketMatch,
+): Promise<ExtraSeatOutcome> {
+  const rationale = marketRationale(matched)
+  if (matched.brand) {
+    const pct = Math.round(matched.impliedYes * 100)
+    await upsertExtraPrediction({
+      roundId: round.id,
+      category: round.category,
+      model_id: 'consensus',
+      brand,
+      direction: 'yes',
+      probability: pct,
+      qualifier_text: matched.brand,
+      reasoning_snippet: rationale,
+      cost_usd: 0,
+      estimated_cost_usd: 0,
+      market: recordForMatch(matched),
+    })
+    return {
+      ...baseOutcome('consensus', brand),
+      direction: 'yes',
+      probability: pct,
+      qualifier_text: matched.brand,
+      reasoning_snippet: rationale,
+      status: 'ok',
+    }
+  }
+  const side = marketSide(matched.impliedYes)
+  const direction = leagueSideFromConsensus(side.verdict, round.proposition_kind)
+  await upsertExtraPrediction({
+    roundId: round.id,
+    category: round.category,
+    model_id: 'consensus',
+    brand,
+    direction,
+    probability: side.probability,
+    qualifier_text: null,
+    reasoning_snippet: rationale,
+    cost_usd: 0,
+    estimated_cost_usd: 0,
+    market: recordForMatch(matched),
+  })
+  return {
+    ...baseOutcome('consensus', brand),
+    direction,
+    probability: side.probability,
+    reasoning_snippet: rationale,
+    status: 'ok',
+  }
+}
+
+async function runConsensusSeat(
+  round: ExtraRoundRow,
+  call: ConsensusCaller,
+  matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
+): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('consensus')!
   if (isRealEstateLedgerCategory(round.category)) {
     return persistConsensusAbstain(
@@ -952,6 +1088,8 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
       'CME Case-Shiller futures are too thin, and most regions have no housing-index market. Consensus abstains.',
     )
   }
+  const matched = await resolveConsensusMarket(round, matchMarkets)
+  if (matched) return persistMatchedConsensus(round, seat.brand, matched)
   const input = buildConsensusInput(round)
   assertConsensusInputShape(input)
 
@@ -1016,6 +1154,7 @@ async function runConsensusSeat(round: ExtraRoundRow, call: ConsensusCaller): Pr
       estimated_cost_usd: estimated,
       prompt_tokens: raw.promptTokens,
       completion_tokens: raw.completionTokens,
+      market: recordForSearch(),
     })
     return {
       ...baseOutcome('consensus', seat.brand),
@@ -1223,7 +1362,7 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
   const crowCall = opts.crowCaller ?? defaultCrowCaller()
   const runSeat = (seat: ExtraSeat): Promise<ExtraSeatOutcome> => {
     if (isBrandTableInstrument(round.instrument)) {
-      if (seat.kind === 'consensus') return runBrandTablePickSeat(round, 'consensus', consensusCall)
+      if (seat.kind === 'consensus') return runBrandTablePickSeat(round, 'consensus', consensusCall, opts.marketMatcher)
       if (seat.kind === 'crow') return runBrandTablePickSeat(round, 'crow', crowCall)
       return silentBrandTableAbstain(round, seat.model_id)
     }
@@ -1234,7 +1373,7 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
         : seat.kind === 'sentiment'
           ? runSentimentSeat(round, sentimentCall)
           : seat.kind === 'consensus'
-            ? runConsensusSeat(round, consensusCall)
+            ? runConsensusSeat(round, consensusCall, opts.marketMatcher)
             : runCrowSeat(round, crowCall, opts.priceSeries)
   }
 
