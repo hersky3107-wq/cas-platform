@@ -23,6 +23,8 @@ import { ensureAirankTableRounds } from '@/lib/league/ai-ranking/schedule'
 import { refreshKrxDailyData } from '@/lib/league/krx-daily-refresh-live'
 import { dispatchKrElectionAlerts } from '@/lib/league/politics/kr-election-alerts'
 import { supabaseKrElectionAlertStore } from '@/lib/league/politics/kr-election-store'
+import { gradeAllDueRounds } from '@/lib/prediction/reconciliation'
+import { shouldRunHourlyGradingSweep } from '@/lib/prediction/hourly-sweep'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -40,6 +42,7 @@ export async function GET(req: Request) {
         : LEAGUE_JOB_SWEEP_BATCH_SIZE
 
     const schedule = (task: () => Promise<void>) => after(task)
+    const gradingDue = shouldRunHourlyGradingSweep()
     const generation = await sweepLeagueGenerationJobs(createLeagueRunnerDeps(schedule), limit)
     const deep = await sweepLeagueDeepRuns(createDeepRunnerDeps(schedule), limit)
     const electionAlerts = await dispatchKrElectionAlerts({
@@ -57,8 +60,16 @@ export async function GET(req: Request) {
       console.log('[league-generate] airank-table skipped reason=error')
       return { due: 0, created: 0, existing: 0, errors: [e instanceof Error ? e.message : 'error'] }
     })
+    const grading = gradingDue
+      ? await gradeAllDueRounds()
+          .then((report) => ({ skipped: false as const, report }))
+          .catch((e: unknown) => {
+            console.log('[league-generate] grading-sweep skipped reason=error')
+            return { skipped: true as const, reason: 'error' as const, error: e instanceof Error ? e.message : 'error' }
+          })
+      : { skipped: true as const, reason: 'not_hourly_window' as const }
 
-    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts, krxRefresh, aiLeaderboard, airankTable } })
+    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts, krxRefresh, aiLeaderboard, airankTable, grading } })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })

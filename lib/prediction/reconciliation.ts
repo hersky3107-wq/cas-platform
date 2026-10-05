@@ -12,6 +12,7 @@ import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
 import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
 import { getOfficialClose, getOfficialClosesBetween } from '@/lib/league/korea-market-data'
 import { reconcileTwelfthDataAnchor } from '@/lib/league/korea-stock-reconcile'
+import { stampConsensusIsCorrect } from '@/lib/league/consensus-correctness'
 import {
   createGradingEngine,
   GRADING_SWEEP_SCAN_CAP,
@@ -19,6 +20,7 @@ import {
   type GradingStore,
   type OfficialOutcomeResolution,
 } from './grading-core'
+import { shouldRunHourlyGradingSweep } from './hourly-sweep'
 import { gradingStateOf, type GradingState } from './grading-state'
 import { formatOutcomeForKind, gradedSidesFor } from './graded-sides'
 import type { ResolutionDirection, ResolvedOutcome, UnresolvableReason } from './resolution'
@@ -218,6 +220,11 @@ export const supabaseGradingStore: GradingStore = {
       // Someone graded it between our claim and this write. Their grade stands.
       return { ok: false, error: 'round was graded by another pass' }
     }
+    await stampConsensusIsCorrect(roundId).catch((e: unknown) => {
+      console.warn(
+        `[prediction/grading] round ${roundId} consensus_is_correct not stamped: ${e instanceof Error ? e.message : e}`,
+      )
+    })
     return { ok: true }
   },
 
@@ -463,6 +470,14 @@ export async function gradeRoundOnRead(roundId: string) {
 export async function gradeAllDueRounds() {
   const report = await engine.gradeAllDueRounds()
   return report
+}
+
+export async function maybeGradeDueRoundsHourly(now = new Date()) {
+  if (!shouldRunHourlyGradingSweep(now)) {
+    return { skipped: true as const, reason: 'not_hourly_window' as const }
+  }
+  const report = await gradeAllDueRounds()
+  return { skipped: false as const, report }
 }
 
 /**

@@ -8,6 +8,7 @@ import {
 } from '@/lib/league/generation/job-store'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { supabaseGradingStore } from '@/lib/prediction/reconciliation'
+import { stampConsensusIsCorrect } from '@/lib/league/consensus-correctness'
 import {
   directionForVerdict,
   formatManualOutcome,
@@ -94,6 +95,12 @@ export async function applyManualGrade(input: ManualGradeInput): Promise<ManualG
   if (!saved || saved.length === 0) {
     return { ok: false, error: 'round was graded by another pass', status: 409 }
   }
+
+  await stampConsensusIsCorrect(input.roundId).catch((e: unknown) => {
+    console.warn(
+      `[manual-grade] round ${input.roundId} consensus_is_correct not stamped: ${e instanceof Error ? e.message : e}`,
+    )
+  })
 
   return { ok: true, verdict: input.verdict, children_graded: childrenGraded, refunded_credits: 0 }
 }

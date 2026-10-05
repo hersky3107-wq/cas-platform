@@ -16,6 +16,8 @@ export async function countNeedsGrading(): Promise<number> {
     .from('prediction_rounds')
     .select('id', { count: 'exact', head: true })
     .eq('grading_status', 'needs_grading')
+    .is('actual_outcome', null)
+    .lt('resolves_at', new Date().toISOString())
   if (error) throw new Error(error.message)
   return count ?? 0
 }
@@ -26,6 +28,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
     .select(QUEUE_COLUMNS)
     .eq('grading_status', 'needs_grading')
     .is('actual_outcome', null)
+    .lt('resolves_at', new Date().toISOString())
     .order('resolves_at', { ascending: true })
     .limit(200)
   if (error) throw new Error(error.message)

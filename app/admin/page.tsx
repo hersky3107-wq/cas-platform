@@ -61,6 +61,15 @@ type GradingReport = {
   rounds: GradingRoundResult[];
 };
 
+type TrackRecordCell = {
+  category: string;
+  horizon: string;
+  consensusHitRatePct: number | null;
+  consensusN: number;
+  pooledModelHitRatePct: number | null;
+  pooledModelN: number;
+};
+
 type AdminStats = {
   overview: {
     totalUsers: number;
@@ -121,6 +130,8 @@ export default function AdminPage() {
   const [gradingBusy, setGradingBusy] = useState(false);
   const [gradingError, setGradingError] = useState<string | null>(null);
   const [gradingReport, setGradingReport] = useState<GradingReport | null>(null);
+  const [trackRecord, setTrackRecord] = useState<TrackRecordCell[] | null>(null);
+  const [trackRecordError, setTrackRecordError] = useState<string | null>(null);
 
   useEffect(() => {
     void (async () => {
@@ -137,9 +148,10 @@ export default function AdminPage() {
       setDashLoading(true);
       setDashError(null);
       try {
-        const [statsRes, annRes] = await Promise.all([
+        const [statsRes, annRes, trackRes] = await Promise.all([
           fetch("/api/admin/stats", { method: "GET", credentials: "include" }),
           fetch("/api/admin/announcement", { method: "GET", credentials: "include" }),
+          fetch("/api/admin/league/track-record", { method: "GET", credentials: "include" }),
         ]);
         const statsJson = (await statsRes.json().catch(() => null)) as AdminStats & { error?: string };
         if (!statsRes.ok) throw new Error(statsJson?.error ?? "Stats request failed");
@@ -154,6 +166,18 @@ export default function AdminPage() {
           setAnnouncementText(annJson.text);
           setAnnouncementDraft(annJson.text);
           if (annJson.version) setAnnouncementVersion(annJson.version);
+        }
+
+        const trackJson = (await trackRes.json().catch(() => null)) as {
+          cells?: TrackRecordCell[];
+          error?: string;
+        };
+        if (!trackRes.ok) {
+          setTrackRecord(null);
+          setTrackRecordError(trackJson?.error ?? "Track record request failed");
+        } else {
+          setTrackRecord(trackJson.cells ?? []);
+          setTrackRecordError(null);
         }
       } catch (e: unknown) {
         setDashError(e instanceof Error ? e.message : "Unknown error");
@@ -585,6 +609,49 @@ export default function AdminPage() {
                 </ul>
               )
             ) : null}
+
+            <div className="mt-5 border-t border-white/10 pt-4">
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-slate-400">
+                AI 종합 vs pooled model hit rate
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                Admin only. AI 종합 is consensus_is_correct on graded rounds; pooled is official seats with is_correct.
+              </p>
+              {trackRecordError ? (
+                <p className="mt-2 text-xs text-amber-200">{trackRecordError}</p>
+              ) : trackRecord && trackRecord.length > 0 ? (
+                <table className="mt-3 w-full text-left text-xs">
+                  <thead className="text-slate-500">
+                    <tr>
+                      <th className="py-1 pr-2">category</th>
+                      <th className="py-1 pr-2">horizon</th>
+                      <th className="py-1 pr-2">AI 종합</th>
+                      <th className="py-1 pr-2">n</th>
+                      <th className="py-1 pr-2">pooled models</th>
+                      <th className="py-1">n</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trackRecord.map((row) => (
+                      <tr key={`${row.category}-${row.horizon}`} className="text-slate-200">
+                        <td className="py-1 pr-2">{row.category}</td>
+                        <td className="py-1 pr-2">{row.horizon}</td>
+                        <td className="py-1 pr-2">
+                          {row.consensusHitRatePct == null ? "—" : `${row.consensusHitRatePct}%`}
+                        </td>
+                        <td className="py-1 pr-2">{row.consensusN}</td>
+                        <td className="py-1 pr-2">
+                          {row.pooledModelHitRatePct == null ? "—" : `${row.pooledModelHitRatePct}%`}
+                        </td>
+                        <td className="py-1">{row.pooledModelN}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">No graded rounds yet, or SQL not applied.</p>
+              )}
+            </div>
           </div>
         </section>
 

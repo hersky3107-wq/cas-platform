@@ -20,8 +20,7 @@ import { selfVendorFlags, stripSelfVendorMarkers } from '@/lib/league/ai-ranking
 import { extractBrandTableCandidates, isBrandTableInstrument } from '@/lib/league/ai-ranking/brand-table'
 import { buildBrandTablePrompts, makeBrandTableContract } from '@/lib/league/ai-ranking/brand-table-prompts'
 import { resolveOpenPhase } from '@/lib/league/open-phase'
-import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
-import { aggregateMagnitude } from '@/lib/league/magnitude'
+import { computeConsensusSnapshot, persistFieldsFromSnapshot } from '@/lib/league/consensus-snapshot'
 import {
   answerContractFor,
   buildRoundPrompts,
@@ -393,28 +392,34 @@ async function persistClosedBookPacket(roundId: string, cacheKey: string, text: 
 
 async function persistConsensusAggregates(
   roundId: string,
-  results: readonly { direction: AnswerSide | null; probability: number | null; magnitude: number | null }[],
+  results: readonly {
+    direction: AnswerSide | null
+    probability: number | null
+    magnitude: number | null
+    qualifierText?: string | null
+    model_id?: string | null
+    league_tier?: string | null
+  }[],
   sides: readonly [AnswerSide, AnswerSide],
+  mode: 'binary' | 'brand_table' = 'binary',
 ): Promise<void> {
-  try {
-    // Side-token-neutral: the log-odds math is unchanged, only the pair of
-    // tokens it counts/persists comes from the round's answer contract.
-    const dual = dualConsensus(binaryCallsFromModels(results, sides), sides)
-    const magnitude = aggregateMagnitude(results, dual.aggregate.direction)
-    await supabaseAdmin
-      .from('prediction_rounds')
-      .update({
-        consensus_majority_direction: dual.majority.direction,
-        consensus_majority_probability: dual.majority.probability,
-        consensus_aggregate_direction: dual.aggregate.direction,
-        consensus_aggregate_probability: dual.aggregate.probability,
-        consensus_aggregate_magnitude_pct: magnitude.medianPct,
-        consensus_aggregate_magnitude_n: magnitude.n,
-      })
-      .eq('id', roundId)
-  } catch {
-    // best-effort — card still recomputes live from model rows
-  }
+  const snapshot = computeConsensusSnapshot({
+    rows: results.map((r) => ({
+      model_id: r.model_id ?? null,
+      league_tier: r.league_tier ?? null,
+      direction: r.direction,
+      probability: r.probability,
+      magnitude: r.magnitude,
+      qualifierText: r.qualifierText ?? null,
+    })),
+    sides,
+    mode,
+  })
+  const { error } = await supabaseAdmin
+    .from('prediction_rounds')
+    .update(persistFieldsFromSnapshot(snapshot))
+    .eq('id', roundId)
+  if (error) throw new Error(`persistConsensusAggregates: ${error.message}`)
 }
 
 function isTransient(errMsg: string): boolean {
@@ -1018,17 +1023,21 @@ export async function persistLeagueConsensusFromDb(roundId: string): Promise<voi
 
   const { data, error } = await supabaseAdmin
     .from('model_predictions')
-    .select('model_id, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct')
+    .select('model_id, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text')
     .eq('round_id', roundId)
   if (error) throw new Error(`persistLeagueConsensusFromDb: ${error.message}`)
 
+  const mode = isBrandTableInstrument(round.instrument) ? 'brand_table' : 'binary'
   const rows = officialRowsForConsensus(data ?? []).map((row) => ({
+    model_id: (row as { model_id: string }).model_id,
+    league_tier: (row as { league_tier: string | null }).league_tier,
     direction: (row as { predicted_direction: string | null }).predicted_direction as AnswerSide | null,
     probability: (row as { predicted_value: number | null }).predicted_value,
     magnitude: (row as { predicted_magnitude_pct: number | null }).predicted_magnitude_pct,
+    qualifierText: (row as { predicted_qualifier_text: string | null }).predicted_qualifier_text,
   }))
 
-  await persistConsensusAggregates(roundId, rows, contract.sides)
+  await persistConsensusAggregates(roundId, rows, contract.sides, mode)
 }
 
 function resolveCostCap(override?: number): number {
@@ -1314,7 +1323,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
   await Promise.all(workers)
 
   if (!opts.skipConsensusPersist) {
-    await persistConsensusAggregates(round.id, results, contract.sides)
+    await persistLeagueConsensusFromDb(round.id)
   }
 
   if (wantsExtra && extraPending.length > 0) {

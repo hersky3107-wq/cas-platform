@@ -8,6 +8,7 @@ import { buildExtraCompareView } from '@/lib/league/extra-compare'
 import type { CardModelPrediction, ConsensusSummary } from '@/lib/league/card-types'
 import { binaryCallsFromModels, dualConsensus } from '@/lib/league/log-odds-consensus'
 import { officialRowsForConsensus } from '@/lib/league/extra/seats'
+import { computeConsensusSnapshot, persistFieldsFromSnapshot } from '@/lib/league/consensus-snapshot'
 import {
   advanceLeagueGenerationJob,
   excludedModelIds,
@@ -799,6 +800,12 @@ describe('LEAGUE_PARALLEL_TIERS on', () => {
     const dual = dualConsensus(binaryCallsFromModels(official))
     expect(dual.majority.direction).toBe('up')
     expect(dual.aggregate.direction).toBe('up')
+    const snap = computeConsensusSnapshot({ rows, mode: 'binary' })
+    expect(snap.aggregateDirection).toBe(dual.aggregate.direction)
+    expect(snap.aggregateProbability).toBe(dual.aggregate.probability)
+    const fields = persistFieldsFromSnapshot(snap)
+    expect(fields.consensus_aggregate_direction).toBe('up')
+    expect(fields.consensus_aggregate_probability).toEqual(expect.any(Number))
   })
 
   it('shares one packet build and never exceeds the in-flight caps, including a retry acquire', async () => {

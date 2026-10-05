@@ -8,9 +8,9 @@ export const maxDuration = 120
 /**
  * POST /api/cron/prediction/reconcile
  *
- * SCHEDULED GRADING IS OFF — DEFERRED, NOT DEAD. This route is intact and
- * authenticated but absent from `vercel.json`, so nothing calls it on a
- * schedule; a request without `?manual=1` deliberately no-ops.
+ * This route stays unscheduled in `vercel.json`. The hourly due-round sweep
+ * runs from `/api/cron/league-generate` via `gradeAllDueRounds()`. A request
+ * here without `?manual=1` still no-ops.
  *
  * Grading is currently triggered two ways instead, both of which cover current
  * round volume without a scheduler: GRADE-ON-READ (a due, ungraded round is
