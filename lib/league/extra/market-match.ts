@@ -4,12 +4,24 @@
  * decided here so tests do not need a venue or an LLM.
  */
 import { resolveAirankBrand } from '../ai-ranking/instrument'
+import { dailyMarketSpec } from './daily-market-specs'
+import { isSportsLedgerCategory } from './sports-category'
 
 export const MARKET_RELEVANCE_MIN = 0.7
 export const MARKET_DATE_WINDOW_MS = 7 * 86_400_000
 
 export type MarketVenue = 'kalshi' | 'polymarket'
-export type ConsensusSource = MarketVenue | 'search' | 'none'
+/** Bookmaker prices already fetched for sports, de-vigged before use. */
+export type SportsBookSource = 'odds_api' | 'api_football'
+export type PricedVenue = MarketVenue | SportsBookSource
+export type ConsensusSource = PricedVenue | 'search' | 'none'
+
+/**
+ * event: a yes/no market on the proposition itself (tech, AI ranking).
+ * price_direction: P(close above the round's reference) from a daily/weekly market.
+ * sports_baseline: de-vigged win probability for the named team.
+ */
+export type MarketMatchKind = 'event' | 'price_direction' | 'sports_baseline'
 
 export type OpenMarketCandidate = {
   venue: MarketVenue
@@ -29,7 +41,7 @@ export type LlmMarketPick = {
 }
 
 export type AcceptedMarketMatch = {
-  venue: MarketVenue
+  venue: PricedVenue
   id: string
   title: string
   outcome: string
@@ -38,6 +50,7 @@ export type AcceptedMarketMatch = {
   resolvesAt: string | null
   sameEvent: boolean
   brand: string | null
+  kind?: MarketMatchKind
 }
 
 export type ConsensusMarketRecord = {
@@ -52,10 +65,29 @@ const QUERY_STOP = new Set([
   'the', 'a', 'an', 'of', 'to', 'and', 'or', 'for', 'will', 'be', 'by', 'on', 'in', 'at', 'end', 'this', 'that', 'with', 'from',
 ])
 
+/** Rounds that go through the LLM market pick (tech, AI ranking). */
 export function consensusMarketEligible(category: string | null | undefined, instrument: string | null | undefined): boolean {
   if (category === 'tech' || category === 'ai_models') return true
   const id = instrument ?? ''
   return id.startsWith('TECH:OPEN') || id.startsWith('AIRANK')
+}
+
+/**
+ * event: LLM pick of one open Kalshi/Polymarket market (tech, AI ranking).
+ * daily: Kalshi/Polymarket daily and weekly price markets (indexes, FX, gold, oil, crypto).
+ * sports: de-vigged bookmaker price on the round's own fixture.
+ * null: no money market is read (single stocks, housing, politics, everything else).
+ */
+export type PricedMarketPath = 'event' | 'daily' | 'sports'
+
+export function pricedMarketPath(
+  category: string | null | undefined,
+  instrument: string | null | undefined,
+): PricedMarketPath | null {
+  if (consensusMarketEligible(category, instrument)) return 'event'
+  if (dailyMarketSpec(instrument)) return 'daily'
+  if (isSportsLedgerCategory(category)) return 'sports'
+  return null
 }
 
 export function marketSearchQuery(args: {
@@ -183,7 +215,15 @@ export function marketRationale(match: AcceptedMarketMatch): string {
     const pct = Math.round(match.impliedYes * 100)
     return `예측시장 내재 확률은 ${match.brand}를 이 기간 1위로 ${pct}% 반영하고 있다.`.slice(0, 400)
   }
+  if (match.kind === 'sports_baseline') {
+    const pct = Math.round(match.impliedYes * 100)
+    return `시장 기준선은 ${match.outcome} 승리 확률을 ${pct}%로 반영하고 있다.`.slice(0, 400)
+  }
   const side = marketSide(match.impliedYes)
+  if (match.kind === 'price_direction') {
+    const lean = side.verdict === 'up' ? '상승' : '하락'
+    return `예측시장 내재 확률은 ${lean} 쪽에 ${side.probability}%를 반영하고 있다.`.slice(0, 400)
+  }
   const lean = side.verdict === 'up' ? '긍정' : '부정'
   return `예측시장 내재 확률은 이 명제의 ${lean} 쪽에 ${side.probability}%를 반영하고 있다.`.slice(0, 400)
 }

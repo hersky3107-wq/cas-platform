@@ -36,9 +36,11 @@ import {
   type ApiFootballTeamRef,
   type ApiFootballTeamStats,
 } from './api-football-parse'
+import { apiFootballDevig, apiFootballOddsPath } from './api-football-odds'
 import { footballFactsFromParts, type FootballMatchFacts } from './api-football-packet'
 import { fetchJson } from './http'
 import { teamsMatch } from './lineup-logic'
+import type { DevigResult, SportsTeams } from './types'
 
 export type FootballSearchFixture = {
   fixture_id: string
@@ -258,6 +260,13 @@ export async function fetchInjuriesByTeam(teamId: number, season: number, now = 
   const res = await apiFootballGet(`/injuries?team=${teamId}&season=${season}`, HOUR, now)
   if (!res.ok) return { injuries: [] as ApiFootballInjury[], error: res.error }
   return { injuries: parseApiFootballInjuries(res.json), error: null }
+}
+
+/** Consensus extra seat only. Official packets stay off API-Football odds. */
+export async function fetchFixtureMatchWinnerDevig(fixtureId: number, teams: SportsTeams, now = new Date()) {
+  const res = await apiFootballGet(apiFootballOddsPath(fixtureId), HOUR, now)
+  if (!res.ok) return { devig: null as DevigResult | null, error: res.error }
+  return { devig: apiFootballDevig(res.json, teams), error: null }
 }
 
 export async function fetchLineups(fixtureId: number, kickoffIso: string, now = new Date()) {

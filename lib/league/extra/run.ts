@@ -107,17 +107,21 @@ import { rosterProviderRoute, type ProviderCallGate } from '../generation/provid
 import { visibleLeagueText } from '../visible-disclosure'
 import { selfVendorFlags } from '../ai-ranking/self-vendor'
 import { isAirankInstrument, parseAirankInstrument } from '../ai-ranking/instrument'
-import { matchConsensusMarket, type ConsensusMarketRound } from './market-pick.server'
+import { matchConsensusMarket } from './market-pick.server'
 import {
   marketRationale,
   marketSide,
+  pricedMarketPath,
   recordForMatch,
   recordForNone,
   recordForSearch,
-  consensusMarketEligible,
   type AcceptedMarketMatch,
   type ConsensusMarketRecord,
 } from './market-match'
+import { searchDailyMarkets } from './daily-market-search'
+import { matchPricedMarket, type PricedMarketDeps, type PricedMarketRound } from './priced-market'
+import { matchSportsBaseline, type SportsBaselineDeps } from './sports-baseline'
+import { fetchFixtureMatchWinnerDevig } from '../sports/api-football'
 import {
   extractBrandTableCandidates,
   isBrandTableInstrument,
@@ -196,7 +200,13 @@ type ExtraRoundRow = {
   resolves_at?: string | null
   /** Crow reads only its computed CROWDING block; other seats never touch it. */
   closed_book_packet_text?: string | null
+  /** Consensus daily-market reference (FX, gold, crypto ladders). */
+  anchor_price?: number | null
+  anchor_price_at?: string | null
+  anchor_session_date?: string | null
 }
+
+type ConsensusMarketMatcher = (round: PricedMarketRound) => Promise<AcceptedMarketMatch | null>
 
 export type ExtraPriceSeries = {
   bars: HistorySeriesBar[]
@@ -219,10 +229,12 @@ export type GenerateExtraSeatsOpts = {
   /** Test seam — default calls extra Perplexity `sonar` (money signals). */
   consensusCaller?: ConsensusCaller
   /**
-   * Consensus extra seat only. Default searches Kalshi + Polymarket for
-   * tech / ai_models. Pass a stub in tests. Official packets never see this.
+   * Consensus extra seat only. Default reads the money market for the round's
+   * `pricedMarketPath`: LLM pick for tech / ai_models, Kalshi + Polymarket
+   * daily markets for indexes / FX / gold / oil / crypto, de-vigged odds for
+   * sports. Pass a stub in tests. Official packets never see this.
    */
-  marketMatcher?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>
+  marketMatcher?: ConsensusMarketMatcher
   /** Test seam — default calls first-party Mistral Medium 3.5. */
   crowCaller?: CrowCaller
   /** Test seam — default calls first-party Anthropic claude-opus-5-5. */
@@ -253,7 +265,9 @@ export type GenerateExtraSeatsOpts = {
 async function loadRound(roundId: string): Promise<ExtraRoundRow> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, proposition_text, category, instrument, horizon, opened_at, created_at, proposition_kind, subject_label, resolves_at, closed_book_packet_text')
+    .select(
+      'id, proposition_text, category, instrument, horizon, opened_at, created_at, proposition_kind, subject_label, resolves_at, closed_book_packet_text, anchor_price, anchor_price_at, anchor_session_date',
+    )
     .eq('id', roundId)
     .single()
   if (error || !data) {
@@ -379,7 +393,7 @@ async function runBrandTablePickSeat(
     completionTokens?: number | null
     error?: string
   }>,
-  matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
+  matchMarkets?: ConsensusMarketMatcher,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat(modelId)!
   if (modelId === 'consensus') {
@@ -1078,13 +1092,49 @@ async function persistConsensusAbstain(
   }
 }
 
+const liveSportsBaselineDeps: SportsBaselineDeps = {
+  readCachedOdds: async (fixtureId) => {
+    const row = await readFixtureCache(fixtureId)
+    return row ? { devig: row.devigged_odds, kickoff: row.kickoff || null } : null
+  },
+  fetchApiFootballOdds: async (fixtureId, teams) => (await fetchFixtureMatchWinnerDevig(fixtureId, teams)).devig,
+}
+
+const livePricedMarketDeps: PricedMarketDeps = {
+  eventMarket: (round) =>
+    matchConsensusMarket({
+      proposition_text: round.proposition_text,
+      category: round.category ?? '',
+      instrument: round.instrument ?? '',
+      resolves_at: round.resolves_at,
+      closed_book_packet_text: round.closed_book_packet_text ?? null,
+    }),
+  dailyMarket: (round) => searchDailyMarkets(round),
+  sportsBaseline: (round) => matchSportsBaseline(round, liveSportsBaselineDeps),
+}
+
+function pricedMarketRound(round: ExtraRoundRow): PricedMarketRound {
+  return {
+    proposition_text: round.proposition_text,
+    category: round.category,
+    instrument: round.instrument,
+    resolves_at: round.resolves_at ?? null,
+    opened_at: round.opened_at,
+    anchor_price: round.anchor_price ?? null,
+    anchor_price_at: round.anchor_price_at ?? null,
+    anchor_session_date: round.anchor_session_date ?? null,
+    closed_book_packet_text: round.closed_book_packet_text ?? null,
+  }
+}
+
 async function resolveConsensusMarket(
   round: ExtraRoundRow,
-  matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
+  matchMarkets?: ConsensusMarketMatcher,
 ): Promise<AcceptedMarketMatch | null> {
-  if (!consensusMarketEligible(round.category, round.instrument)) return null
-  const matcher = matchMarkets ?? matchConsensusMarket
-  return matcher(round).catch(() => null)
+  if (!pricedMarketPath(round.category, round.instrument)) return null
+  const priced = pricedMarketRound(round)
+  if (matchMarkets) return matchMarkets(priced).catch(() => null)
+  return matchPricedMarket(priced, livePricedMarketDeps)
 }
 
 async function persistMatchedConsensus(
@@ -1144,7 +1194,7 @@ async function persistMatchedConsensus(
 async function runConsensusSeat(
   round: ExtraRoundRow,
   call: ConsensusCaller,
-  matchMarkets?: (round: ConsensusMarketRound) => Promise<AcceptedMarketMatch | null>,
+  matchMarkets?: ConsensusMarketMatcher,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('consensus')!
   if (isDomesticBaseballLeague(round.instrument.split(':')[1] ?? '')) {

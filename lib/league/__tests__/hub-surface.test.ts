@@ -8,7 +8,7 @@ import { HubDoors } from '../../../components/league/HubDoors'
 import { ModelTile } from '../../../components/league/ModelTile'
 import { WaitingArena } from '../../../components/league/WaitingArena'
 import { emptyTally, type CardModelPrediction, type TierSplit } from '../card-types'
-import { EXTRA_SEAT_IDS } from '../extra/seats'
+import { extraDescriptionPack } from '../extra/descriptions'
 import { leagueQueueCap, LEAGUE_QUEUE_CAP_DEFAULT } from '../generation/policy'
 import {
   categoryFromSearch,
@@ -41,38 +41,25 @@ function extraTile(modelId: string): CardModelPrediction {
 }
 
 describe('extra seat explanations', () => {
-  it('keeps the Korean intro and the six role details', () => {
-    const copy = leagueSurfaceCopy('ko')
-    expect(copy.extra.intro).toBe(
+  it('keeps the Korean intro and an intro in every locale', () => {
+    expect(leagueSurfaceCopy('ko').extra.intro).toBe(
       '40개 AI와 다른 방식으로 보는 특별 좌석입니다. 채점은 하지만 40 AI 종합에는 섞지 않습니다.',
     )
-    expect(copy.extra.role.divination.detail).toContain('데이터는 보지 않습니다')
-    expect(copy.extra.role.sentiment.detail).toContain('여론')
-    expect(copy.extra.role.history.detail).toContain('출시 주기')
-    expect(copy.extra.role.consensus.detail).toContain('예측시장·배당')
-    expect(copy.extra.role.crow.detail).toContain('반대를 위한 반대는 하지 않습니다')
-    expect(copy.extra.role.replay.detail).toContain('기록이 쌓일수록')
-  })
-
-  it('has a one-line role and a longer detail in every locale', () => {
     for (const locale of LEAGUE_LOCALES) {
-      const copy = leagueSurfaceCopy(locale)
-      expect(copy.extra.intro.length).toBeGreaterThan(12)
-      for (const id of EXTRA_SEAT_IDS) {
-        expect(copy.extra.role[id].line.length).toBeGreaterThan(4)
-        expect(copy.extra.role[id].detail.length).toBeGreaterThan(copy.extra.role[id].line.length)
-      }
+      expect(leagueSurfaceCopy(locale).extra.intro.length).toBeGreaterThan(12)
     }
   })
 
-  it('shows the role line and the expandable detail on an extra tile', () => {
+  it('shows role and basis on an extra tile without a click', () => {
     const t = getLeagueUiPack('ko')
     const html = renderToStaticMarkup(
       createElement(ModelTile, { model: extraTile('divination'), t, locale: 'ko' }),
     )
+    const divination = extraDescriptionPack('ko').seats.divination
     expect(html).toContain('data-testid="extra-role"')
-    expect(html).toContain('오락용 점괘. 데이터는 보지 않습니다.')
-    expect(html).toContain('날짜·괘·타로·룬으로 보는 오락용 점괘')
+    expect(html).toContain(divination.role)
+    expect(html).toContain(divination.basis)
+    expect(html).not.toContain('<details')
   })
 
   it('prints the extra intro under the extra header while a round is streaming', () => {

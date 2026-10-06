@@ -13,9 +13,9 @@ import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 import { divinationChartLine } from '@/lib/league/extra/divination-chart-copy'
-import { isExtraSeatId } from '@/lib/league/extra/seats'
+import { extraDescriptionPack, extraNoMarketLine, extraSeatDescription } from '@/lib/league/extra/descriptions'
+import { extraSeatBadge, isExtraSeatId } from '@/lib/league/extra/seats'
 import { lensDisplayLabel } from '@/lib/league/analysis-lenses'
-import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
 /**
@@ -125,8 +125,13 @@ export function ModelTile({
       ? magnitudeCompareLine(model.magnitude, actualMagnitudePct, t)
       : null
   const lensName = model.league_tier === 'extra' ? null : lensDisplayLabel(locale, model.analysisLens)
-  const extraRole = isExtraSeatId(model.model_id) ? leagueSurfaceCopy(locale).extra.role[model.model_id] : null
-  const extraMore = leagueSurfaceCopy(locale).extra.more
+  const extraDescription = isExtraSeatId(model.model_id) ? extraSeatDescription(locale, model.model_id, category) : null
+  const extraLabels = extraDescriptionPack(locale)
+  const noMarketLine = consensusAbstain ? extraNoMarketLine(locale) : null
+  const headerBrand =
+    model.model_id === 'consensus' && extraDescription
+      ? `${extraSeatBadge('consensus')} ${extraDescription.name}`
+      : model.brand
 
   function toggle() {
     if (!hasReasoning) return
@@ -204,12 +209,24 @@ export function ModelTile({
             dir="ltr"
             className={`flex shrink-0 flex-col items-center justify-center gap-0.5 rounded-xl px-3 py-1.5 md:flex-row md:justify-center md:gap-1.5 md:py-2 ${dirStyle}`}
           >
-            {showGlyph ? (
-              <span className="text-[30px] font-black leading-none md:text-2xl" aria-hidden>
-                {glyph}
+            {noMarketLine ? (
+              <span
+                dir="auto"
+                className="text-center text-[11px] font-semibold leading-snug md:text-xs"
+                data-testid="consensus-no-market"
+              >
+                {noMarketLine}
               </span>
-            ) : null}
-            <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
+            ) : (
+              <>
+                {showGlyph ? (
+                  <span className="text-[30px] font-black leading-none md:text-2xl" aria-hidden>
+                    {glyph}
+                  </span>
+                ) : null}
+                <span className="text-[10px] font-bold uppercase tracking-wide md:text-xs">{badge}</span>
+              </>
+            )}
             {showConfidenceBadge ? (
               <span
                 className="rounded bg-black/10 px-1 py-0.5 text-[10px] font-bold tabular-nums dark:bg-white/15 md:text-xs"
@@ -235,7 +252,7 @@ export function ModelTile({
             {t.modelTile.lensTag(lensName)}
           </p>
         ) : null}
-        <p className="text-[13px] font-semibold leading-snug text-league-fg md:text-sm">{model.brand}</p>
+        <p className="text-[13px] font-semibold leading-snug text-league-fg md:text-sm">{headerBrand}</p>
         <p
           className="font-mono text-[12px] leading-tight text-league-fg-muted md:text-[13px]"
           aria-label={`${t.modelTile.modelLabel}: ${model.model_identifier}`}
@@ -249,11 +266,7 @@ export function ModelTile({
           </p>
         ) : null}
 
-        {consensusAbstain ? (
-          <p className="text-[11px] font-semibold text-league-fg-muted" data-testid="consensus-no-market">
-            {t.modelTile.noMarketSignal}
-          </p>
-        ) : model.fail_reason && !model.direction ? (
+        {!consensusAbstain && model.fail_reason && !model.direction ? (
           <p className="font-mono text-[10px] text-amber-700/90" data-testid="seat-fail-reason">
             {model.fail_reason}
           </p>
@@ -313,14 +326,17 @@ export function ModelTile({
           </span>
         ) : null}
       </div>
-      {extraRole ? (
-        <div className="px-2.5 pb-2 md:px-3" data-testid="extra-role">
-          <p className="line-clamp-1 text-[10px] leading-snug text-league-fg-muted">{extraRole.line}</p>
-          <details className="mt-0.5 text-[10px] leading-snug text-league-fg-muted">
-            <summary className="cursor-pointer font-semibold text-league-accent-strong">{extraMore}</summary>
-            <p className="mt-1">{extraRole.detail}</p>
-          </details>
-        </div>
+      {extraDescription ? (
+        <dl className="space-y-0.5 px-2.5 pb-2 text-[10px] leading-snug text-league-fg-muted md:px-3" data-testid="extra-role">
+          <div className="flex gap-1" data-testid="extra-role-line">
+            <dt className="shrink-0 font-semibold text-league-fg">{extraLabels.roleLabel}</dt>
+            <dd>{extraDescription.role}</dd>
+          </div>
+          <div className="flex gap-1" data-testid="extra-basis-line">
+            <dt className="shrink-0 font-semibold text-league-fg">{extraLabels.basisLabel}</dt>
+            <dd>{extraDescription.basis}</dd>
+          </div>
+        </dl>
       ) : null}
     </li>
   )

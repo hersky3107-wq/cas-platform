@@ -16,7 +16,7 @@ export type ProviderUnavailableLog = (event: {
   status: string
 }) => void
 
-type SearchOpts = {
+export type SearchOpts = {
   fetchImpl?: typeof fetch
   log?: ProviderUnavailableLog
   timeoutMs?: number
@@ -46,6 +46,13 @@ export async function searchConsensusMarkets(query: string, opts: SearchOpts = {
 }
 
 async function searchVenue(venue: MarketVenue, url: string, opts: SearchOpts): Promise<OpenMarketCandidate[]> {
+  const body = await fetchVenueJson(venue, url, opts)
+  if (body == null) return []
+  return venue === 'kalshi' ? parseKalshiSearch(body) : parsePolymarketSearch(body)
+}
+
+/** One GET. Any non-2xx, timeout, or throw logs provider_unavailable and returns null. */
+export async function fetchVenueJson(venue: MarketVenue, url: string, opts: SearchOpts = {}): Promise<unknown | null> {
   const fetchImpl = opts.fetchImpl ?? fetch
   const timeoutMs = opts.timeoutMs ?? MARKET_SEARCH_TIMEOUT_MS
   const ctrl = new AbortController()
@@ -57,13 +64,12 @@ async function searchVenue(venue: MarketVenue, url: string, opts: SearchOpts): P
     })
     if (res.status === 451 || res.status === 403 || !res.ok) {
       emit(opts.log, venue, String(res.status))
-      return []
+      return null
     }
-    const body = (await res.json()) as unknown
-    return venue === 'kalshi' ? parseKalshiSearch(body) : parsePolymarketSearch(body)
+    return (await res.json()) as unknown
   } catch (e: unknown) {
     emit(opts.log, venue, isTimeout(e) ? 'timeout' : 'error')
-    return []
+    return null
   } finally {
     clearTimeout(timer)
   }
@@ -147,7 +153,7 @@ export function parsePolymarketSearch(body: unknown): OpenMarketCandidate[] {
   return out
 }
 
-function yesFromDollars(bidRaw: unknown, askRaw: unknown, lastRaw: unknown): number | null {
+export function yesFromDollars(bidRaw: unknown, askRaw: unknown, lastRaw: unknown): number | null {
   const bid = num(bidRaw)
   const ask = num(askRaw)
   const last = num(lastRaw)
@@ -175,7 +181,7 @@ function yesOutcomeLabel(market: Record<string, unknown>): string | null {
   return yes ?? outcomes[0] ?? null
 }
 
-function asList(raw: unknown): string[] {
+export function asList(raw: unknown): string[] {
   if (Array.isArray(raw)) return raw.map(String)
   if (typeof raw !== 'string' || !raw.trim()) return []
   try {

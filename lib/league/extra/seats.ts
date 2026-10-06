@@ -70,7 +70,7 @@ export const LEAGUE_EXTRA_ROSTER: readonly ExtraSeat[] = [
   },
   {
     model_id: 'consensus',
-    brand: '💰 돈이 매긴 확률',
+    brand: '💰 시장 기준선',
     product_alias: '엑스트라',
     badge: '💰',
     kind: 'consensus',

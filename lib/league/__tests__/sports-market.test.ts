@@ -8,6 +8,7 @@ import {
 import { getLeagueUiPack } from '../i18n/dictionary'
 import { LEAGUE_LOCALES } from '../i18n/locales'
 import { consensusMoneySearchHints } from '../extra/consensus'
+import { extraDescriptionPack, extraNoMarketLine } from '../extra/descriptions'
 import { buildHistorySystemPrompt, historyRationaleNeedsRetry } from '../extra/history'
 
 function consensus(over: { up: number; down: number; p: number; dir: 'yes' | 'no' }) {
@@ -177,6 +178,7 @@ describe('consensus abstain tile', () => {
     const html = renderToStaticMarkup(
       createElement(ModelTile, {
         t,
+        locale: 'ko',
         labels: sideLabelsFor(
           { proposition_kind: 'binary_subject_outcome', category: 'sports', subject_label: 'Ulsan HD' },
           t,
@@ -201,10 +203,47 @@ describe('consensus abstain tile', () => {
         },
       }),
     )
-    expect(html).toContain('시장 신호 없음')
+    expect(html).toContain('이 종목에는 돈이 걸린 시장이 없습니다')
+    expect(html).toContain('💰 시장 기준선')
+    expect(html).not.toContain('💰 돈이 매긴 확률')
+    expect(html).not.toContain('의견 없음')
     expect(html).not.toContain('unparseable')
     expect(html).not.toContain('fail_reason')
     expect(getLeagueUiPack('en').modelTile.noMarketSignal).toBe('No market signal')
     expect(getLeagueUiPack('ja').modelTile.noMarketSignal.length).toBeGreaterThan(0)
+  })
+
+  it('uses the localized no-market line on an abstaining market tile in every locale', async () => {
+    const { renderToStaticMarkup } = await import('react-dom/server')
+    const { createElement } = await import('react')
+    const { ModelTile } = await import('../../../components/league/ModelTile')
+    for (const locale of LEAGUE_LOCALES) {
+      const html = renderToStaticMarkup(
+        createElement(ModelTile, {
+          t: getLeagueUiPack(locale),
+          locale,
+          model: {
+            prediction_id: null,
+            model_id: 'consensus',
+            brand: '💰 돈이 매긴 확률',
+            model_identifier: 'consensus',
+            camp: 'other',
+            league_tier: 'extra',
+            direction: null,
+            probability: null,
+            magnitude: null,
+            qualifierText: null,
+            reasoning_snippet: '의견 없음',
+            is_correct: null,
+            cost_usd: 0,
+            predicted_at: '2026-10-05T00:00:00.000Z',
+          },
+        }),
+      )
+      const pack = extraDescriptionPack(locale)
+      expect(html, locale).toContain(extraNoMarketLine(locale))
+      expect(html, locale).toContain(`💰 ${pack.seats.consensus.name}`)
+      expect(html, locale).not.toContain('의견 없음')
+    }
   })
 })
