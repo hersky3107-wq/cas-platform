@@ -405,9 +405,10 @@ export function KrUniverseChipBrowser({
   isAdmin = false,
 }: {
   onSelectUsInstrument: (instrument: string, horizon: UiHorizon) => void
-  /** Hub `viewerIsAdmin`. Admin KR chips generate like US chips. */
+  /** Hub `viewerIsAdmin`. KR stocks generate for every signed-in user. */
   isAdmin?: boolean
 }) {
+  void isAdmin
   const { t } = useLeagueLocale()
   const [tab, setTab] = useState<MarketTab>('KOSPI')
   const [rows, setRows] = useState<KrUniverseRow[] | null>(null)
@@ -448,7 +449,8 @@ export function KrUniverseChipBrowser({
   }, [tab])
 
   function generatesOnSelect(row: KrUniverseRow): boolean {
-    return row.market === 'US' || isAdmin
+    void row
+    return true
   }
 
   function pick(row: KrUniverseRow) {
@@ -656,7 +658,7 @@ export function KrUniverseChipBrowser({
           showHorizons={generatesOnSelect(selected)}
           horizon={horizon}
           horizonLabels={t.catalog.horizons}
-          pendingNotice={selected.market !== 'US' && !isAdmin ? KR_STOCK_PENDING_NOTICE : null}
+          pendingNotice={null}
           onPickHorizon={pickHorizon}
           onClose={() => setSelected(null)}
         />

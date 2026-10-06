@@ -132,7 +132,6 @@ describe('admin-only public UI', () => {
   it('lists every admin-only element and hides them without admin', () => {
     expect(ADMIN_ONLY_PUBLIC_UI.map((row) => row.id)).toEqual([
       'admin-stock-lane',
-      'admin-kr-stock-generate',
       'language-toggle-kr',
       'kr-election-admin-banners',
       'admin-preview-as-user',

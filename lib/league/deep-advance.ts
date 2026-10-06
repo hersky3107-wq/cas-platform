@@ -26,6 +26,13 @@ import {
   upcomingOpenStage,
   type OpenPipelineState,
 } from './deep-open-run'
+import {
+  addStageCost,
+  emptyReportStageCosts,
+  reportCostBucket,
+  type ReportStageCosts,
+} from './deep-report-policy'
+import { advanceReportState, seedReportState, upcomingReportStage, type ReportPipelineState } from './deep-report-run'
 
 export type DeepSeedOutcome =
   | { ok: true; row: DeepRunRow; produced: true }
@@ -88,7 +95,8 @@ export async function seedDeepRun(row: DeepRunRow): Promise<DeepSeedOutcome> {
     return { ok: false, retry: true, row: { ...row, stage: 'seed_retry', state: failed as unknown as Record<string, unknown> } }
   }
 
-  const seeded = row.product === 'open' ? seedOpenState(ctx) : seedDebateState(ctx)
+  const seeded =
+    row.product === 'open' ? seedOpenState(ctx) : row.product === 'debate' ? seedDebateState(ctx) : seedReportState(ctx)
   const next = { ...row, stage: 'start', state: seeded as unknown as Record<string, unknown> }
   await saveDeepRunProgress({
     id: row.id,
@@ -104,6 +112,7 @@ export async function seedDeepRun(row: DeepRunRow): Promise<DeepSeedOutcome> {
 
 /** One pipeline hop. Persists progress. Does NOT refund — the runner owns money. */
 export async function persistOneDeepHop(row: DeepRunRow): Promise<DeepHopOutcome> {
+  if (row.product === 'report') return persistReportHop(row)
   const language = localeFromPersistedState(row.state)
   const previewStage =
     row.product === 'open'
@@ -161,6 +170,76 @@ export async function persistOneDeepHop(row: DeepRunRow): Promise<DeepHopOutcome
     return { done: false, stage: span.result.stage, produced: true }
   }
 
+  await saveDeepRunProgress({
+    id: row.id,
+    stage: 'done',
+    status: 'done',
+    state: nextState,
+    result: span.result.result as unknown as Record<string, unknown>,
+    providers,
+    ...totals,
+  })
+  return { done: true, ok: true, produced: true }
+}
+
+async function persistReportHop(row: DeepRunRow): Promise<DeepHopOutcome> {
+  const language = localeFromPersistedState(row.state)
+  const state = row.state as unknown as ReportPipelineState
+  const previewStage = upcomingReportStage(state)
+  await saveDeepRunProgress({
+    id: row.id,
+    stage: previewStage,
+    status: 'running',
+    state: row.state,
+    providers: row.providers,
+    billedUsd: row.billed_usd,
+    estimatedUsd: row.estimated_usd,
+    providerCalls: row.provider_calls,
+  })
+
+  const span = await withCostSpan(() => runWithOutputLanguage(language, () => advanceReportState(state)))
+  const bucket = reportCostBucket(previewStage)
+  const prevCosts = (state as { stageCosts?: ReportStageCosts }).stageCosts ?? emptyReportStageCosts()
+  const stageCosts = bucket
+    ? {
+        ...prevCosts,
+        [bucket]: addStageCost(prevCosts[bucket], {
+          billedUsd: span.billedUsd,
+          estimatedUsd: span.estimatedUsd,
+          calls: span.calls,
+        }),
+      }
+    : prevCosts
+  const nextState = { ...(span.result.state as object), stageCosts } as Record<string, unknown>
+  const totals = addSpanTotals(row, span)
+  const providers = (span.result.state.openings ?? span.result.state.rebuttals ?? []).map((turn) => ({
+    provider: turn.provider,
+    roleLabel: turn.side,
+  }))
+
+  if (span.result.done && !span.result.result.ok) {
+    await saveDeepRunProgress({
+      id: row.id,
+      stage: 'error',
+      status: 'error',
+      state: nextState,
+      result: span.result.result as unknown as Record<string, unknown>,
+      providers,
+      ...totals,
+    })
+    return { done: true, ok: false, error: span.result.result.error ?? 'deep report failed', produced: true }
+  }
+  if (!span.result.done) {
+    await saveDeepRunProgress({
+      id: row.id,
+      stage: span.result.stage,
+      status: 'running',
+      state: nextState,
+      providers,
+      ...totals,
+    })
+    return { done: false, stage: span.result.stage, produced: true }
+  }
   await saveDeepRunProgress({
     id: row.id,
     stage: 'done',

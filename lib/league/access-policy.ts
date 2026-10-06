@@ -145,9 +145,6 @@ export function gatePublicGenerateInstrument(
     if (universe?.isKrUniverseVisible?.(krStock.market, krStock.code) !== true) {
       return { ok: false, status: 400, code: 'unknown_instrument' }
     }
-    if (!viewer.isAdmin) {
-      return { ok: false, status: 403, code: 'kr_stock_not_open' }
-    }
     return { ok: true, instrument, category: 'stock', horizon }
   }
 

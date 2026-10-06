@@ -729,6 +729,8 @@ export type LeagueUiPack = {
     deepOpen: (credits: number) => string
     /** Paid CTA — MUST carry its price. Pro/con debate of the current round. */
     deepDebate: (credits: number) => string
+    /** Paid CTA — MUST carry its price. Single deep report. */
+    deepReport: (credits: number) => string
     deepRunning: string
     /** Distinguishes this output from the scored prediction league. */
     deepUnscoredNote: string
@@ -736,6 +738,7 @@ export type LeagueUiPack = {
     deepOpenHint: string
     /** One-sentence description under the debate button. */
     deepDebateHint: string
+    deepReportHint: string
     deepOpenTitle: string
     deepDebateTitle: string
     /** Large section heading above the deep-analysis block. */
@@ -1360,6 +1363,7 @@ const en: LeagueUiPack = {
     balance: (credits) => `${credits} credits`,
     deepOpen: (credits) => `Open analysis \u00b7 ${credits} credits`,
     deepDebate: (credits) => `Pro/con debate \u00b7 ${credits} credits`,
+    deepReport: (credits) => `AI deep report \u00b7 ${credits} credits`,
     deepRunning: 'Running deep analysis\u2026',
     deepUnscoredNote:
       'Unscored commentary \u2014 not a league prediction. Does not enter the leaderboard or track record.',
@@ -1367,6 +1371,8 @@ const en: LeagueUiPack = {
       'The AIs dig deeper into the reasoning behind this call \u2014 each writes its own detailed brief, then everything is merged into one report. For when you want to know why. Unscored commentary.',
     deepDebateHint:
       'The AIs split into pro and con, debate, then vote \u2014 and a chair writes the conclusion plus the minority view. For when you want both sides of the argument. Unscored commentary.',
+    deepReportHint:
+      'Fresh research, a six-model debate, and a chair report — beyond the 40-seat card. Unscored commentary. Usually under 8 minutes.',
     deepOpenTitle: 'Open analysis',
     deepDebateTitle: 'Pro/con debate',
     deepReportTitle: 'Deep report',
@@ -1385,6 +1391,10 @@ const en: LeagueUiPack = {
           synthesis: 'Combining the briefs into one',
           deliberate: 'The models are debating',
           vote: 'Casting the vote',
+          research: 'Researching',
+          opening: 'Debate',
+          rebuttal: 'Rebuttal',
+          chair: 'Chair',
           verdict: 'Writing the chair’s verdict',
           done: 'Done',
           error: 'Stopped',
@@ -1983,12 +1993,15 @@ const ko: LeagueUiPack = {
     balance: (credits) => `${credits} 크레딧`,
     deepOpen: (credits) => `개방형 분석 \u00b7 ${credits} 크레딧`,
     deepDebate: (credits) => `찬반 토론 \u00b7 ${credits} 크레딧`,
+    deepReport: (credits) => `AI 심층 리포트 \u00b7 ${credits} 크레딧`,
     deepRunning: '심층 분석 진행 중\u2026',
     deepUnscoredNote: '비채점 논평입니다. 리그 예측이 아니며 리더보드와 전적에 반영되지 않습니다.',
     deepOpenHint:
       'AI들이 이 예측의 근거를 더 깊이 파고들어 각자 상세 분석을 쓰고, 하나의 종합 리포트로 정리합니다. 왜 이런 결론인지 궁금할 때. 비채점 참고 자료입니다.',
     deepDebateHint:
       'AI들을 찬성·반대로 나눠 토론시키고, 투표한 뒤 의장이 결론과 소수 의견까지 정리합니다. 양쪽 논리를 모두 보고 싶을 때. 비채점 참고 자료입니다.',
+    deepReportHint:
+      '새 조사, 6개 모델 토론, 의장 리포트입니다. 40개 좌석 카드보다 깊게 봅니다. 비채점이며 보통 8분 안쪽입니다.',
     deepOpenTitle: '개방형 분석',
     deepDebateTitle: '찬반 토론',
     deepReportTitle: '심층 리포트',
@@ -2007,6 +2020,10 @@ const ko: LeagueUiPack = {
           synthesis: '여덟 편의 브리핑을 하나로 합치는 중입니다',
           deliberate: '찬반 토론이 진행 중입니다',
           vote: '투표를 진행하는 중입니다',
+          research: '조사 중',
+          opening: '토론',
+          rebuttal: '반박',
+          chair: '의장 정리',
           verdict: '의장 판정을 쓰는 중입니다',
           done: '완료',
           error: '중단됨',
@@ -2602,12 +2619,15 @@ const ja: LeagueUiPack = {
     balance: (credits) => `${credits}クレジット`,
     deepOpen: (credits) => `自由分析 \u00b7 ${credits}クレジット`,
     deepDebate: (credits) => `賛否討論 \u00b7 ${credits}クレジット`,
+    deepReport: (credits) => `AI詳細レポート \u00b7 ${credits}クレジット`,
     deepRunning: '深層分析を実行中\u2026',
     deepUnscoredNote: '採点対象外の論評です。リーグ予測ではなく、リーダーボードや戦績には入りません。',
     deepOpenHint:
       'AIがこの予測の根拠を深掘りし、それぞれ詳細な分析を書いたうえで、1本の統合レポートにまとめます。「なぜこの結論なのか」を知りたいときに。採点対象外の参考資料です。',
     deepDebateHint:
       'AIを賛成・反対に分けて討論させ、投票のあと議長が結論と少数意見までまとめます。両方の論理を見たいときに。採点対象外の参考資料です。',
+    deepReportHint:
+      '新しい調査、6モデルの討論、議長レポートです。40席のカードより深く見ます。採点対象外で、通常8分以内です。',
     deepOpenTitle: '自由分析',
     deepDebateTitle: '賛否討論',
     deepReportTitle: '深層レポート',
@@ -2626,6 +2646,10 @@ const ja: LeagueUiPack = {
           synthesis: '8本のブリーフィングを一つにまとめています',
           deliberate: '賛否の討論中です',
           vote: '投票を行っています',
+          research: '調査中',
+          opening: '討論',
+          rebuttal: '反論',
+          chair: '議長の整理',
           verdict: '議長判定をまとめています',
           done: '完了',
           error: '停止',
@@ -3217,12 +3241,15 @@ const zhTW: LeagueUiPack = {
     balance: (credits) => `${credits} 點數`,
     deepOpen: (credits) => `開放分析 \u00b7 ${credits} 點數`,
     deepDebate: (credits) => `正反辯論 \u00b7 ${credits} 點數`,
+    deepReport: (credits) => `AI 深度報告 \u00b7 ${credits} 點數`,
     deepRunning: '深度分析進行中\u2026',
     deepUnscoredNote: '未計分評論——不是聯盟預測，不會進入排行榜或戰績。',
     deepOpenHint:
       '多個 AI 深入挖掘這項預測的依據，各自撰寫詳細分析，再彙整成一份綜合報告。想知道「為什麼是這個結論」時適用。非計分參考資料。',
     deepDebateHint:
       '把 AI 分成贊成與反對兩方辯論並投票，最後由主席整理結論與少數意見。想同時看到兩方論點時適用。非計分參考資料。',
+    deepReportHint:
+      '新的調查、6個模型討論，以及主席報告。比40席卡片更深。不計分，通常在8分鐘內。',
     deepOpenTitle: '開放分析',
     deepDebateTitle: '正反辯論',
     deepReportTitle: '深度報告',
@@ -3241,6 +3268,10 @@ const zhTW: LeagueUiPack = {
           synthesis: '正在把八份簡報合成一份',
           deliberate: '正反辯論進行中',
           vote: '正在進行投票',
+          research: '調查中',
+          opening: '討論',
+          rebuttal: '反駁',
+          chair: '主席整理',
           verdict: '正在撰寫主席裁定',
           done: '完成',
           error: '已中止',
@@ -3845,6 +3876,7 @@ const fr: LeagueUiPack = {
     balance: (credits) => `${credits} crédits`,
     deepOpen: (credits) => `Analyse ouverte \u00b7 ${credits} cr\u00e9dits`,
     deepDebate: (credits) => `D\u00e9bat pour/contre \u00b7 ${credits} cr\u00e9dits`,
+    deepReport: (credits) => `Rapport IA approfondi \u00b7 ${credits} cr\u00e9dits`,
     deepRunning: 'Analyse approfondie en cours\u2026',
     deepUnscoredNote:
       'Commentaire non not\u00e9 \u2014 ce n\u2019est pas une pr\u00e9diction de ligue. N\u2019entre ni au classement ni au palmar\u00e8s.',
@@ -3852,6 +3884,8 @@ const fr: LeagueUiPack = {
       'Les IA creusent les raisons de cette prévision : chacune rédige sa propre analyse détaillée, puis tout est fusionné en un rapport unique. Pour comprendre le pourquoi. Commentaire non noté.',
     deepDebateHint:
       'Les IA se répartissent entre pour et contre, débattent puis votent \u2014 et un président rédige la conclusion avec l\u2019opinion minoritaire. Pour voir les deux camps. Commentaire non noté.',
+    deepReportHint:
+      'Recherche nouvelle, débat de six modèles et rapport du président. Plus profond que la carte des 40 sièges. Non noté, souvent en moins de 8 minutes.',
     deepOpenTitle: 'Analyse ouverte',
     deepDebateTitle: 'D\u00e9bat pour/contre',
     deepReportTitle: 'Rapport approfondi',
@@ -3870,6 +3904,10 @@ const fr: LeagueUiPack = {
           synthesis: 'Fusion des notes en une synthèse',
           deliberate: 'Débat en cours',
           vote: 'Vote en cours',
+          research: 'Recherche',
+          opening: 'Débat',
+          rebuttal: 'Réfutation',
+          chair: 'Synthèse du président',
           verdict: 'Rédaction du verdict du président',
           done: 'Terminé',
           error: 'Interrompu',
@@ -4481,6 +4519,7 @@ const es: LeagueUiPack = {
     balance: (credits) => `${credits} créditos`,
     deepOpen: (credits) => `An\u00e1lisis abierto \u00b7 ${credits} cr\u00e9ditos`,
     deepDebate: (credits) => `Debate a favor/en contra \u00b7 ${credits} cr\u00e9ditos`,
+    deepReport: (credits) => `Informe IA en profundidad \u00b7 ${credits} cr\u00e9ditos`,
     deepRunning: 'Ejecutando an\u00e1lisis profundo\u2026',
     deepUnscoredNote:
       'Comentario sin puntuaci\u00f3n: no es una predicci\u00f3n de la liga. No entra en la clasificaci\u00f3n ni en el historial.',
@@ -4488,6 +4527,8 @@ const es: LeagueUiPack = {
       'Las IA profundizan en las razones de esta predicción: cada una escribe su propio análisis detallado y luego todo se combina en un único informe. Para cuando quieres saber el porqué. Comentario sin puntuar.',
     deepDebateHint:
       'Las IA se dividen en a favor y en contra, debaten y votan; después una presidencia redacta la conclusión con la opinión minoritaria. Para ver ambos lados. Comentario sin puntuar.',
+    deepReportHint:
+      'Investigación nueva, debate de seis modelos e informe de la presidencia. Más profundo que la tarjeta de 40 asientos. Sin puntuar; suele tardar menos de 8 minutos.',
     deepOpenTitle: 'An\u00e1lisis abierto',
     deepDebateTitle: 'Debate a favor/en contra',
     deepReportTitle: 'Informe en profundidad',
@@ -4506,6 +4547,10 @@ const es: LeagueUiPack = {
           synthesis: 'Uniendo los informes en uno',
           deliberate: 'El debate está en curso',
           vote: 'Votación en curso',
+          research: 'Investigando',
+          opening: 'Debate',
+          rebuttal: 'Réplica',
+          chair: 'Síntesis de la presidencia',
           verdict: 'Redactando el veredicto de la presidencia',
           done: 'Listo',
           error: 'Detenido',
@@ -5108,12 +5153,15 @@ const ar: LeagueUiPack = {
     balance: (credits) => `${credits} رصيد`,
     deepOpen: (credits) => `تحليل مفتوح \u00b7 ${credits} رصيد`,
     deepDebate: (credits) => `مناظرة مع/ضد \u00b7 ${credits} رصيد`,
+    deepReport: (credits) => `تقرير الذكاء الاصطناعي المعمّق \u00b7 ${credits} رصيد`,
     deepRunning: 'جارٍ التحليل المعمّق\u2026',
     deepUnscoredNote: 'تعليق غير مُقيَّم — ليس توقعًا للدوري ولا يدخل لوحة الصدارة أو السجل.',
     deepOpenHint:
       'تتعمق النماذج في أسباب هذا التوقع — يكتب كلٌّ منها تحليلًا مفصلًا ثم يُدمج الجميع في تقرير واحد. لمن يريد معرفة السبب. مادة مرجعية غير مُقيَّمة.',
     deepDebateHint:
       'تنقسم النماذج إلى مؤيد ومعارض فتتناظر ثم تصوّت، ويكتب رئيس الجلسة الخلاصة مع رأي الأقلية. لمن يريد رؤية الحجتين معًا. مادة مرجعية غير مُقيَّمة.',
+    deepReportHint:
+      'بحث جديد، ونقاش ستة نماذج، وتقرير الرئيس. أعمق من بطاقة المقاعد الأربعين. غير مُقيَّم، وغالبًا خلال 8 دقائق.',
     deepOpenTitle: 'تحليل مفتوح',
     deepDebateTitle: 'مناظرة مع/ضد',
     deepReportTitle: 'تقرير معمّق',
@@ -5132,6 +5180,10 @@ const ar: LeagueUiPack = {
           synthesis: 'جارٍ دمج الموجزات في نص واحد',
           deliberate: 'المناظرة جارية',
           vote: 'جارٍ التصويت',
+          research: 'جارٍ البحث',
+          opening: 'النقاش',
+          rebuttal: 'الرد',
+          chair: 'خلاصة الرئيس',
           verdict: 'جارٍ كتابة حكم رئيس الجلسة',
           done: 'اكتمل',
           error: 'توقف',
@@ -5738,6 +5790,7 @@ const pt: LeagueUiPack = {
     balance: (credits) => `${credits} créditos`,
     deepOpen: (credits) => `Análise aberta \u00b7 ${credits} créditos`,
     deepDebate: (credits) => `Debate prós/contras \u00b7 ${credits} créditos`,
+    deepReport: (credits) => `Relatório IA aprofundado \u00b7 ${credits} créditos`,
     deepRunning: 'Executando análise profunda\u2026',
     deepUnscoredNote:
       'Comentário sem nota \u2014 não é uma previsão da liga. Não entra na classificação nem no histórico.',
@@ -5745,6 +5798,8 @@ const pt: LeagueUiPack = {
       'As IAs aprofundam as razões desta previsão: cada uma escreve sua própria análise detalhada e tudo é combinado em um único relatório. Para quando você quer saber o porquê. Comentário sem pontuação.',
     deepDebateHint:
       'As IAs se dividem em prós e contras, debatem e votam; depois uma presidência escreve a conclusão com a opinião minoritária. Para ver os dois lados. Comentário sem pontuação.',
+    deepReportHint:
+      'Pesquisa nova, debate de seis modelos e relatório da presidência. Mais fundo que o cartão de 40 assentos. Sem nota; em geral em menos de 8 minutos.',
     deepOpenTitle: 'Análise aberta',
     deepDebateTitle: 'Debate prós/contras',
     deepReportTitle: 'Relatório aprofundado',
@@ -5763,6 +5818,10 @@ const pt: LeagueUiPack = {
           synthesis: 'Unindo os briefings em um só',
           deliberate: 'O debate está em andamento',
           vote: 'Votação em andamento',
+          research: 'Pesquisando',
+          opening: 'Debate',
+          rebuttal: 'Réplica',
+          chair: 'Síntese da presidência',
           verdict: 'Escrevendo o veredito da presidência',
           done: 'Concluído',
           error: 'Interrompido',

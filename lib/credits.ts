@@ -96,12 +96,14 @@ export {
   LEAGUE_ARCHIVE_CREDITS,
   LEAGUE_DEEP_OPEN_CREDITS,
   LEAGUE_DEEP_DEBATE_CREDITS,
+  LEAGUE_DEEP_REPORT_CREDITS,
   creditsForLeagueGenerate,
   creditsForLeagueLeaderboard,
   creditsForLeagueRecordRoom,
   creditsForLeagueArchive,
   creditsForLeagueDeepOpen,
   creditsForLeagueDeepDebate,
+  creditsForLeagueDeepReport,
 } from './league/credits'
 
 /** @deprecated Use LEAGUE_DEEP_OPEN_CREDITS — kept so existing MOTIE call sites compile. */

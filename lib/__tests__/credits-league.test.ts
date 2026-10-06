@@ -3,12 +3,14 @@ import {
   LEAGUE_ARCHIVE_CREDITS,
   LEAGUE_DEEP_DEBATE_CREDITS,
   LEAGUE_DEEP_OPEN_CREDITS,
+  LEAGUE_DEEP_REPORT_CREDITS,
   LEAGUE_GENERATE_CREDITS,
   LEAGUE_LEADERBOARD_CREDITS,
   LEAGUE_RECORD_ROOM_CREDITS,
   creditsForLeagueArchive,
   creditsForLeagueDeepDebate,
   creditsForLeagueDeepOpen,
+  creditsForLeagueDeepReport,
   creditsForLeagueGenerate,
   creditsForLeagueLeaderboard,
   creditsForLeagueRecordRoom,
@@ -20,6 +22,11 @@ describe('league credit constants (single module)', () => {
     expect(LEAGUE_DEEP_DEBATE_CREDITS).toBe(70)
     expect(creditsForLeagueDeepOpen()).toBe(50)
     expect(creditsForLeagueDeepDebate()).toBe(70)
+  })
+
+  it('pins the deep report at 100 credits', () => {
+    expect(LEAGUE_DEEP_REPORT_CREDITS).toBe(100)
+    expect(creditsForLeagueDeepReport()).toBe(100)
   })
 
   it('pins the confirmed live-generation price', () => {

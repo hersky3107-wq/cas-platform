@@ -123,6 +123,17 @@ export const GENERATION_POLL_MS = 5_000
  */
 export const LEAGUE_DEEP_MAX_RUNNING = 2
 
+/** One deep-report slot is budgeted at 8 minutes (research + debate + chair). */
+export const LEAGUE_DEEP_SLOT_MINUTES = 8
+
+export function deepReportQueueEstimate(input: { queuedAhead: number }): { position: number; etaMinutes: number } {
+  const position = Math.max(1, Math.floor(input.queuedAhead) + 1)
+  const slots = Math.max(1, LEAGUE_DEEP_MAX_RUNNING)
+  const jobsAhead = Math.max(1, position - 1)
+  const etaMinutes = Math.ceil(jobsAhead / slots) * LEAGUE_DEEP_SLOT_MINUTES
+  return { position, etaMinutes: position === 1 && input.queuedAhead <= 0 ? LEAGUE_DEEP_SLOT_MINUTES : etaMinutes }
+}
+
 /**
  * Press-time backpressure for NEW deep purchases. At 2 running × ~6 min,
  * the 7th waiter would sit ~18 minutes — refuse before charge.

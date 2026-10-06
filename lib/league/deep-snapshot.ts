@@ -91,7 +91,26 @@ export type DeepDebateSnapshot = {
   verdict: DeepVerdictSnapshot | null
 }
 
-export type DeepSnapshot = DeepOpenSnapshot | DeepDebateSnapshot
+export type DeepReportTurnSnapshot = {
+  provider: string
+  model: string
+  side: string
+  text: string | null
+  ok: boolean
+}
+
+export type DeepReportSnapshot = {
+  kind: 'report'
+  instrument: string | null
+  proposition: string | null
+  dossier: string | null
+  researchPath: string | null
+  openings: DeepReportTurnSnapshot[]
+  rebuttals: DeepReportTurnSnapshot[]
+  chairReport: string | null
+}
+
+export type DeepSnapshot = DeepOpenSnapshot | DeepDebateSnapshot | DeepReportSnapshot
 
 /** Duplicated from deep-prompts' LEAGUE_DEEP_BRAND_LABEL (see module doc). */
 const BRAND_LABEL: Record<string, string> = {
@@ -177,12 +196,43 @@ function roundsFrom(raw: unknown, category?: string): DeepRoundSnapshot[] {
  * for the pre-seed placeholder (nothing to show yet).
  */
 export function buildDeepSnapshot(
-  product: 'open' | 'debate',
+  product: 'open' | 'debate' | 'report',
   state: Record<string, unknown> | null | undefined
 ): DeepSnapshot | null {
   if (!state || typeof state !== 'object') return null
   if ((state as { __unseeded?: unknown }).__unseeded === true) return null
-  return product === 'open' ? buildOpenSnapshot(state) : buildDebateSnapshot(state)
+  if (product === 'open') return buildOpenSnapshot(state)
+  if (product === 'debate') return buildDebateSnapshot(state)
+  return buildReportSnapshot(state)
+}
+
+function turnsOf(raw: unknown, category?: string): DeepReportTurnSnapshot[] {
+  if (!Array.isArray(raw)) return []
+  return raw
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    .map((row) => ({
+      provider: str(row.provider) ?? 'unknown',
+      model: str(row.model) ?? '',
+      side: str(row.side) ?? '',
+      text: vis(category, row.text),
+      ok: row.ok === true,
+    }))
+}
+
+function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot {
+  const category = str(state.category) ?? undefined
+  const research = (state.research ?? null) as { dossier?: unknown; path?: unknown } | null
+  const result = (state.result ?? null) as { report?: unknown } | null
+  return {
+    kind: 'report',
+    instrument: str(state.instrument),
+    proposition: str(state.proposition),
+    dossier: vis(category, research?.dossier),
+    researchPath: str(research?.path),
+    openings: turnsOf(state.openings, category),
+    rebuttals: turnsOf(state.rebuttals, category),
+    chairReport: vis(category, state.chairReport) ?? vis(category, result?.report),
+  }
 }
 
 function buildOpenSnapshot(state: Record<string, unknown>): DeepOpenSnapshot {

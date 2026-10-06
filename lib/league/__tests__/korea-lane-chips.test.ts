@@ -61,7 +61,7 @@ describe('Korean-lane chip browser (UI contract)', () => {
   })
 
   it('US chip selection shows the sticky selection bar and hands the STOCK instrument to the card flow', () => {
-    expect(browserSrc).toContain("row.market === 'US' || isAdmin")
+    expect(browserSrc).toContain('return true')
     expect(browserSrc).toContain('data-testid="kr-selection-bar"')
     expect(browserSrc).toContain('UI_HORIZONS.map')
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
@@ -74,19 +74,18 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(afterUsGrid).not.toMatch(/selected && generatesOnSelect\(selected\) \? \([\s\S]*role="group" aria-label="Horizon"/)
   })
 
-  it('non-admin KR chip selection shows the 준비 중 notice in the bar and never calls generate', () => {
-    expect(browserSrc).toContain('국내 종목 예측은 준비 중입니다.')
-    expect(browserSrc).toContain('data-testid="kr-chip-pending"')
-    expect(browserSrc).toContain("selected.market !== 'US' && !isAdmin")
-    expect(browserSrc).toContain('row.market === \'US\' || isAdmin')
-    expect(browserSrc).toMatch(/if \(generatesOnSelect\(row\)\) \{\s*onSelectUsInstrument/)
+  it('KR chip selection shows horizons and hands KRSTOCK to the card flow for every signed-in user', () => {
+    expect(browserSrc).toContain('data-testid="kr-selection-bar"')
+    expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
+    expect(browserSrc).toContain('showHorizons={generatesOnSelect(selected)}')
+    expect(browserSrc).toContain('pendingNotice={null}')
     expect(browserSrc).not.toContain('/api/league/generate')
-    expect(browserSrc).not.toContain('/api/league/card')
+    expect(hubSrc).toContain("instrument.startsWith('KRSTOCK:')")
+    expect(hubSrc).toContain('/api/league/generate')
   })
 
-  it('admin KR chip shows the selection-bar horizons and hands KRSTOCK to the existing generate flow', () => {
-    expect(browserSrc).toContain('isAdmin = false')
-    expect(browserSrc).toContain('row.market === \'US\' || isAdmin')
+  it('admin KR chip still uses the same generate flow', () => {
+    expect(browserSrc).toContain('isAdmin?: boolean')
     expect(browserSrc).toContain('showHorizons={generatesOnSelect(selected)}')
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
     expect(hubSrc).toContain('isAdmin={effectiveIsAdmin}')

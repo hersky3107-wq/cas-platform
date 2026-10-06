@@ -5,11 +5,14 @@ import { chargeDeep, refundDeep } from './deep-charge'
 import {
   creditsForLeagueDeepDebate,
   creditsForLeagueDeepOpen,
+  creditsForLeagueDeepReport,
   LEAGUE_DEEP_DEBATE_MODULE,
   LEAGUE_DEEP_OPEN_MODULE,
+  LEAGUE_DEEP_REPORT_MODULE,
 } from './credits'
 import {
   countActiveDeepRuns,
+  countOlderRunningDeepRuns,
   deleteUnchargedRun,
   insertDeepRunClaim,
   isUnseededState,
@@ -24,25 +27,42 @@ import {
 import { decideDeepRunAction, placeholderUnseededState, runIsBusy } from './deep-run-policy'
 import { buildDeepSnapshot } from './deep-snapshot'
 import { createDeepRunnerDeps } from './generation/deep-live-deps'
-import { LEAGUE_DEEP_MAX_ACTIVE } from './generation/policy'
+import { LEAGUE_DEEP_MAX_ACTIVE, deepReportQueueEstimate } from './generation/policy'
+import { deepReportMargin, totalReportCostUsd, type ReportStageCosts } from './deep-report-policy'
 import { advanceDeepRun } from './generation/deep-runner'
 import type { LeagueLocale } from './i18n/locales'
 import type { LeagueViewer } from './public-access'
 import { enforceRateLimit } from './public-access'
 
 function moduleFor(product: DeepProduct): string {
-  return product === 'open' ? LEAGUE_DEEP_OPEN_MODULE : LEAGUE_DEEP_DEBATE_MODULE
+  if (product === 'open') return LEAGUE_DEEP_OPEN_MODULE
+  if (product === 'debate') return LEAGUE_DEEP_DEBATE_MODULE
+  return LEAGUE_DEEP_REPORT_MODULE
 }
 
 function costFor(product: DeepProduct): number {
-  return product === 'open' ? creditsForLeagueDeepOpen() : creditsForLeagueDeepDebate()
+  if (product === 'open') return creditsForLeagueDeepOpen()
+  if (product === 'debate') return creditsForLeagueDeepDebate()
+  return creditsForLeagueDeepReport()
+}
+
+function adminEconomics(row: DeepRunRow, isAdmin: boolean): Record<string, unknown> {
+  if (!isAdmin) return {}
+  const stageCosts = (row.state?.stageCosts as ReportStageCosts | undefined) ?? null
+  const costUsd = Number((row.billed_usd + row.estimated_usd).toFixed(4))
+  const credits = row.charged_cost > 0 ? row.charged_cost : costFor(row.product)
+  return {
+    stageCosts,
+    stageCostTotalUsd: stageCosts ? Number(totalReportCostUsd(stageCosts).toFixed(4)) : costUsd,
+    margin: deepReportMargin(costUsd, credits),
+  }
 }
 
 function deductFromRow(row: DeepRunRow): DeductCreditsOutcome {
   return row.deduct_skipped ? { ok: true, balance: null, skipped: true } : { ok: true, balance: null }
 }
 
-function replayPayload(row: DeepRunRow): NextResponse {
+function replayPayload(row: DeepRunRow, isAdmin = false): NextResponse {
   const result = row.result ?? {}
   return NextResponse.json({
     ...result,
@@ -52,36 +72,38 @@ function replayPayload(row: DeepRunRow): NextResponse {
     unscored: true,
     sessionId: row.id,
     roundId: row.round_id,
-    kind: row.product === 'open' ? 'open' : 'debate',
+    kind: row.product,
     providers: row.providers,
     created_at: row.created_at,
     stage: row.stage,
     refunded: row.refunded,
-    // Full sanitized process (plan, briefs, rounds, ballot) — the terminal
-    // `result` alone drops the debate transcript and per-voter ballots.
     snapshot: buildDeepSnapshot(row.product, row.state),
     upstream_cost_usd: Number((row.billed_usd + row.estimated_usd).toFixed(4)),
     billed_usd: Number(row.billed_usd.toFixed(4)),
     estimated_usd: Number(row.estimated_usd.toFixed(4)),
     provider_calls: row.provider_calls,
+    ...adminEconomics(row, isAdmin),
   })
 }
 
-function pendingPayload(row: DeepRunRow, stage: string): NextResponse {
+async function pendingPayload(row: DeepRunRow, stage: string, isAdmin = false): Promise<NextResponse> {
   const waiting = !runIsBusy(row) && (row.lease_until === null || Date.parse(row.lease_until) <= Date.now())
+  const ahead = waiting ? await countOlderRunningDeepRuns(row.created_at, row.id) : 0
+  const queue = deepReportQueueEstimate({ queuedAhead: ahead })
   return NextResponse.json({
     ok: true,
     done: false,
     sessionId: row.id,
     stage,
     waiting,
+    queuePosition: queue.position,
+    etaMinutes: queue.etaMinutes,
     unscored: true,
     kind: row.product,
     roundId: row.round_id,
     refunded: row.refunded,
-    // Partial process so the card can render each stage as it lands
-    // (null until the seed hop persists the pipeline state).
     snapshot: buildDeepSnapshot(row.product, row.state),
+    ...adminEconomics(row, isAdmin),
   })
 }
 
@@ -143,7 +165,7 @@ export async function handleDeepStatus(opts: {
   if (!existing) {
     return NextResponse.json({ ok: true, done: false, exists: false, kind: opts.product, roundId: opts.roundId })
   }
-  if (existing.status === 'done' && existing.result) return replayPayload(existing)
+  if (existing.status === 'done' && existing.result) return replayPayload(existing, opts.viewer.isAdmin)
   if (existing.status === 'error') {
     return NextResponse.json({
       ok: false,
@@ -155,11 +177,11 @@ export async function handleDeepStatus(opts: {
       sessionId: existing.id,
       kind: existing.product,
       roundId: existing.round_id,
-      // Whatever completed before the failure — shown under the error note.
       snapshot: buildDeepSnapshot(existing.product, existing.state),
+      ...adminEconomics(existing, opts.viewer.isAdmin),
     })
   }
-  return pendingPayload(existing, existing.stage)
+  return pendingPayload(existing, existing.stage, opts.viewer.isAdmin)
 }
 
 /**
@@ -186,8 +208,15 @@ export async function handleDeepAnalysis(opts: {
 
   const action = decideDeepRunAction(existing)
 
+  if ((product === 'open' || product === 'debate') && (action === 'start' || action === 'restart')) {
+    return NextResponse.json(
+      { error: 'Open analysis and debate were replaced by the deep report.', code: 'use_deep_report' },
+      { status: 410 },
+    )
+  }
+
   if (action === 'replay' && existing) {
-    return replayPayload(existing)
+    return replayPayload(existing, viewer.isAdmin)
   }
 
   if (action === 'finish_refund' && existing) {
@@ -196,15 +225,15 @@ export async function handleDeepAnalysis(opts: {
 
   if (action === 'resume' && existing) {
     if (runIsBusy(existing)) {
-      return pendingPayload(existing, existing.stage)
+      return pendingPayload(existing, existing.stage, viewer.isAdmin)
     }
     enqueue(existing)
-    return pendingPayload(existing, existing.stage)
+    return pendingPayload(existing, existing.stage, viewer.isAdmin)
   }
 
   const limited = enforceRateLimit(
     viewer,
-    product === 'open' ? 'league_deep_open' : 'league_deep_debate',
+    product === 'open' ? 'league_deep_open' : product === 'debate' ? 'league_deep_debate' : 'league_deep_report',
     LEAGUE_DEEP_RATE_RULE
   )
   if (limited) return limited
@@ -235,12 +264,12 @@ export async function handleDeepAnalysis(opts: {
     }
     if (!claimed.created) {
       const raced = decideDeepRunAction(claimed.row)
-      if (raced === 'replay') return replayPayload(claimed.row)
+      if (raced === 'replay') return replayPayload(claimed.row, viewer.isAdmin)
       if (raced === 'finish_refund') return finishRefund(claimed.row, viewer.userId)
       if (raced === 'resume') {
-        if (runIsBusy(claimed.row)) return pendingPayload(claimed.row, claimed.row.stage)
+        if (runIsBusy(claimed.row)) return pendingPayload(claimed.row, claimed.row.stage, viewer.isAdmin)
         enqueue(claimed.row)
-        return pendingPayload(claimed.row, claimed.row.stage)
+        return pendingPayload(claimed.row, claimed.row.stage, viewer.isAdmin)
       }
     }
     row = claimed.row
@@ -263,5 +292,5 @@ export async function handleDeepAnalysis(opts: {
 
   // BUILD CONTEXT is the runner's first hop (unseeded placeholder). Not here.
   enqueue(row)
-  return pendingPayload({ ...row, stage: isUnseededState(row.state) ? 'start' : row.stage }, 'start')
+  return pendingPayload({ ...row, stage: isUnseededState(row.state) ? 'start' : row.stage }, 'start', viewer.isAdmin)
 }

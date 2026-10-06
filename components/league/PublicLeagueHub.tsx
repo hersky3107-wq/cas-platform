@@ -187,10 +187,11 @@ function koreaLaneShowsInstrumentPanel(
   isAdmin: boolean,
   instrument: string | null,
 ): boolean {
+  void isAdmin
   if (!instrument) return false
   if (!koreaStocks) return true
   if (instrument.startsWith('STOCK:')) return true
-  return isAdmin && instrument.startsWith('KRSTOCK:')
+  return instrument.startsWith('KRSTOCK:')
 }
 
 function CardsPanel({
@@ -716,6 +717,7 @@ function CardsPanel({
                   roundId={view.card.round.round_id}
                   category={view.card.round.category}
                   colorBucket={view.card.round.color_bucket}
+                  showAdminCost={effectiveIsAdmin}
                 />
               )}
             </>

@@ -121,6 +121,14 @@ export const MODEL_BY_PROVIDER: Record<ExtendedAiProviderName, string> = {
   meta: 'llama-3.3-70b-versatile',
 }
 
+/**
+ * Perplexity Sonar Deep Research (official model id, 2026 pricing docs).
+ * Token rates: input $2/1M, output $8/1M, citation $2/1M, reasoning $3/1M,
+ * search queries $5/1K. A documented sample call billed about $0.82.
+ * League deep report opts in via modelOverride; the default perplexity seat stays `sonar`.
+ */
+export const PERPLEXITY_SONAR_DEEP_RESEARCH_MODEL = 'sonar-deep-research'
+
 /** Model used when an Anthropic task is routed for maximum depth (DEEP mode orchestration output). */
 export const ANTHROPIC_DEEP_TASK_MODEL = 'claude-sonnet-4-6'
 

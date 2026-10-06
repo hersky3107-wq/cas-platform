@@ -19,7 +19,7 @@ export type { DeepRunAction, UnseededState }
 
 export const LEAGUE_DEEP_RUNS_TABLE = 'league_deep_runs'
 
-export type DeepProduct = 'open' | 'debate'
+export type DeepProduct = 'open' | 'debate' | 'report'
 export type DeepRunStatus = 'running' | 'done' | 'error'
 
 export type DeepProviderMeta = { provider: string; roleLabel: string }
@@ -374,6 +374,17 @@ export async function countRunningDeepRuns(nowIso: string): Promise<number> {
     .eq('status', 'running')
     .gt('lease_until', nowIso)
   if (error) throw new Error(`countRunningDeepRuns: ${error.message}`)
+  return count ?? 0
+}
+
+export async function countOlderRunningDeepRuns(createdAt: string, exceptId: string): Promise<number> {
+  const { count, error } = await supabaseAdmin
+    .from(LEAGUE_DEEP_RUNS_TABLE)
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'running')
+    .lt('created_at', createdAt)
+    .neq('id', exceptId)
+  if (error) throw new Error(`countOlderRunningDeepRuns: ${error.message}`)
   return count ?? 0
 }
 

@@ -47,8 +47,11 @@ export const LEAGUE_ARCHIVE_CREDITS = 15
 /** Open-ended deep analysis of an existing round (`POST /api/league/deep-open`). */
 export const LEAGUE_DEEP_OPEN_CREDITS = 50
 
-/** Pro/con debate of an existing round (`POST /api/league/deep-debate`). */
+/** Pro/con debate of an existing round (`POST /api/league/deep-debate`). Legacy; new runs use the report. */
 export const LEAGUE_DEEP_DEBATE_CREDITS = 70
+
+/** Single premium deep report (`POST /api/league/deep-report`). */
+export const LEAGUE_DEEP_REPORT_CREDITS = 100
 
 export function creditsForLeagueGenerate(): number {
   return LEAGUE_GENERATE_CREDITS
@@ -72,6 +75,10 @@ export function creditsForLeagueDeepOpen(): number {
 
 export function creditsForLeagueDeepDebate(): number {
   return LEAGUE_DEEP_DEBATE_CREDITS
+}
+
+export function creditsForLeagueDeepReport(): number {
+  return LEAGUE_DEEP_REPORT_CREDITS
 }
 
 /**
@@ -99,6 +106,9 @@ export const LEAGUE_DEEP_OPEN_MODULE = 'league_deep_open'
 
 /** credit_logs.module for a deep-debate deduction. */
 export const LEAGUE_DEEP_DEBATE_MODULE = 'league_deep_debate'
+
+/** credit_logs.module for an AI deep-report deduction. */
+export const LEAGUE_DEEP_REPORT_MODULE = 'league_deep_report'
 
 /** credit_logs.module for a voided freeform round refund. */
 export const LEAGUE_VOID_REFUND_MODULE = 'league_void_refund'

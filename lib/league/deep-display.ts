@@ -267,6 +267,13 @@ function pushPart(parts: DeepTranslationPart[], key: string, text: string | null
 /** Flatten snapshot prose that the view-time translator may rewrite. */
 export function collectDeepTranslatableParts(snap: DeepSnapshot): DeepTranslationPart[] {
   const parts: DeepTranslationPart[] = []
+  if (snap.kind === 'report') {
+    pushPart(parts, 'dossier', snap.dossier)
+    snap.openings.forEach((turn, index) => pushPart(parts, `opening:${index}`, turn.text))
+    snap.rebuttals.forEach((turn, index) => pushPart(parts, `rebuttal:${index}`, turn.text))
+    pushPart(parts, 'chair', snap.chairReport)
+    return parts
+  }
   pushPart(parts, 'briefing', snap.briefing)
   if (snap.kind === 'open') {
     for (const analysis of snap.analyses) {
@@ -341,6 +348,15 @@ export function overlayDeepTranslations(
 
   if (snap.kind === 'open') {
     return overlayOpen(snap, field)
+  }
+  if (snap.kind === 'report') {
+    return {
+      ...snap,
+      dossier: field('dossier', snap.dossier),
+      openings: snap.openings.map((turn, index) => ({ ...turn, text: field(`opening:${index}`, turn.text) })),
+      rebuttals: snap.rebuttals.map((turn, index) => ({ ...turn, text: field(`rebuttal:${index}`, turn.text) })),
+      chairReport: field('chair', snap.chairReport),
+    }
   }
   return overlayDebate(snap, field)
 }
@@ -446,6 +462,17 @@ export function mergeDeepSnapshots(
       rounds: mergeDebateRounds(prev.rounds, next.rounds),
       vote: next.vote ?? prev.vote,
       verdict: next.verdict ?? prev.verdict,
+    }
+  }
+  if (prev.kind === 'report' && next.kind === 'report') {
+    return {
+      ...next,
+      instrument: next.instrument ?? prev.instrument,
+      proposition: next.proposition ?? prev.proposition,
+      dossier: next.dossier ?? prev.dossier,
+      openings: next.openings.length > 0 ? next.openings : prev.openings,
+      rebuttals: next.rebuttals.length > 0 ? next.rebuttals : prev.rebuttals,
+      chairReport: next.chairReport ?? prev.chairReport,
     }
   }
   return next

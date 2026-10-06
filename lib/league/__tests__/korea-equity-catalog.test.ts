@@ -145,7 +145,7 @@ describe('decideUniverseStatus — pinned, hidden, excluded', () => {
   })
 })
 
-describe('generate path — KRSTOCK admin-only', () => {
+describe('generate path — KRSTOCK for every signed-in user', () => {
   const instrument = encodeKrStockInstrument('KOSPI', '005930')!
   const visible = {
     isKrUniverseVisible: (market: 'KOSPI' | 'KOSDAQ', code: string) => market === 'KOSPI' && code === '005930',
@@ -154,17 +154,19 @@ describe('generate path — KRSTOCK admin-only', () => {
   const usPublic = { isAdmin: false, jurisdiction: { declaredCountry: 'US', ipCountry: 'US' } }
   const admin = { isAdmin: true, jurisdiction: { declaredCountry: 'KR', ipCountry: 'KR' } }
 
-  it('non-admin is 403 kr_stock_not_open on both lanes when the code is visible', () => {
+  it('visible KRSTOCK is allowed for non-admins and still unknown when the code is hidden', () => {
     expect(decodeKrStockInstrument(instrument)).not.toBeNull()
     expect(gatePublicGenerateInstrument(instrument, krPublic, '1d', undefined, visible)).toEqual({
-      ok: false,
-      status: 403,
-      code: 'kr_stock_not_open',
+      ok: true,
+      instrument,
+      category: 'stock',
+      horizon: '1d',
     })
     expect(gatePublicGenerateInstrument(instrument, usPublic, '1d', undefined, visible)).toEqual({
-      ok: false,
-      status: 403,
-      code: 'kr_stock_not_open',
+      ok: true,
+      instrument,
+      category: 'stock',
+      horizon: '1d',
     })
   })
 

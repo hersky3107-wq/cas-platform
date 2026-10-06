@@ -36,6 +36,8 @@ export async function callLeagueDeepModel(params: {
   maxCompletionTokens: number
   timeoutMs?: number
   modelOverride?: string
+  /** Gemini grounding, xAI web_search, Claude web_search. Ignored by other providers. */
+  searchTool?: boolean
 }): Promise<{ text: string | null; error?: string }> {
   const platformId = PLATFORM_BY_PROVIDER[params.provider]
   if (platformId) {
@@ -69,6 +71,7 @@ export async function callLeagueDeepModel(params: {
         maxCompletionTokens: params.maxCompletionTokens,
         modelOverride: deepseekOpts?.modelOverride ?? params.modelOverride,
         extraPayload: deepseekOpts?.extraPayload,
+        searchTool: params.searchTool,
         timeoutMs,
       })
 
