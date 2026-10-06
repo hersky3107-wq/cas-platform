@@ -175,6 +175,12 @@ describe('Korean-lane chip browser (UI contract)', () => {
       '기준가를 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.',
     )
     expect(krStockRefusalMessage('kr_stock_not_open')).toBe('국내 종목 예측은 준비 중입니다.')
+    expect(
+      krStockRefusalMessage('krx_not_published', 'ko', new Date('2026-10-06T08:25:00.000Z')),
+    ).toBe('오늘 종가는 내일 오전 8시 이후 확인됩니다.')
+    expect(
+      krStockRefusalMessage('krx_not_published', 'ko', new Date('2026-10-07T00:00:00.000Z')),
+    ).toBe('어제 종가는 오전 8시 이후 확인됩니다.')
     expect(krStockRefusalMessage('jurisdiction_blocked')).toBeNull()
     expect(hubSrc).toContain('krStockRefusalMessage')
   })

@@ -11,7 +11,11 @@ import { isBrandTableInstrument } from '@/lib/league/ai-ranking/brand-table'
 import { VOID_UNRESOLVABLE_REASON } from '@/lib/league/manual-grade/types'
 import { parkRoundForManual } from '@/lib/league/manual-grade/queue'
 import { decodeKrStockInstrument } from '@/lib/league/korea-equity-catalog'
-import { getOfficialClose, getOfficialClosesBetween } from '@/lib/league/korea-market-data'
+import {
+  ensureLatestKrxOfficialSession,
+  getOfficialClose,
+  getOfficialClosesBetween,
+} from '@/lib/league/korea-market-data'
 import { reconcileTwelfthDataAnchor } from '@/lib/league/korea-stock-reconcile'
 import { stampConsensusIsCorrect } from '@/lib/league/consensus-correctness'
 import { scheduleLessonRefresh } from '@/lib/league/extra/lesson-refresh'
@@ -486,6 +490,11 @@ export async function gradeRoundOnRead(roundId: string) {
 }
 
 export async function gradeAllDueRounds() {
+  try {
+    await ensureLatestKrxOfficialSession()
+  } catch {
+    // Sweep still walks every due round; per-round ensureKrxDay retries the day.
+  }
   const report = await engine.gradeAllDueRounds()
   return report
 }

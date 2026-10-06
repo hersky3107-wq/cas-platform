@@ -35,24 +35,47 @@ describe('resolveKrStockAnchor a/b/c', () => {
     })
   })
 
-  it('b) missing official, Twelve Data bar for that session → twelvedata', async () => {
+  it('b) missing official after the 08:00 publish clock, Twelve Data bar → twelvedata', async () => {
     await expect(
       resolveKrStockAnchor(
         'KOSPI',
         '005930',
         '2026-10-02',
-        io({ getOfficialClose: async () => 'not_published' }),
+        io({
+          now: () => kst('2026-10-03', '09:00'),
+          getOfficialClose: async () => 'not_published',
+        }),
       ),
     ).resolves.toEqual({ ok: true, price: 71300, source: 'twelvedata' })
   })
 
-  it('c) neither source → anchor_unavailable', async () => {
+  it('refuses before the next-day 08:00 KST official file without calling Twelve Data', async () => {
+    let tdCalls = 0
+    await expect(
+      resolveKrStockAnchor(
+        'KOSPI',
+        '005930',
+        '2026-10-06',
+        io({
+          now: () => kst('2026-10-06', '17:25'),
+          getOfficialClose: async () => 'not_published',
+          getTwelveDataClose: async () => {
+            tdCalls += 1
+            return 1
+          },
+        }),
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'krx_not_published' })
+    expect(tdCalls).toBe(0)
+  })
+
+  it('c) unknown official code and no Twelve Data bar → anchor_unavailable', async () => {
     await expect(
       resolveKrStockAnchor(
         'KOSPI',
         '005930',
         '2026-10-02',
-        io({ getOfficialClose: async () => 'not_published', getTwelveDataClose: async () => null }),
+        io({ getOfficialClose: async () => 'unknown_code', getTwelveDataClose: async () => null }),
       ),
     ).resolves.toEqual({ ok: false, reason: 'anchor_unavailable' })
   })

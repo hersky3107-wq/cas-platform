@@ -4,6 +4,9 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { KR_GROUPS, type KrGroupId, type UniverseMarket } from '@/lib/league/korea-equity-catalog'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { getLeagueUiPack } from '@/lib/league/i18n/dictionary'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { krxPrePublicationKind, lastCompletedKrxSession } from '@/lib/league/krx-calendar'
 import { KR_GROUP_VISUALS, KrGroupDot, KrGroupIcon } from '@/components/league/KrGroupVisuals'
 
 export type KrUniverseRow = {
@@ -316,8 +319,17 @@ function SkeletonBrowser() {
  */
 export const KR_STOCK_PENDING_NOTICE = '국내 종목 예측은 준비 중입니다.'
 
-export function krStockRefusalMessage(code: string | null | undefined): string | null {
+export function krStockRefusalMessage(
+  code: string | null | undefined,
+  locale: LeagueLocale = 'ko',
+  now: Date = new Date(),
+): string | null {
   if (code === 'krx_calendar_unverified') return '국내 거래 일정 확인 중입니다.'
+  if (code === 'krx_not_published' || code === 'not_published') {
+    const last = lastCompletedKrxSession(now)
+    const kind = last.ok ? krxPrePublicationKind(last.date, now) : 'later'
+    return getLeagueUiPack(locale).hub.krxNotPublished(kind)
+  }
   if (code === 'anchor_unavailable') return '기준가를 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.'
   if (code === 'kr_stock_not_open') return KR_STOCK_PENDING_NOTICE
   return null

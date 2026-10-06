@@ -14,7 +14,7 @@ import {
 } from './korea-market-data'
 import { getVisibleUniverseRow } from './korea-universe-store'
 import { fetchTwelveDataSessionClose } from './market-data'
-import { krxSessionCloseIso, lastCompletedKrxSession } from './krx-calendar'
+import { krxOfficialIsPublished, krxSessionCloseIso, lastCompletedKrxSession } from './krx-calendar'
 import type { CatalogRankedRoundInput } from './catalog'
 
 export type KrStockRoundIo = {
@@ -37,7 +37,12 @@ export type KrStockRoundBuildResult =
   | { ok: true; input: KrStockRankedRound }
   | {
       ok: false
-      reason: 'unknown_instrument' | 'krx_calendar_unverified' | 'us_calendar_unverified' | 'anchor_unavailable'
+      reason:
+        | 'unknown_instrument'
+        | 'krx_calendar_unverified'
+        | 'us_calendar_unverified'
+        | 'anchor_unavailable'
+        | 'krx_not_published'
     }
 
 function liveIo(): KrStockRoundIo {
@@ -60,16 +65,19 @@ export async function resolveKrStockAnchor(
   io: KrStockRoundIo,
 ): Promise<
   | { ok: true; price: number; source: 'krx_official' | 'twelvedata' }
-  | { ok: false; reason: 'anchor_unavailable' }
+  | { ok: false; reason: 'anchor_unavailable' | 'krx_not_published' }
 > {
   const official = await io.getOfficialClose(market, code, anchorDate)
   if (typeof official === 'number' && Number.isFinite(official) && official > 0) {
     return { ok: true, price: official, source: 'krx_official' }
   }
+  const waitingOnOfficial = official === 'not_published' && !krxOfficialIsPublished(anchorDate, io.now())
+  if (waitingOnOfficial) return { ok: false, reason: 'krx_not_published' }
   const td = await io.getTwelveDataClose(code, anchorDate)
   if (typeof td === 'number' && Number.isFinite(td) && td > 0) {
     return { ok: true, price: td, source: 'twelvedata' }
   }
+  if (official === 'not_published') return { ok: false, reason: 'krx_not_published' }
   return { ok: false, reason: 'anchor_unavailable' }
 }
 
@@ -93,7 +101,7 @@ export async function buildKrStockRankedRoundInput(
   if (!last.ok) return { ok: false, reason: last.reason }
 
   const anchor = await resolveKrStockAnchor(parts.market, parts.code, last.date, deps)
-  if (!anchor.ok) return { ok: false, reason: 'anchor_unavailable' }
+  if (!anchor.ok) return { ok: false, reason: anchor.reason }
 
   const resolvesAt = computed.resolvesAt
   const resolveDate = resolvesAt.slice(0, 10)

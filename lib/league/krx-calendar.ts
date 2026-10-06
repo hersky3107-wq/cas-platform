@@ -241,11 +241,38 @@ export function lastNKrxSessionDates(fromSessionDate: string, n: number): string
   return dates.reverse()
 }
 
-/**
- * Grading guard for later use (not wired). If `resolvesAtDate` is not a
- * trading day (e.g. an unexpected 임시공휴일 added after the round was
- * created), return the last trading day before it; otherwise return it.
- */
+/** Official KRX daily file for session D is expected at 08:00 KST on D+1. */
+export const KRX_OFFICIAL_PUBLISH_HOUR_KST = 8
+
+export function nextKstCivilDate(ymd: string): string {
+  return addCivilDays(ymd, 1)
+}
+
+export function previousKstCivilDate(ymd: string): string {
+  return addCivilDays(ymd, -1)
+}
+
+/** Instant the official daily file for `sessionDate` is expected (08:00 KST next civil day). */
+export function krxOfficialPublishMs(sessionDate: string): number {
+  const next = nextKstCivilDate(sessionDate)
+  const { year, month, day } = parseYmd(next)
+  return utcMsFromZonedLocal(KRX_TIME_ZONE, year, month, day, KRX_OFFICIAL_PUBLISH_HOUR_KST, 0)
+}
+
+export function krxOfficialIsPublished(sessionDate: string, now: Date): boolean {
+  return now.getTime() >= krxOfficialPublishMs(sessionDate)
+}
+
+export function krxPrePublicationKind(
+  sessionDate: string,
+  now: Date,
+): 'yesterday' | 'today' | 'later' {
+  const today = kstCivilDate(now)
+  if (sessionDate === today) return 'today'
+  if (sessionDate === previousKstCivilDate(today)) return 'yesterday'
+  return 'later'
+}
+
 export function resolveKrxGradingSession(
   resolvesAtDate: string,
   isTradingDay: (date: string) => boolean,

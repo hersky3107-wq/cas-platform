@@ -10,9 +10,11 @@ import { lastNKrxSessionDates } from '../krx-calendar'
 import {
   emptyKrxFetchOutcome,
   ensureKrxDay,
+  ensureLatestKrxOfficialSession,
   extractKrxRows,
   getKrxCloseSeries,
   getOfficialClose,
+  getOfficialClosesBetween,
   mapKrxTradeRow,
   parseKrxNumber,
   type KrxDailyBar,
@@ -202,6 +204,68 @@ describe('ensureKrxDay', () => {
     expect(fetchCalls).toEqual(['20261002'])
     await expect(getOfficialClose('KOSPI', '005930', '2026-10-02', io)).resolves.toBe(275000)
     await expect(getOfficialClose('KOSPI', '999999', '2026-10-02', io)).resolves.toBe('unknown_code')
+  })
+
+  it('shares one in-flight fetch when two callers miss the same session', async () => {
+    let started = 0
+    let release!: (rows: KrxDailyBar[]) => void
+    const gate = new Promise<KrxDailyBar[]>((resolve) => {
+      release = resolve
+    })
+    const mem = memoryIo()
+    mem.io.fetchDay = async () => {
+      started += 1
+      return gate
+    }
+    const a = ensureKrxDay('2026-10-06', mem.io)
+    const b = ensureKrxDay('2026-10-06', mem.io)
+    await Promise.resolve()
+    expect(started).toBe(1)
+    release([
+      bar({ date: '2026-10-06', market: 'KOSPI', code: '402340', close: 1200000 }),
+      bar({ date: '2026-10-06', market: 'KOSDAQ', code: '247540', close: 1 }),
+    ])
+    await expect(Promise.all([a, b])).resolves.toEqual(['ok', 'ok'])
+    expect(started).toBe(1)
+    expect(mem.upserted).toHaveLength(2)
+  })
+
+  it('ensureLatestKrxOfficialSession fetches the last completed session when the table is empty', async () => {
+    const rows = [
+      bar({ date: '2026-10-06', market: 'KOSPI', code: '402340', close: 1200000 }),
+      bar({ date: '2026-10-06', market: 'KOSDAQ', code: '247540', close: 1 }),
+    ]
+    const mem = memoryIo({
+      fetchByDate: { '2026-10-06': rows },
+      nowIso: '2026-10-06 17:25:00',
+    })
+    const latest = await ensureLatestKrxOfficialSession(fromZonedTime('2026-10-06 17:25:00', 'Asia/Seoul'), mem.io)
+    expect(latest).toEqual({ ok: true, date: '2026-10-06', result: 'ok' })
+    expect(mem.fetchCalls).toEqual(['20261006'])
+    await expect(getOfficialClose('KOSPI', '402340', '2026-10-06', mem.io)).resolves.toBe(1200000)
+  })
+})
+
+describe('getOfficialClosesBetween', () => {
+  it('grades with the on-demand fetched close when the expected session is missing', async () => {
+    const mem = memoryIo({
+      fetchByDate: {
+        '2026-10-06': [
+          bar({ date: '2026-10-06', market: 'KOSPI', code: '000660', close: 580000 }),
+          bar({ date: '2026-10-06', market: 'KOSDAQ', code: '247540', close: 1 }),
+        ],
+      },
+    })
+    await mem.io.upsertRows([
+      bar({ date: '2026-10-02', market: 'KOSPI', code: '000660', close: 560000 }),
+      bar({ date: '2026-10-02', market: 'KOSDAQ', code: '247540', close: 1 }),
+    ])
+    const bars = await getOfficialClosesBetween('KOSPI', '000660', '2026-10-02', '2026-10-06', mem.io)
+    expect(mem.fetchCalls).toEqual(['20261006'])
+    expect(bars).toEqual([
+      { sessionDate: '2026-10-02', close: 560000 },
+      { sessionDate: '2026-10-06', close: 580000 },
+    ])
   })
 })
 

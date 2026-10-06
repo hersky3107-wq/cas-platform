@@ -260,7 +260,7 @@ function CardsPanel({
         if (requestId !== requestIdRef.current) return
         if (!res.ok) {
           const errBody = body as { error?: string; code?: string; reason?: string }
-          const refusal = krStockRefusalMessage(errBody.reason ?? errBody.code ?? errBody.error)
+          const refusal = krStockRefusalMessage(errBody.reason ?? errBody.code ?? errBody.error, locale)
           if (refusal) {
             setView({ kind: 'krNotice', text: refusal })
             return { missing: false }
@@ -500,7 +500,7 @@ function CardsPanel({
         const detail = (await res.json().catch(() => null)) as
           | { balance?: number; required?: number; code?: string; error?: string; reason?: string }
           | null
-        const refusal = krStockRefusalMessage(detail?.reason ?? detail?.code ?? detail?.error)
+        const refusal = krStockRefusalMessage(detail?.reason ?? detail?.code ?? detail?.error, locale)
         if (refusal) {
           setView({ kind: 'krNotice', text: refusal })
         } else if (res.status === 402) {

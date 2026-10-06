@@ -6,6 +6,9 @@ import {
   KRX_HOLIDAYS,
   isProvisionalKrxDate,
   krxSessionCloseIso,
+  krxOfficialIsPublished,
+  krxOfficialPublishMs,
+  krxPrePublicationKind,
   lastCompletedKrxSession,
   nthFutureKrxSessionDate,
   previousKrxSessionDate,
@@ -124,5 +127,16 @@ describe('resolveKrxGradingSession', () => {
     expect(resolveKrxGradingSession('2026-10-09', isKrxTradingDay)).toBe('2026-10-08')
     const withTempHoliday = (d: string) => d !== '2026-10-06' && isKrxTradingDay(d)
     expect(resolveKrxGradingSession('2026-10-06', withTempHoliday)).toBe('2026-10-02')
+  })
+})
+
+describe('KRX official publish clock', () => {
+  it('expects the daily file at 08:00 KST the next civil day', () => {
+    expect(krxOfficialPublishMs('2026-10-06')).toBe(kst('2026-10-07', '08:00').getTime())
+    expect(krxOfficialIsPublished('2026-10-06', kst('2026-10-06', '17:25'))).toBe(false)
+    expect(krxOfficialIsPublished('2026-10-06', kst('2026-10-07', '07:59'))).toBe(false)
+    expect(krxOfficialIsPublished('2026-10-06', kst('2026-10-07', '08:00'))).toBe(true)
+    expect(krxPrePublicationKind('2026-10-06', kst('2026-10-06', '17:25'))).toBe('today')
+    expect(krxPrePublicationKind('2026-10-06', kst('2026-10-07', '07:00'))).toBe('yesterday')
   })
 })

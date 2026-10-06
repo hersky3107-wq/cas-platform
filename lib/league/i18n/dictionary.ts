@@ -695,6 +695,8 @@ export type LeagueUiPack = {
     loading: string
     /** Shown when the viewer's jurisdiction allows no league category at all. */
     noInstruments: string
+    /** Official KRX close is not in the daily file yet (before ~08:00 next day). */
+    krxNotPublished: (kind: 'yesterday' | 'today' | 'later') => string
     /** Paid CTA — MUST carry its price. Same button for create and unlock. */
     openRound: (credits: number) => string
     /** No round row yet. Starts the shared generate flow. MUST carry its price. */
@@ -1349,6 +1351,12 @@ const en: LeagueUiPack = {
     tabs: { cards: 'Cards', leaderboard: 'Leaderboard', recordRoom: 'Record room' },
     loading: 'Loading\u2026',
     noInstruments: 'The league isn\u2019t available in your region yet.',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? "Today's official close is available after 8:00 a.m. KST tomorrow."
+        : kind === 'yesterday'
+          ? "Yesterday's official close is available after 8:00 a.m. KST."
+          : 'The official close for this session is available after 8:00 a.m. KST the next day.',
     openRound: (credits) => `Open this round \u00b7 ${credits} credits`,
     generateForty: (credits) => `Generate 40 AI predictions \u00b7 ${credits} credits`,
     viewCard: 'View card',
@@ -1982,6 +1990,12 @@ const ko: LeagueUiPack = {
     tabs: { cards: '카드', leaderboard: '리더보드', recordRoom: '기록실' },
     loading: '불러오는 중…',
     noInstruments: '아직 회원님의 지역에서는 리그를 이용할 수 없습니다.',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? '오늘 종가는 내일 오전 8시 이후 확인됩니다.'
+        : kind === 'yesterday'
+          ? '어제 종가는 오전 8시 이후 확인됩니다.'
+          : '이 세션 종가는 다음 날 오전 8시 이후 확인됩니다.',
     openRound: (credits) => `이 라운드 열람 · ${credits} 크레딧`,
     generateForty: (credits) => `AI 40개 예측 생성 · ${credits} 크레딧`,
     viewCard: '카드 보기',
@@ -2611,6 +2625,12 @@ const ja: LeagueUiPack = {
     tabs: { cards: 'カード', leaderboard: 'リーダーボード', recordRoom: '記録室' },
     loading: '読み込み中…',
     noInstruments: 'お住まいの地域では、リーグはまだご利用いただけません。',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? '本日の公式終値は翌午前8時以降に確認できます。'
+        : kind === 'yesterday'
+          ? '昨日の公式終値は午前8時以降に確認できます。'
+          : 'このセッションの公式終値は翌午前8時以降に確認できます。',
     openRound: (credits) => `このラウンドを開く・${credits}クレジット`,
     generateForty: (credits) => `AI 40件の予測を生成 · ${credits}クレジット`,
     viewCard: 'カードを見る',
@@ -3236,6 +3256,12 @@ const zhTW: LeagueUiPack = {
     tabs: { cards: '卡片', leaderboard: '排行榜', recordRoom: '紀錄室' },
     loading: '載入中…',
     noInstruments: '您所在的地區尚未開放本聯賽。',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? '今日的官方收盤價將於明日上午 8 時後可供查詢。'
+        : kind === 'yesterday'
+          ? '昨日的官方收盤價將於上午 8 時後可供查詢。'
+          : '此交易日的官方收盤價將於次日上午 8 時後可供查詢。',
     openRound: (credits) => `開啟此回合・${credits} 點數`,
     generateForty: (credits) => `生成 40 個 AI 預測 · ${credits} 點數`,
     viewCard: '查看卡片',
@@ -3874,6 +3900,12 @@ const fr: LeagueUiPack = {
     tabs: { cards: 'Cartes', leaderboard: 'Classement', recordRoom: 'Archives' },
     loading: 'Chargement\u2026',
     noInstruments: 'La ligue n\u2019est pas encore disponible dans votre région.',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? "Le cours officiel d'aujourd'hui sera disponible demain après 8 h (KST)."
+        : kind === 'yesterday'
+          ? "Le cours officiel d'hier sera disponible après 8 h (KST)."
+          : 'Le cours officiel de cette séance sera disponible le lendemain après 8 h (KST).',
     openRound: (credits) => `Ouvrir cette manche \u00b7 ${credits} crédits`,
     generateForty: (credits) => `Générer 40 prédictions IA \u00b7 ${credits} crédits`,
     viewCard: 'Voir la carte',
@@ -4520,6 +4552,12 @@ const es: LeagueUiPack = {
     tabs: { cards: 'Tarjetas', leaderboard: 'Tabla', recordRoom: 'Registros' },
     loading: 'Cargando\u2026',
     noInstruments: 'La liga todavía no está disponible en tu región.',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? 'El cierre oficial de hoy estará disponible mañana después de las 8:00 (KST).'
+        : kind === 'yesterday'
+          ? 'El cierre oficial de ayer estará disponible después de las 8:00 (KST).'
+          : 'El cierre oficial de esta sesión estará disponible al día siguiente después de las 8:00 (KST).',
     openRound: (credits) => `Abrir esta ronda \u00b7 ${credits} créditos`,
     generateForty: (credits) => `Generar 40 predicciones de IA \u00b7 ${credits} créditos`,
     viewCard: 'Ver la tarjeta',
@@ -5157,6 +5195,12 @@ const ar: LeagueUiPack = {
     tabs: { cards: 'البطاقات', leaderboard: 'لوحة الصدارة', recordRoom: 'غرفة السجلات' },
     loading: 'جارٍ التحميل…',
     noInstruments: 'الدوري غير متاح بعد في منطقتك.',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? 'إغلاق اليوم الرسمي يتوفر بعد الساعة 8 صباحًا بتوقيت كوريا غدًا.'
+        : kind === 'yesterday'
+          ? 'إغلاق الأمس الرسمي يتوفر بعد الساعة 8 صباحًا بتوقيت كوريا.'
+          : 'إغلاق هذه الجلسة الرسمي يتوفر في اليوم التالي بعد الساعة 8 صباحًا بتوقيت كوريا.',
     openRound: (credits) => `افتح هذه الجولة · ${credits} من الرصيد`,
     generateForty: (credits) => `إنشاء 40 توقعًا · ${credits} رصيد`,
     viewCard: 'عرض البطاقة',
@@ -5797,6 +5841,12 @@ const pt: LeagueUiPack = {
     tabs: { cards: 'Cartões', leaderboard: 'Classificação', recordRoom: 'Sala de registros' },
     loading: 'Carregando\u2026',
     noInstruments: 'A liga ainda não está disponível na sua região.',
+    krxNotPublished: (kind) =>
+      kind === 'today'
+        ? 'O fechamento oficial de hoje estará disponível amanhã após as 8h (KST).'
+        : kind === 'yesterday'
+          ? 'O fechamento oficial de ontem estará disponível após as 8h (KST).'
+          : 'O fechamento oficial desta sessão estará disponível no dia seguinte após as 8h (KST).',
     openRound: (credits) => `Abrir esta rodada \u00b7 ${credits} créditos`,
     generateForty: (credits) => `Gerar 40 previsões de IA \u00b7 ${credits} créditos`,
     viewCard: 'Ver o cartão',

@@ -198,15 +198,20 @@ function toDbRow(row: KrxDailyBar) {
   }
 }
 
-async function defaultMarketsPresent(isoDate: string): Promise<{ KOSPI: boolean; KOSDAQ: boolean }> {
-  const { data, error } = await supabaseAdmin.from(TABLE).select('market').eq('bas_dd', isoDate)
+async function marketHasRows(isoDate: string, market: KrxMarket): Promise<boolean> {
+  const { data, error } = await supabaseAdmin
+    .from(TABLE)
+    .select('code')
+    .eq('bas_dd', isoDate)
+    .eq('market', market)
+    .limit(1)
   if (error) throw new Error(`league_krx_daily marketsPresent: ${error.message}`)
-  const present = { KOSPI: false, KOSDAQ: false }
-  for (const row of data ?? []) {
-    if (row.market === 'KOSPI') present.KOSPI = true
-    if (row.market === 'KOSDAQ') present.KOSDAQ = true
-  }
-  return present
+  return (data?.length ?? 0) > 0
+}
+
+async function defaultMarketsPresent(isoDate: string): Promise<{ KOSPI: boolean; KOSDAQ: boolean }> {
+  const [KOSPI, KOSDAQ] = await Promise.all([marketHasRows(isoDate, 'KOSPI'), marketHasRows(isoDate, 'KOSDAQ')])
+  return { KOSPI, KOSDAQ }
 }
 
 async function defaultUpsertRows(rows: KrxDailyBar[]): Promise<void> {
@@ -299,12 +304,22 @@ function resolveIo(io?: Partial<KrxDailyIo>): KrxDailyIo {
   }
 }
 
-export async function ensureKrxDay(
-  basDd: string,
-  io?: Partial<KrxDailyIo>,
+const ensureLocks = new Map<string, Promise<EnsureKrxDayResult>>()
+const ensureLocksByIo = new WeakMap<object, Map<string, Promise<EnsureKrxDayResult>>>()
+
+function lockBucket(io?: Partial<KrxDailyIo>): Map<string, Promise<EnsureKrxDayResult>> {
+  if (!io) return ensureLocks
+  const existing = ensureLocksByIo.get(io)
+  if (existing) return existing
+  const created = new Map<string, Promise<EnsureKrxDayResult>>()
+  ensureLocksByIo.set(io, created)
+  return created
+}
+
+async function ensureKrxDayUnlocked(
+  isoDate: string,
+  deps: KrxDailyIo,
 ): Promise<EnsureKrxDayResult> {
-  const deps = resolveIo(io)
-  const isoDate = toIsoBasDd(basDd)
   if (!isKrxTradingDay(isoDate)) return 'holiday'
   const present = await deps.marketsPresent(isoDate)
   if (present.KOSPI && present.KOSDAQ) return 'cached'
@@ -314,6 +329,41 @@ export async function ensureKrxDay(
   }
   await deps.upsertRows(rows)
   return 'ok'
+}
+
+/**
+ * Single-day bulk fetch. Concurrent callers for the same date share one
+ * in-flight request (short lock) so a burst of card/grade reads cannot
+ * stampede the KRX OPEN API.
+ */
+export async function ensureKrxDay(
+  basDd: string,
+  io?: Partial<KrxDailyIo>,
+): Promise<EnsureKrxDayResult> {
+  const deps = resolveIo(io)
+  const isoDate = toIsoBasDd(basDd)
+  const locks = lockBucket(io)
+  const hit = locks.get(isoDate)
+  if (hit) return hit
+  const pending = ensureKrxDayUnlocked(isoDate, deps).finally(() => {
+    if (locks.get(isoDate) === pending) locks.delete(isoDate)
+  })
+  locks.set(isoDate, pending)
+  return pending
+}
+
+/** Last completed KRX session, fetched and upserted when the table is behind. */
+export async function ensureLatestKrxOfficialSession(
+  now: Date = new Date(),
+  io?: Partial<KrxDailyIo>,
+): Promise<
+  | { ok: true; date: string; result: EnsureKrxDayResult }
+  | { ok: false; reason: 'krx_calendar_unverified' }
+> {
+  const last = lastCompletedKrxSession(now)
+  if (!last.ok) return { ok: false, reason: last.reason }
+  const result = await ensureKrxDay(last.date, io)
+  return { ok: true, date: last.date, result }
 }
 
 export async function getOfficialClose(

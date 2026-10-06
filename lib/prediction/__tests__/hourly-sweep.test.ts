@@ -24,6 +24,7 @@ describe('sweep contract — no target selection', () => {
     expect(core).toMatch(/async function gradeAllDueRounds\(\)/)
     expect(recon).toMatch(/export async function gradeAllDueRounds\(\)/)
     expect(recon).toMatch(/export async function maybeGradeDueRoundsHourly\(/)
+    expect(recon).toContain('ensureLatestKrxOfficialSession')
   })
 
   it('league-generate calls gradeAllDueRounds() with no selector', () => {
