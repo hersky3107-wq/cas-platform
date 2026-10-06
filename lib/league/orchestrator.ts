@@ -31,6 +31,7 @@ import {
   type AnswerSide,
   type ContractAnswer,
 } from '@/lib/league/answer-contract'
+import { analysisLensForSeat, withAnalysisLens } from '@/lib/league/analysis-lenses'
 import { persistAnchorPrice } from '@/lib/league/price-anchor'
 import { dailyBarCloseIso, usesCompletedDailyBars } from '@/lib/league/horizon'
 import { generateExtraSeats } from '@/lib/league/extra/run'
@@ -756,6 +757,7 @@ async function runOneModel(
   http429?: { n: number },
   instrument?: string,
   deadlineAtMs?: number,
+  lensId: string | null = null,
 ): Promise<ModelRunResult> {
   let raw = await callWithRetry(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429, deadlineAtMs)
   let totalCostUsd = 0
@@ -805,7 +807,7 @@ async function runOneModel(
       error: raw.error,
       parseFailure: isEmptyContentError(raw.error) ? null : undefined,
     })
-    await upsertNullPrediction(roundId, entry, failReason)
+    await upsertNullPrediction(roundId, entry, failReason, lensId)
     logNoAnswer(roundId, entry, failReason)
     return {
       ...base,
@@ -844,7 +846,7 @@ async function runOneModel(
     const failReason = classifyNoAnswerFailReason({
       error: raw.error ?? 'HTTP 200 empty message.content',
     })
-    await upsertNullPrediction(roundId, entry, failReason)
+    await upsertNullPrediction(roundId, entry, failReason, lensId)
     logNoAnswer(roundId, entry, failReason)
     return {
       ...base,
@@ -871,7 +873,7 @@ async function runOneModel(
     const retryRaw = await callWithRetry(entry, contract, retryPrompt, timeoutMs, userId, maxCompletionTokens, category, gate, http429, deadlineAtMs)
     if (retryRaw.error) {
       const failReason = classifyNoAnswerFailReason({ error: retryRaw.error })
-      await upsertNullPrediction(roundId, entry, failReason)
+      await upsertNullPrediction(roundId, entry, failReason, lensId)
       logNoAnswer(roundId, entry, failReason)
       return {
         ...base,
@@ -912,7 +914,7 @@ async function runOneModel(
             : 'unparseable',
       })
       logUnparseableRaw(entry.model_id, raw.text)
-      await upsertNullPrediction(roundId, entry, failReason)
+      await upsertNullPrediction(roundId, entry, failReason, lensId)
       logNoAnswer(roundId, entry, failReason)
       return {
         ...base,
@@ -993,6 +995,7 @@ async function runOneModel(
         predicted_at: new Date().toISOString(),
         fail_reason: null,
         strongest_counter: answer!.strongestCounter,
+        analysis_lens: lensId,
       },
       { onConflict: 'round_id,model_id' }
     )
@@ -1019,6 +1022,7 @@ async function upsertNullPrediction(
   roundId: string,
   entry: RosterEntry,
   failReason: NoAnswerFailReason,
+  lensId: string | null = null,
 ): Promise<void> {
   const seatId = seatIdForModel(entry.model_id, entry.league_tier)
   await supabaseAdmin
@@ -1049,6 +1053,7 @@ async function upsertNullPrediction(
         predicted_at: new Date().toISOString(),
         fail_reason: failReason,
         strongest_counter: null,
+        analysis_lens: lensId,
       },
       { onConflict: 'round_id,model_id' }
     )
@@ -1379,7 +1384,13 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
       const entry = roster[i]
       const entryTimeoutMs = entry.timeoutMs && entry.timeoutMs > 0 ? entry.timeoutMs : timeoutMs
 
-      const prompt = entry.league_tier === 'scout' ? prompts.scout : prompts.price
+      const lens = analysisLensForSeat({
+        roundId: round.id,
+        category: round.category,
+        modelId: entry.model_id,
+      })
+      const scout = entry.league_tier === 'scout'
+      const prompt = withAnalysisLens(scout ? prompts.scout : prompts.price, lens, { scout })
       const tokenBudget = resolveMaxCompletionTokensForEntry(entry, maxCompletionTokens)
       const outcome = await runOneModel(
         entry,
@@ -1395,6 +1406,7 @@ export async function generatePredictions(opts: GenerateOptions): Promise<Genera
         http429,
         round.instrument,
         opts.deadlineAtMs,
+        lens.id,
       )
       runningCost += outcome.cost_usd
       results.push(outcome)

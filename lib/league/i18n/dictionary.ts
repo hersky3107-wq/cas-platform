@@ -462,6 +462,8 @@ export type LeagueUiPack = {
     noRationale: string
     /** Consensus extra abstained because no market price exists. Never a fail_reason code. */
     noMarketSignal: string
+    /** Small tag on an official or scout tile. `name` is the localized lens. */
+    lensTag: (name: string) => string
   }
   /**
    * Cards-tab board chrome (division headers + final-verdict label).
@@ -1207,6 +1209,7 @@ const en: LeagueUiPack = {
     translating: 'Translating…',
     noRationale: 'No rationale provided',
     noMarketSignal: 'No market signal',
+    lensTag: (name) => `Viewpoint: ${name}`,
   },
   bracket: {
     finalVerdict: 'Final verdict',
@@ -1850,6 +1853,7 @@ const ko: LeagueUiPack = {
     translating: '번역 중…',
     noRationale: '근거 없음',
     noMarketSignal: '시장 신호 없음',
+    lensTag: (name) => `관점: ${name}`,
   },
   bracket: {
     finalVerdict: '최종 판정',
@@ -2490,6 +2494,7 @@ const ja: LeagueUiPack = {
     translating: '翻訳中…',
     noRationale: '根拠なし',
     noMarketSignal: '市場シグナルなし',
+    lensTag: (name) => `観点: ${name}`,
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -3124,6 +3129,7 @@ const zhTW: LeagueUiPack = {
     translating: '翻譯中…',
     noRationale: '無依據',
     noMarketSignal: '沒有市場訊號',
+    lensTag: (name) => `觀點：${name}`,
   },
   bracket: {
     finalVerdict: '最終判定',
@@ -3768,6 +3774,7 @@ const fr: LeagueUiPack = {
     translating: 'Traduction…',
     noRationale: 'Aucune justification',
     noMarketSignal: 'Pas de signal de marché',
+    lensTag: (name) => `Angle : ${name}`,
   },
   bracket: {
     finalVerdict: 'Verdict final',
@@ -4423,6 +4430,7 @@ const es: LeagueUiPack = {
     translating: 'Traduciendo…',
     noRationale: 'Sin justificación',
     noMarketSignal: 'Sin señal de mercado',
+    lensTag: (name) => `Enfoque: ${name}`,
   },
   bracket: {
     finalVerdict: 'Veredicto final',
@@ -5072,6 +5080,7 @@ const ar: LeagueUiPack = {
     translating: 'جارٍ الترجمة…',
     noRationale: 'لا توجد مبررات',
     noMarketSignal: 'لا توجد إشارة سوق',
+    lensTag: (name) => `المنظور: ${name}`,
   },
   bracket: {
     finalVerdict: 'الحكم النهائي',
@@ -5718,6 +5727,7 @@ const pt: LeagueUiPack = {
     translating: 'Traduzindo…',
     noRationale: 'Sem justificativa',
     noMarketSignal: 'Sem sinal de mercado',
+    lensTag: (name) => `Perspetiva: ${name}`,
   },
   bracket: {
     finalVerdict: 'Veredito final',

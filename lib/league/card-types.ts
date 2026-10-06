@@ -94,6 +94,8 @@ export type CardModelPrediction = {
    */
   qualifierText: string | null
   reasoning_snippet: string | null
+  /** Assigned analysis lens id. Null on extras and on rows written before lenses. */
+  analysisLens?: string | null
   /** null = round not yet resolved / this row not yet graded. */
   is_correct: boolean | null
   cost_usd: number | null

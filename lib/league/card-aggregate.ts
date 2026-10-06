@@ -102,6 +102,7 @@ export type PredictionRow = {
   /** Optional for the same reason — display-only text qualifier (scoreline/margin/print) on non-price contracts. */
   predicted_qualifier_text?: string | null
   reasoning_snippet: string | null
+  analysis_lens?: string | null
   is_correct: boolean | null
   cost_usd: number | null
   predicted_at: string
@@ -336,6 +337,7 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
     magnitude,
     qualifierText: row.predicted_qualifier_text ?? null,
     reasoning_snippet: coerceStoredRationaleSnippet(row.reasoning_snippet),
+    analysisLens: row.analysis_lens ?? null,
     is_correct: row.is_correct,
     cost_usd: row.cost_usd,
     predicted_at: row.predicted_at,

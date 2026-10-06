@@ -3,6 +3,9 @@ import 'server-only'
 import { supabaseAdmin } from '@/lib/supabase/server'
 import { officialRowsForConsensus } from '@/lib/league/extra/seats'
 import { selectGradedConsensusTrackRounds } from '@/lib/league/graded-consensus-rounds'
+import { compareLensEras, type LensEraCell, type LensEraDirection } from '@/lib/league/lens-era-compare'
+
+export type { LensEraCell }
 
 export type TrackRecordCell = {
   category: string
@@ -73,4 +76,51 @@ export async function loadConsensusTrackRecord(): Promise<TrackRecordCell[]> {
     })
   }
   return cells
+}
+
+/**
+ * AI 종합 hit rate and mean majority share, by category, for rounds written
+ * before lenses versus rounds that stored one. Missing column → empty list
+ * (the track-record table still loads).
+ */
+export async function loadLensEraComparison(): Promise<LensEraCell[]> {
+  const { data: rounds, error } = await supabaseAdmin
+    .from('prediction_rounds')
+    .select('id, category, horizon, instrument, actual_outcome, grading_status, consensus_is_correct')
+    .eq('is_test', false)
+    .not('actual_outcome', 'is', null)
+  if (error) throw new Error(error.message)
+  const graded = selectGradedConsensusTrackRounds(rounds ?? [])
+  const ids = graded.map((row) => row.id as string)
+  const preds: {
+    round_id: string
+    model_id: string
+    league_tier: string | null
+    predicted_direction: string | null
+    analysis_lens: string | null
+  }[] = []
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    const { data, error: predErr } = await supabaseAdmin
+      .from('model_predictions')
+      .select('round_id, model_id, league_tier, predicted_direction, analysis_lens')
+      .in('round_id', chunk)
+    if (predErr) {
+      if (/analysis_lens/i.test(predErr.message) && /does not exist|schema cache/i.test(predErr.message)) return []
+      throw new Error(predErr.message)
+    }
+    preds.push(...((data ?? []) as typeof preds))
+  }
+  const official = officialRowsForConsensus(preds)
+  return compareLensEras(
+    graded.map((round) => {
+      const seats = official.filter((row) => row.round_id === round.id)
+      return {
+        category: round.category,
+        consensusCorrect: round.consensus_is_correct ?? null,
+        directions: seats.map((row) => row.predicted_direction as LensEraDirection),
+        hasLens: seats.some((row) => typeof row.analysis_lens === 'string' && row.analysis_lens.trim() !== ''),
+      }
+    }),
+  )
 }

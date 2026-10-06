@@ -13,6 +13,7 @@ import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 import { isExtraSeatId } from '@/lib/league/extra/seats'
+import { lensDisplayLabel } from '@/lib/league/analysis-lenses'
 import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
@@ -121,6 +122,7 @@ export function ModelTile({
     model.magnitude !== null && actualMagnitudePct !== null
       ? magnitudeCompareLine(model.magnitude, actualMagnitudePct, t)
       : null
+  const lensName = model.league_tier === 'extra' ? null : lensDisplayLabel(locale, model.analysisLens)
   const extraRole = isExtraSeatId(model.model_id) ? leagueSurfaceCopy(locale).extra.role[model.model_id] : null
   const extraMore = leagueSurfaceCopy(locale).extra.more
 
@@ -226,6 +228,11 @@ export function ModelTile({
           </div>
         )}
 
+        {lensName ? (
+          <p className="text-[10px] font-semibold text-league-fg-muted" data-testid="seat-lens">
+            {t.modelTile.lensTag(lensName)}
+          </p>
+        ) : null}
         <p className="text-[13px] font-semibold leading-snug text-league-fg md:text-sm">{model.brand}</p>
         <p
           className="font-mono text-[12px] leading-tight text-league-fg-muted md:text-[13px]"

@@ -25,6 +25,8 @@ export const RSI_OVERBOUGHT = 70
 export const RSI_OVERSOLD = 30
 /** Stretch vs SMA50 beyond this many 20-session sigmas is overheated / washed out. */
 export const STRETCH_SIGMA = 2
+/** A 20-session move at least this large is overextension, not only momentum. */
+export const OVEREXTENSION_20D_ABS_PCT = 8
 export const VOLUME_SPIKE_X = 2
 /** Binance funding per 8h, in percent. */
 export const FUNDING_HOT_PCT = 0.05
@@ -123,6 +125,12 @@ function priceGauges(bars: readonly SeriesBar[], report: CrowdingReport): void {
   if (stretch != null) {
     if (stretch > 0 && chg20 > 0) report.up.push(`above SMA50 with positive 20-session momentum (${fmt(chg20, 1)}%)`)
     else if (stretch < 0 && chg20 < 0) report.down.push(`below SMA50 with negative 20-session momentum (${fmt(chg20, 1)}%)`)
+  }
+
+  if (Math.abs(chg20) >= OVEREXTENSION_20D_ABS_PCT) {
+    const line = `overextension: 20-session move ${chg20 >= 0 ? '+' : ''}${fmt(chg20, 1)}% is large — mean-reversion risk, not only trend`
+    if (chg20 > 0) report.down.push(line)
+    else report.up.push(line)
   }
 
   const withVol = bars.filter((b): b is SeriesBar & { volume: number } => typeof b.volume === 'number' && b.volume > 0)

@@ -71,6 +71,15 @@ type TrackRecordCell = {
   pooledModelN: number;
 };
 
+type LensEraCell = {
+  category: string;
+  era: "before" | "after";
+  consensusHitRatePct: number | null;
+  consensusN: number;
+  meanMajoritySharePct: number | null;
+  spreadN: number;
+};
+
 type AdminStats = {
   overview: {
     totalUsers: number;
@@ -132,6 +141,7 @@ export default function AdminPage() {
   const [gradingError, setGradingError] = useState<string | null>(null);
   const [gradingReport, setGradingReport] = useState<GradingReport | null>(null);
   const [trackRecord, setTrackRecord] = useState<TrackRecordCell[] | null>(null);
+  const [lensEras, setLensEras] = useState<LensEraCell[]>([]);
   const [replayCells, setReplayCells] = useState<ReplayCompareCell[]>([]);
   const [replayCosts, setReplayCosts] = useState<ReplayCostRow[]>([]);
   const [trackRecordError, setTrackRecordError] = useState<string | null>(null);
@@ -173,6 +183,7 @@ export default function AdminPage() {
 
         const trackJson = (await trackRes.json().catch(() => null)) as {
           cells?: TrackRecordCell[];
+          lensEras?: LensEraCell[];
           replay?: {
             cells?: ReplayCompareCell[];
             costs?: ReplayCostRow[];
@@ -184,6 +195,7 @@ export default function AdminPage() {
           setTrackRecordError(trackJson?.error ?? "Track record request failed");
         } else {
           setTrackRecord(trackJson.cells ?? []);
+          setLensEras(trackJson.lensEras ?? []);
           setReplayCells(trackJson.replay?.cells ?? []);
           setReplayCosts(trackJson.replay?.costs ?? []);
           setTrackRecordError(null);
@@ -666,6 +678,46 @@ export default function AdminPage() {
                 </table>
               ) : (
                 <p className="mt-2 text-xs text-slate-500">채점된 라운드가 없거나 SQL이 아직 적용되지 않았습니다.</p>
+              )}
+              <h3 className="mt-5 text-xs font-semibold uppercase tracking-wide text-slate-400">
+                렌즈 이전 / 이후 — AI 종합 적중률과 다수 비율
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">
+                렌즈 이후는 공식 좌석에 analysis_lens가 저장된 채점 라운드입니다. 다수 비율은 방향이 있는 공식 좌석 중 더 많은 쪽의 몫입니다.
+              </p>
+              {lensEras.length > 0 ? (
+                <table className="mt-3 w-full text-left text-xs">
+                  <thead className="text-slate-500">
+                    <tr>
+                      <th className="py-1 pr-2">카테고리</th>
+                      <th className="py-1 pr-2">시기</th>
+                      <th className="py-1 pr-2">AI 종합</th>
+                      <th className="py-1 pr-2">n</th>
+                      <th className="py-1 pr-2">다수 비율</th>
+                      <th className="py-1">n</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {lensEras.map((row) => (
+                      <tr key={`${row.category}-${row.era}`} className="text-slate-200">
+                        <td className="py-1 pr-2">{row.category}</td>
+                        <td className="py-1 pr-2">{row.era === "after" ? "렌즈 이후" : "렌즈 이전"}</td>
+                        <td className="py-1 pr-2">
+                          {row.consensusHitRatePct == null ? "—" : `${row.consensusHitRatePct}%`}
+                        </td>
+                        <td className="py-1 pr-2">{row.consensusN}</td>
+                        <td className="py-1 pr-2">
+                          {row.meanMajoritySharePct == null ? "—" : `${row.meanMajoritySharePct}%`}
+                        </td>
+                        <td className="py-1">{row.spreadN}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="mt-2 text-xs text-slate-500">
+                  비교할 채점 라운드가 없거나 analysis_lens SQL이 아직 적용되지 않았습니다.
+                </p>
               )}
               <ReplayTrackTables cells={replayCells} costs={replayCosts} />
             </div>

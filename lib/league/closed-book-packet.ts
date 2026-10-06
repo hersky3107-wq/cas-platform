@@ -432,6 +432,24 @@ export function range52w(bars: SeriesBar[]): { high: number; low: number; highDa
 
 /** Minimum sessions in series required before outside-view base rate is used without shrinkage. */
 export const MIN_SESSIONS_SHRINKAGE = 250
+/** Conditional buckets smaller than this are labeled insufficient sample. */
+export const CONDITIONAL_INSUFFICIENT_N = 30
+
+/**
+ * Same shrink as the plain base rate: when the sample is under 250, blend
+ * toward 50% with weight n / (n + 250). `sampleSize` is the series length for
+ * the unconditional rate and the matching-window count for a conditional rate.
+ */
+export function shrinkBaseRatePct(
+  rawPct: number,
+  n: number,
+  sampleSize: number,
+): { upPct: number; shrunk: boolean } {
+  const shrunk = sampleSize < MIN_SESSIONS_SHRINKAGE
+  if (!shrunk) return { upPct: rawPct, shrunk: false }
+  const weight = n / (n + MIN_SESSIONS_SHRINKAGE)
+  return { upPct: weight * rawPct + (1 - weight) * 50, shrunk: true }
+}
 
 /**
  * Historical frequency that the close `sessionsAhead` bars later was HIGHER.
@@ -457,9 +475,7 @@ export function computeBaseRate(
     if (bars[i + sessionsAhead].close > bars[i].close) upCount += 1
   }
   const rawPct = (upCount / n) * 100
-  const shrunk = bars.length < MIN_SESSIONS_SHRINKAGE
-  const weight = n / (n + MIN_SESSIONS_SHRINKAGE)
-  const upPct = shrunk ? weight * rawPct + (1 - weight) * 50 : rawPct
+  const { upPct, shrunk } = shrinkBaseRatePct(rawPct, n, bars.length)
   return {
     horizon,
     sessionsAhead,
@@ -470,6 +486,153 @@ export function computeBaseRate(
     rawUpPct: rawPct,
     shrunk,
   }
+}
+
+export type ConditionalFeature = 'return_20d' | 'sma20_distance' | 'sma50_distance' | 'return_5d'
+
+export type ConditionalBaseRate = {
+  feature: ConditionalFeature
+  bucket: string
+  currentPct: number
+  n: number
+  upCount: number
+  rawUpPct: number
+  upPct: number
+  shrunk: boolean
+  insufficient: boolean
+}
+
+export function returnBucket(pct: number): string {
+  if (pct >= 8) return 'large up'
+  if (pct >= 2) return 'up'
+  if (pct <= -8) return 'large down'
+  if (pct <= -2) return 'down'
+  return 'flat'
+}
+
+export function smaDistanceBucket(pct: number): string {
+  if (pct >= 5) return 'extended above'
+  if (pct >= 1) return 'above'
+  if (pct <= -5) return 'extended below'
+  if (pct <= -1) return 'below'
+  return 'near'
+}
+
+export function shortMoveBucket(pct: number): string {
+  if (pct >= 2) return 'up'
+  if (pct <= -2) return 'down'
+  return 'flat'
+}
+
+function pctChange(closes: readonly number[], index: number, sessions: number): number | null {
+  const start = index - sessions
+  if (start < 0) return null
+  const base = closes[start]!
+  const last = closes[index]!
+  if (!(base > 0) || !Number.isFinite(last)) return null
+  return ((last - base) / base) * 100
+}
+
+function smaDistancePct(closes: readonly number[], index: number, window: number): number | null {
+  if (index + 1 < window) return null
+  let sum = 0
+  for (let i = index - window + 1; i <= index; i++) sum += closes[i]!
+  const sma = sum / window
+  const last = closes[index]!
+  if (!(sma > 0) || !Number.isFinite(last)) return null
+  return ((last - sma) / sma) * 100
+}
+
+function stateAt(
+  closes: readonly number[],
+  index: number,
+  feature: ConditionalFeature,
+): { pct: number; bucket: string } | null {
+  if (feature === 'return_20d') {
+    const pct = pctChange(closes, index, 20)
+    return pct == null ? null : { pct, bucket: returnBucket(pct) }
+  }
+  if (feature === 'return_5d') {
+    const pct = pctChange(closes, index, 5)
+    return pct == null ? null : { pct, bucket: shortMoveBucket(pct) }
+  }
+  const window = feature === 'sma20_distance' ? 20 : 50
+  const pct = smaDistancePct(closes, index, window)
+  return pct == null ? null : { pct, bucket: smaDistanceBucket(pct) }
+}
+
+const CONDITIONAL_FEATURES: readonly { feature: ConditionalFeature; label: string }[] = [
+  { feature: 'return_20d', label: '20-day return' },
+  { feature: 'sma20_distance', label: 'distance from SMA20' },
+  { feature: 'sma50_distance', label: 'distance from SMA50' },
+  { feature: 'return_5d', label: '5-day move' },
+]
+
+/**
+ * Up-close frequency for this horizon, only among past windows whose state
+ * bucket matches the current bar. Shrink uses the matching count as the
+ * sample size, with the same n / (n + 250) blend as the plain base rate.
+ */
+export function computeConditionalBaseRates(bars: SeriesBar[], sessionsAhead: number): ConditionalBaseRate[] {
+  if (sessionsAhead < 1 || bars.length < sessionsAhead + 6) return []
+  const closes = bars.map((b) => b.close)
+  const last = closes.length - 1
+  const lastPair = last - sessionsAhead
+  const out: ConditionalBaseRate[] = []
+  for (const { feature } of CONDITIONAL_FEATURES) {
+    const now = stateAt(closes, last, feature)
+    if (!now) continue
+    let n = 0
+    let upCount = 0
+    for (let i = 0; i <= lastPair; i++) {
+      const then = stateAt(closes, i, feature)
+      if (!then || then.bucket !== now.bucket) continue
+      n += 1
+      if (closes[i + sessionsAhead]! > closes[i]!) upCount += 1
+    }
+    const rawUpPct = n > 0 ? (upCount / n) * 100 : 50
+    const { upPct, shrunk } = n > 0 ? shrinkBaseRatePct(rawUpPct, n, n) : { upPct: 50, shrunk: true }
+    out.push({
+      feature,
+      bucket: now.bucket,
+      currentPct: now.pct,
+      n,
+      upCount,
+      rawUpPct,
+      upPct,
+      shrunk,
+      insufficient: n < CONDITIONAL_INSUFFICIENT_N,
+    })
+  }
+  return out
+}
+
+function formatConditionalBaseRate(input: ClosedBookPacketInput, ahead: number): string {
+  const rates = computeConditionalBaseRates(input.series, ahead)
+  const h = resolveHorizonForRate(input.horizon)
+  const header = `CONDITIONAL BASE RATE (${h}, ${ahead} ahead) — up-close frequency given the current state. Same shrink as the plain base rate (toward 50% with weight n/(n+${MIN_SESSIONS_SHRINKAGE}) when n < ${MIN_SESSIONS_SHRINKAGE}).`
+  if (rates.length === 0) {
+    return `${header}\ninsufficient sample — not enough history to condition on the current state.`
+  }
+  const labels: Record<ConditionalFeature, string> = {
+    return_20d: '20-day return',
+    sma20_distance: 'distance from SMA20',
+    sma50_distance: 'distance from SMA50',
+    return_5d: '5-day move',
+  }
+  const lines = [header]
+  for (const rate of rates) {
+    const sign = rate.currentPct >= 0 ? '+' : ''
+    const sample = rate.insufficient
+      ? 'insufficient sample'
+      : rate.shrunk
+        ? `shrunk toward 50%`
+        : 'unshrunk'
+    lines.push(
+      `- ${labels[rate.feature]} ${sign}${fmt(rate.currentPct, 1)}% (${rate.bucket}): up ${fmt(rate.upPct, 1)}% (raw ${fmt(rate.rawUpPct, 1)}%, n=${rate.n}, ${sample})`,
+    )
+  }
+  return lines.join('\n')
 }
 
 export function resolveHorizonForRate(horizon: string): UiHorizon {
@@ -691,6 +854,7 @@ function formatBaseRate(input: ClosedBookPacketInput): string {
       `NOTE: ${pctStr}% exceeds 60% because this lookback window covers a sustained trend; the figure reflects that trend, not a coin-flip prior.`,
     )
   }
+  lines.push('', formatConditionalBaseRate(input, ahead))
   return lines.join('\n')
 }
 

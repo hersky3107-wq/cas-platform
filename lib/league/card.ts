@@ -53,8 +53,12 @@ export type { CardData }
 const ROUND_COLUMNS =
   'id, proposition_text, category, color_bucket, instrument, horizon, resolution_rule, resolves_at, opened_at, actual_outcome, resolved_at'
 const PREDICTION_COLUMNS =
-  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at'
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at, analysis_lens'
 const PREDICTION_COLUMNS_ADMIN =
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at, fail_reason, analysis_lens'
+const PREDICTION_COLUMNS_NO_LENS =
+  'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at'
+const PREDICTION_COLUMNS_ADMIN_NO_LENS =
   'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at, fail_reason'
 
 /** Pre-20260829000002 environments lack `predicted_qualifier_text`; retried without it (see `loadPredictions`). */
@@ -258,20 +262,22 @@ async function loadOperatorEvidence(
 }
 
 async function loadPredictions(roundId: string, includeFailReasons = false): Promise<PredictionRow[]> {
-  if (includeFailReasons) {
-    const admin = await supabaseAdmin
-      .from('model_predictions')
-      .select(PREDICTION_COLUMNS_ADMIN)
-      .eq('round_id', roundId)
-      .order('predicted_at', { ascending: true })
-    if (!admin.error) return (admin.data ?? []) as unknown as PredictionRow[]
-  }
-  const { data, error } = await supabaseAdmin
+  const primary = includeFailReasons ? PREDICTION_COLUMNS_ADMIN : PREDICTION_COLUMNS
+  const first = await supabaseAdmin
     .from('model_predictions')
-    .select(PREDICTION_COLUMNS)
+    .select(primary)
     .eq('round_id', roundId)
     .order('predicted_at', { ascending: true })
-  if (!error) return (data ?? []) as unknown as PredictionRow[]
+  if (!first.error) return (first.data ?? []) as unknown as PredictionRow[]
+  if (/analysis_lens/i.test(first.error.message)) {
+    const stripped = includeFailReasons ? PREDICTION_COLUMNS_ADMIN_NO_LENS : PREDICTION_COLUMNS_NO_LENS
+    const second = await supabaseAdmin
+      .from('model_predictions')
+      .select(stripped)
+      .eq('round_id', roundId)
+      .order('predicted_at', { ascending: true })
+    if (!second.error) return (second.data ?? []) as unknown as PredictionRow[]
+  }
   // Same degrade-not-break stance as `loadOptionalColumns`: a DB that
   // predates 20260829000002 renders qualifiers as null, not a broken card.
   const fallback = await supabaseAdmin
@@ -279,7 +285,7 @@ async function loadPredictions(roundId: string, includeFailReasons = false): Pro
     .select(PREDICTION_COLUMNS_LEGACY)
     .eq('round_id', roundId)
     .order('predicted_at', { ascending: true })
-  if (fallback.error) throw new Error(`league card: predictions lookup failed (${error.message})`)
+  if (fallback.error) throw new Error(`league card: predictions lookup failed (${first.error.message})`)
   return (fallback.data ?? []) as unknown as PredictionRow[]
 }
 
