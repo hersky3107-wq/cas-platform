@@ -4,6 +4,7 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { HubDoors } from '../../../components/league/HubDoors'
+import { financeRoomLabels } from '../../../components/league/door-entry'
 import { PublicLeagueHub } from '../../../components/league/PublicLeagueHub'
 import { ADMIN_ONLY_PUBLIC_UI } from '../admin-only-ui'
 import {
@@ -72,8 +73,8 @@ describe('two-door landing', () => {
   })
 
   it('omits 밈코인 on the Korean finance door and keeps the list otherwise', () => {
-    expect(leagueSurfaceCopy('ko').doors.financeItems).toContain('밈코인')
-    expect(leagueSurfaceCopy('ko').doors.financeItemsNoMemecoin).not.toContain('밈코인')
+    expect(financeRoomLabels(leagueSurfaceCopy('ko').doors, false)).toContain('밈코인')
+    expect(financeRoomLabels(leagueSurfaceCopy('ko').doors, true)).not.toContain('밈코인')
     const hidden = renderToStaticMarkup(createElement(HubDoors, { omitMemecoin: true }))
     const finance = hidden.split('data-testid="door-world"')[0] ?? ''
     expect(finance).toContain('Stocks')
@@ -213,7 +214,7 @@ describe('mark-prelaunch-test', () => {
 
 describe('unified sizing', () => {
   it('defines one chip grid and one primary button scale', () => {
-    expect(CSS).toContain('.league-door')
+    expect(CSS).toContain('.league-gate')
     expect(CSS).toContain('.league-chip-grid')
     expect(CSS).toContain('.league-chip')
     expect(CSS).toContain('.league-btn-primary')
@@ -226,8 +227,8 @@ describe('unified sizing', () => {
       const copy = leagueSurfaceCopy(locale).doors
       expect(copy.enter.length).toBeGreaterThan(1)
       expect(copy.backToDoors.length).toBeGreaterThan(1)
-      expect(copy.financeItems.length).toBeGreaterThan(8)
-      expect(copy.worldItems.length).toBeGreaterThan(8)
+      expect(copy.financeRooms).toHaveLength(6)
+      expect(copy.worldRooms).toHaveLength(5)
     }
   })
 })

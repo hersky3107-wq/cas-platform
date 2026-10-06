@@ -19,15 +19,15 @@ export type LeagueSurfaceCopy = {
     facts: readonly string[]
   }
   doors: {
+    sceneTitle: string
     financeTitle: string
-    financeBody: string
-    /** Korean lane only. Memecoin is blocked there, so the door must not name it. */
-    financeBodyNoMemecoin?: string
-    financeItems: string
-    financeItemsNoMemecoin?: string
+    financeTagline: string
+    financeRooms: readonly string[]
+    /** Kept apart from financeRooms: the Korean lane blocks memecoin, so that door must not name it. */
+    memecoinRoom: string
     worldTitle: string
-    worldBody: string
-    worldItems: string
+    worldTagline: string
+    worldRooms: readonly string[]
     enter: string
     backToDoors: string
     previewAsUser: string
@@ -87,14 +87,14 @@ const ko: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'AI 예측 리그',
     financeTitle: '금융 예측',
-    financeBody: '시장 방향만 예측합니다. AI 40개가 같은 재료를 보고 서로 다른 결론을 냅니다.',
-    financeBodyNoMemecoin: '시장 방향만 예측합니다. AI 40개가 같은 재료를 보고 서로 다른 결론을 냅니다.',
-    financeItems: '주식 · 암호화폐 · 외환 · 금·귀금속 · 지수/ETF · 원자재·에너지 · 밈코인',
-    financeItemsNoMemecoin: '주식 · 암호화폐 · 외환 · 금·귀금속 · 지수/ETF · 원자재·에너지',
+    financeTagline: 'AI 40개가 시장의 방향을 예측합니다',
+    financeRooms: ['주식', '암호화폐', '외환', '금·귀금속', '지수/ETF', '원자재·에너지'],
+    memecoinRoom: '밈코인',
     worldTitle: '세상 예측',
-    worldBody: '세상일에 예/아니오로 물어보세요. 공개된 일정과 공식 발표로 채점합니다.',
-    worldItems: '정치·선거 · 엔터테인먼트 · 스포츠 · 부동산 · 테크·AI 순위',
+    worldTagline: '세상일을 예/아니오로 물어보세요',
+    worldRooms: ['정치·선거', '엔터테인먼트', '스포츠', '부동산', '테크·AI 순위'],
     enter: '들어가기',
     backToDoors: '← 대문으로',
     previewAsUser: '일반 사용자로 보기',
@@ -154,13 +154,14 @@ const en: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'AI Prediction League',
     financeTitle: 'Finance',
-    financeBody: 'Direction only. Forty AIs read the same brief and can still disagree.',
-    financeItems: 'Stocks · Crypto · FX · Gold & metals · Index / ETF · Commodities & energy · Memecoins',
-    financeItemsNoMemecoin: 'Stocks · Crypto · FX · Gold & metals · Index / ETF · Commodities & energy',
+    financeTagline: 'Forty AIs call the direction of the market',
+    financeRooms: ['Stocks', 'Crypto', 'FX', 'Gold & metals', 'Index / ETF', 'Commodities & energy'],
+    memecoinRoom: 'Memecoins',
     worldTitle: 'The world',
-    worldBody: 'Ask yes or no about the world. Official calendars and publications grade the call.',
-    worldItems: 'Politics & elections · Entertainment · Sports · Housing · Tech & AI rankings',
+    worldTagline: 'Ask the world a yes-or-no question',
+    worldRooms: ['Politics & elections', 'Entertainment', 'Sports', 'Housing', 'Tech & AI rankings'],
     enter: 'Enter',
     backToDoors: '← Doors',
     previewAsUser: 'View as a normal user',
@@ -202,13 +203,14 @@ const ja: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'AI予測リーグ',
     financeTitle: '金融予測',
-    financeBody: '方向だけを予測します。AI 40体が同じ材料を見ても結論は分かれます。',
-    financeItems: '株 · 暗号資産 · 為替 · 金・貴金属 · 指数/ETF · 商品・エネルギー · ミームコイン',
-    financeItemsNoMemecoin: '株 · 暗号資産 · 為替 · 金・貴金属 · 指数/ETF · 商品・エネルギー',
+    financeTagline: '40体のAIが市場の方向を予測します',
+    financeRooms: ['株', '暗号資産', '為替', '金・貴金属', '指数/ETF', '商品・エネルギー'],
+    memecoinRoom: 'ミームコイン',
     worldTitle: '世界の予測',
-    worldBody: '世の中の出来事をはい/いいえで聞いてください。公式の日程と発表で採点します。',
-    worldItems: '政治・選挙 · エンタメ · スポーツ · 不動産 · テック・AI順位',
+    worldTagline: '世の中の出来事を、はい/いいえで聞いてください',
+    worldRooms: ['政治・選挙', 'エンタメ', 'スポーツ', '不動産', 'テック・AI順位'],
     enter: '入る',
     backToDoors: '← 玄関へ',
     previewAsUser: '一般ユーザーとして見る',
@@ -250,13 +252,14 @@ const zhTW: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'AI預測聯盟',
     financeTitle: '金融預測',
-    financeBody: '只預測方向。40個AI看同一份材料，結論仍可能不同。',
-    financeItems: '股票 · 加密貨幣 · 外匯 · 黃金與金屬 · 指數/ETF · 原物料與能源 · 迷因幣',
-    financeItemsNoMemecoin: '股票 · 加密貨幣 · 外匯 · 黃金與金屬 · 指數/ETF · 原物料與能源',
+    financeTagline: '40個AI預測市場的方向',
+    financeRooms: ['股票', '加密貨幣', '外匯', '黃金與金屬', '指數/ETF', '原物料與能源'],
+    memecoinRoom: '迷因幣',
     worldTitle: '世界預測',
-    worldBody: '用是／否問世上的事。公開行程與官方發布用來評分。',
-    worldItems: '政治與選舉 · 娛樂 · 運動 · 房地產 · 科技與AI排名',
+    worldTagline: '用是／否來問世上的事',
+    worldRooms: ['政治與選舉', '娛樂', '運動', '房地產', '科技與AI排名'],
     enter: '進入',
     backToDoors: '← 大門',
     previewAsUser: '以一般使用者檢視',
@@ -298,13 +301,14 @@ const fr: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'Ligue de prédiction IA',
     financeTitle: 'Finance',
-    financeBody: 'La direction seulement. Quarante IA lisent le même dossier et peuvent encore diverger.',
-    financeItems: 'Actions · Crypto · Changes · Or et métaux · Indices / ETF · Matières et énergie · Memecoins',
-    financeItemsNoMemecoin: 'Actions · Crypto · Changes · Or et métaux · Indices / ETF · Matières et énergie',
+    financeTagline: 'Quarante IA prédisent la direction du marché',
+    financeRooms: ['Actions', 'Crypto', 'Changes', 'Or et métaux', 'Indices / ETF', 'Matières et énergie'],
+    memecoinRoom: 'Memecoins',
     worldTitle: 'Le monde',
-    worldBody: 'Posez une question oui/non sur le monde. Les calendriers et publications officiels notent l’appel.',
-    worldItems: 'Politique et élections · Divertissement · Sport · Immobilier · Tech et classements IA',
+    worldTagline: 'Posez au monde une question oui/non',
+    worldRooms: ['Politique et élections', 'Divertissement', 'Sport', 'Immobilier', 'Tech et classements IA'],
     enter: 'Entrer',
     backToDoors: '← Portes',
     previewAsUser: 'Voir comme un utilisateur',
@@ -346,13 +350,14 @@ const es: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'Liga de predicción IA',
     financeTitle: 'Finanzas',
-    financeBody: 'Solo la dirección. Cuarenta IA leen el mismo briefing y aún pueden discrepar.',
-    financeItems: 'Acciones · Cripto · Divisas · Oro y metales · Índices / ETF · Materias y energía · Memecoins',
-    financeItemsNoMemecoin: 'Acciones · Cripto · Divisas · Oro y metales · Índices / ETF · Materias y energía',
+    financeTagline: 'Cuarenta IA predicen la dirección del mercado',
+    financeRooms: ['Acciones', 'Cripto', 'Divisas', 'Oro y metales', 'Índices / ETF', 'Materias y energía'],
+    memecoinRoom: 'Memecoins',
     worldTitle: 'El mundo',
-    worldBody: 'Pregunta sí o no sobre el mundo. Los calendarios y publicaciones oficiales califican la llamada.',
-    worldItems: 'Política y elecciones · Entretenimiento · Deporte · Vivienda · Tech y rankings de IA',
+    worldTagline: 'Hazle al mundo una pregunta de sí o no',
+    worldRooms: ['Política y elecciones', 'Entretenimiento', 'Deporte', 'Vivienda', 'Tech y rankings de IA'],
     enter: 'Entrar',
     backToDoors: '← Puertas',
     previewAsUser: 'Ver como usuario',
@@ -394,13 +399,14 @@ const ar: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'دوري توقعات الذكاء الاصطناعي',
     financeTitle: 'توقعات المال',
-    financeBody: 'الاتجاه فقط. أربعون نموذجًا يقرأون المادة نفسها وقد يختلفون.',
-    financeItems: 'أسهم · عملات مشفرة · نقد · ذهب ومعادن · مؤشرات/صناديق · سلع وطاقة · عملات الميم',
-    financeItemsNoMemecoin: 'أسهم · عملات مشفرة · نقد · ذهب ومعادن · مؤشرات/صناديق · سلع وطاقة',
+    financeTagline: 'أربعون نموذج ذكاء اصطناعي يتوقعون اتجاه السوق',
+    financeRooms: ['أسهم', 'عملات مشفرة', 'نقد', 'ذهب ومعادن', 'مؤشرات/صناديق', 'سلع وطاقة'],
+    memecoinRoom: 'عملات الميم',
     worldTitle: 'توقعات العالم',
-    worldBody: 'اسأل بنعم أو لا عن العالم. الجداول والمنشورات الرسمية تقيّم النداء.',
-    worldItems: 'سياسة وانتخابات · ترفيه · رياضة · عقار · تقنية وترتيب الذكاء',
+    worldTagline: 'اسأل عن شؤون العالم بنعم أو لا',
+    worldRooms: ['سياسة وانتخابات', 'ترفيه', 'رياضة', 'عقار', 'تقنية وترتيب الذكاء'],
     enter: 'دخول',
     backToDoors: '← الأبواب',
     previewAsUser: 'عرض كمستخدم عادي',
@@ -442,13 +448,14 @@ const pt: LeagueSurfaceCopy = {
     ],
   },
   doors: {
+    sceneTitle: 'Liga de previsão de IA',
     financeTitle: 'Finanças',
-    financeBody: 'Só a direção. Quarenta IAs leem o mesmo briefing e ainda podem discordar.',
-    financeItems: 'Ações · Cripto · Câmbio · Ouro e metais · Índices / ETF · Commodities e energia · Memecoins',
-    financeItemsNoMemecoin: 'Ações · Cripto · Câmbio · Ouro e metais · Índices / ETF · Commodities e energia',
+    financeTagline: 'Quarenta IAs preveem a direção do mercado',
+    financeRooms: ['Ações', 'Cripto', 'Câmbio', 'Ouro e metais', 'Índices / ETF', 'Commodities e energia'],
+    memecoinRoom: 'Memecoins',
     worldTitle: 'O mundo',
-    worldBody: 'Pergunte sim ou não sobre o mundo. Calendários e publicações oficiais pontuam a chamada.',
-    worldItems: 'Política e eleições · Entretenimento · Esporte · Imóveis · Tech e rankings de IA',
+    worldTagline: 'Faça ao mundo uma pergunta de sim ou não',
+    worldRooms: ['Política e eleições', 'Entretenimento', 'Esporte', 'Imóveis', 'Tech e rankings de IA'],
     enter: 'Entrar',
     backToDoors: '← Portas',
     previewAsUser: 'Ver como usuário',

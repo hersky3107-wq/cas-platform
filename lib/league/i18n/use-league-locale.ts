@@ -23,6 +23,8 @@ export type UseLeagueLocaleResult = {
   setLocale: (locale: LeagueLocale | null) => void
   /** False for Korean-lane non-admins — selector is absent, not disabled. */
   showLanguageToggle: boolean
+  /** True until the request signals settle; `locale` is resolved from empty signals until then. */
+  loading: boolean
 }
 
 /**
@@ -65,5 +67,6 @@ export function useLeagueLocale(devQuery?: string): UseLeagueLocaleResult {
     isOverridden: showLanguageToggle && override !== null,
     setLocale: setLeagueLocaleOverride,
     showLanguageToggle,
+    loading: signals.loading,
   }
 }
