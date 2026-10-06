@@ -860,15 +860,15 @@ export const LEAGUE_SEATS: readonly LeagueSeat[] = [
   {
     seatId: 'extra:consensus',
     tier: 'extra',
-    brand: '합의 예측',
+    brand: '시장 기준선',
     brandSlug: 'consensus',
     camp: 'other',
     currentModelId: 'consensus',
-    displayName: '40개 모델 다수결',
+    displayName: '시장 기준선',
     tenures: [
       {
         modelId: 'consensus',
-        modelLabel: '40개 모델 다수결',
+        modelLabel: '돈이 매긴 확률',
         activeFrom: '2026-08-01',
       },
     ],
