@@ -24,7 +24,7 @@ function pct(correct: number, n: number): number | null {
 export async function loadConsensusTrackRecord(): Promise<TrackRecordCell[]> {
   const { data: rounds, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, category, horizon, actual_outcome, grading_status, consensus_is_correct')
+    .select('id, category, horizon, instrument, actual_outcome, grading_status, consensus_is_correct')
     .eq('is_test', false)
     .not('actual_outcome', 'is', null)
   if (error) {

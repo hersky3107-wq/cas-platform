@@ -6,7 +6,7 @@ import 'server-only'
 
 import { runSingleAiProvider } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { selectGradedConsensusTrackRounds } from '../graded-consensus-rounds'
+import { selectGradedConsensusTrackRounds, type GradedConsensusRoundRow } from '../graded-consensus-rounds'
 import { isExtraSeat } from './seats'
 import {
   computeLessonStats,
@@ -87,6 +87,12 @@ function majoritySharePct(
   return Math.round((onSide / official.length) * 100)
 }
 
+type LessonRoundRow = GradedConsensusRoundRow & {
+  consensus_majority_direction?: string | null
+  consensus_aggregate_direction?: string | null
+  consensus_aggregate_probability?: number | null
+}
+
 export async function loadLessonSourceRounds(): Promise<LessonSourceRound[]> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
@@ -94,12 +100,10 @@ export async function loadLessonSourceRounds(): Promise<LessonSourceRound[]> {
       'id, category, horizon, instrument, opened_at, grading_status, unresolvable_reason, actual_outcome, consensus_is_correct, consensus_majority_direction, consensus_aggregate_direction, consensus_aggregate_probability, anchor_session_date, resolution_session_date',
     )
     .not('actual_outcome', 'is', null)
+    .eq('is_test', false)
   if (error) throw new Error(error.message)
-  const rounds = selectGradedConsensusTrackRounds((data ?? []) as Record<string, unknown>[]) as Record<
-    string,
-    unknown
-  >[]
-  const ids = rounds.map((row) => String(row.id))
+  const rounds = selectGradedConsensusTrackRounds((data ?? []) as LessonRoundRow[])
+  const ids = rounds.map((row) => String(row.id ?? ''))
   const predictions: Record<string, unknown>[] = []
   for (let i = 0; i < ids.length; i += 200) {
     const slice = ids.slice(i, i + 200)

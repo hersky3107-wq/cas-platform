@@ -35,7 +35,10 @@ export type KrStockRankedRound =
 
 export type KrStockRoundBuildResult =
   | { ok: true; input: KrStockRankedRound }
-  | { ok: false; reason: 'unknown_instrument' | 'krx_calendar_unverified' | 'anchor_unavailable' }
+  | {
+      ok: false
+      reason: 'unknown_instrument' | 'krx_calendar_unverified' | 'us_calendar_unverified' | 'anchor_unavailable'
+    }
 
 function liveIo(): KrStockRoundIo {
   return {

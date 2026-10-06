@@ -306,7 +306,10 @@ export function refusalMessageForKey(key: string, locale: string): string {
     ? (key.slice('league.gateway.refusal.'.length) as RefusalCode)
     : null
   const copy = code ? REFUSAL_COPY[code] : undefined
-  if (!copy) return REFUSAL_COPY.low_confidence[resolveGatewayLocale(locale)]
+  if (!copy) {
+    const loc = resolveGatewayLocale(locale)
+    return REFUSAL_COPY.low_confidence[loc] ?? REFUSAL_COPY.low_confidence.en
+  }
   const loc = resolveGatewayLocale(locale)
   const text = copy[loc] ?? copy.en
   if (code === 'index_unsupported') return `${text} ${supportedRegionsLine(loc)}`

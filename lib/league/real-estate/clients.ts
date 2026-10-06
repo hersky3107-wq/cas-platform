@@ -394,7 +394,8 @@ export async function fetchMlitHousing(fetchImpl: typeof fetch = fetch): Promise
     const file = await fetchImpl(fileUrl)
     if (!file.ok) return { ok: false, error: `MLIT housing workbook HTTP ${file.status}` }
     const workbook = new ExcelJS.Workbook()
-    await workbook.xlsx.load(Buffer.from(await file.arrayBuffer()))
+    const payload = Buffer.from(await file.arrayBuffer())
+    await workbook.xlsx.load(payload as unknown as Parameters<(typeof workbook.xlsx)['load']>[0])
     const seriesId = /(\d+)\.xlsx/.exec(fileUrl)?.[1] ?? MLIT_HOUSING_FILE_ID
     const points: ParsedPoint[] = []
     for (const sheet of workbook.worksheets) {

@@ -7,7 +7,10 @@ import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
 import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import { useLeagueRequestSignals } from '@/lib/league/use-league-request-signals'
 
-export function HubDoors({ omitMemecoin }: { omitMemecoin?: boolean } = {}) {
+export type HubDoorsProps = { omitMemecoin?: boolean }
+
+export function HubDoors(props: HubDoorsProps = {}) {
+  const omitMemecoin = props.omitMemecoin
   const { locale, dir } = useLeagueLocale()
   const signals = useLeagueRequestSignals()
   const koreaLane = admissionStockLane({

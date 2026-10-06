@@ -129,7 +129,7 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
 
   // Graceful fallback if the manual migration has not yet been executed in SQL Editor
   if (error && error.message?.includes('seat_id')) {
-    const fallbackQuery = supabaseAdmin
+    let fallbackQuery = supabaseAdmin
       .from('model_predictions')
       .select(
         'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type, is_test)'
