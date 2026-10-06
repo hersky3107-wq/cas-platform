@@ -196,7 +196,10 @@ describe('finance and world doors', () => {
     expect(html.split('data-testid="door-world"')[0]).not.toContain('밈코인')
     expect(html).not.toContain('data-testid="door-show-all"')
     expect(leagueSurfaceCopy('ko').doors.financeTitle).toBe('금융 예측')
-    expect(leagueSurfaceCopy('ko').doors.worldTitle).toBe('세상 예측')
+    expect(leagueSurfaceCopy('ko').doors.worldTitle).toBe('이슈 예측')
+    expect(leagueSurfaceCopy('en').doors.financeMark).toBe('MARKETS')
+    expect(leagueSurfaceCopy('en').doors.worldMark).toBe('EVENTS')
+    expect(leagueSurfaceCopy('en').doors.worldTitle).toBe('Event Predictions')
   })
 })
 

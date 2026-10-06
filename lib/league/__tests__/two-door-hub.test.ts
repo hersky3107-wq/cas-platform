@@ -57,6 +57,8 @@ describe('two-door landing', () => {
     expect(html).toContain('data-testid="door-finance"')
     expect(html).toContain('data-testid="door-world"')
     expect(html).toContain(leagueSurfaceCopy('en').doors.enter)
+    expect(html).toContain('MARKETS')
+    expect(html).toContain('EVENTS')
     expect(html).toContain(leagueSurfaceCopy('en').doors.financeTitle)
     expect(html).toContain(leagueSurfaceCopy('en').doors.worldTitle)
     expect(html).toContain('/league/finance')
@@ -121,7 +123,9 @@ describe('door pages', () => {
       expect(html).not.toContain(leak)
     }
     expect(html).toContain('/league')
+    expect(html).toContain('MARKETS')
     expect(html).toContain(leagueSurfaceCopy('en').doors.financeTitle)
+    expect(html).not.toContain('EVENTS')
     expect(html).not.toContain(leagueSurfaceCopy('en').doors.worldTitle)
     expect(html).not.toContain(leagueSurfaceCopy('ko').doors.worldTitle)
     expect(leagueSurfaceCopy('ko').doors.financeTitle).toBe('금융 예측')

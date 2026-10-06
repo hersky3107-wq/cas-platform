@@ -21,11 +21,15 @@ export type LeagueSurfaceCopy = {
   doors: {
     sceneTitle: string
     financeTitle: string
+    /** Large English word on the finance door. Same in every locale. */
+    financeMark: string
     financeTagline: string
     financeRooms: readonly string[]
     /** Kept apart from financeRooms: the Korean lane blocks memecoin, so that door must not name it. */
     memecoinRoom: string
     worldTitle: string
+    /** Large English word on the world door. Same in every locale. */
+    worldMark: string
     worldTagline: string
     worldRooms: readonly string[]
     enter: string
@@ -89,10 +93,12 @@ const ko: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'AI 예측 리그',
     financeTitle: '금융 예측',
+    financeMark: 'MARKETS',
     financeTagline: 'AI 40개가 시장의 방향을 예측합니다',
     financeRooms: ['주식', '암호화폐', '외환', '금·귀금속', '지수/ETF', '원자재·에너지'],
     memecoinRoom: '밈코인',
-    worldTitle: '세상 예측',
+    worldTitle: '이슈 예측',
+    worldMark: 'EVENTS',
     worldTagline: '세상일을 예/아니오로 물어보세요',
     worldRooms: ['정치·선거', '엔터테인먼트', '스포츠', '부동산', '테크·AI 순위'],
     enter: '들어가기',
@@ -156,10 +162,12 @@ const en: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'AI Prediction League',
     financeTitle: 'Finance',
+    financeMark: 'MARKETS',
     financeTagline: 'Forty AIs call the direction of the market',
     financeRooms: ['Stocks', 'Crypto', 'FX', 'Gold & metals', 'Index / ETF', 'Commodities & energy'],
     memecoinRoom: 'Memecoins',
-    worldTitle: 'The world',
+    worldTitle: 'Event Predictions',
+    worldMark: 'EVENTS',
     worldTagline: 'Ask the world a yes-or-no question',
     worldRooms: ['Politics & elections', 'Entertainment', 'Sports', 'Housing', 'Tech & AI rankings'],
     enter: 'Enter',
@@ -205,10 +213,12 @@ const ja: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'AI予測リーグ',
     financeTitle: '金融予測',
+    financeMark: 'MARKETS',
     financeTagline: '40体のAIが市場の方向を予測します',
     financeRooms: ['株', '暗号資産', '為替', '金・貴金属', '指数/ETF', '商品・エネルギー'],
     memecoinRoom: 'ミームコイン',
-    worldTitle: '世界の予測',
+    worldTitle: 'イベント予測',
+    worldMark: 'EVENTS',
     worldTagline: '世の中の出来事を、はい/いいえで聞いてください',
     worldRooms: ['政治・選挙', 'エンタメ', 'スポーツ', '不動産', 'テック・AI順位'],
     enter: '入る',
@@ -254,10 +264,12 @@ const zhTW: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'AI預測聯盟',
     financeTitle: '金融預測',
+    financeMark: 'MARKETS',
     financeTagline: '40個AI預測市場的方向',
     financeRooms: ['股票', '加密貨幣', '外匯', '黃金與金屬', '指數/ETF', '原物料與能源'],
     memecoinRoom: '迷因幣',
-    worldTitle: '世界預測',
+    worldTitle: '議題預測',
+    worldMark: 'EVENTS',
     worldTagline: '用是／否來問世上的事',
     worldRooms: ['政治與選舉', '娛樂', '運動', '房地產', '科技與AI排名'],
     enter: '進入',
@@ -303,10 +315,12 @@ const fr: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'Ligue de prédiction IA',
     financeTitle: 'Finance',
+    financeMark: 'MARKETS',
     financeTagline: 'Quarante IA prédisent la direction du marché',
     financeRooms: ['Actions', 'Crypto', 'Changes', 'Or et métaux', 'Indices / ETF', 'Matières et énergie'],
     memecoinRoom: 'Memecoins',
-    worldTitle: 'Le monde',
+    worldTitle: "Prédictions d'événements",
+    worldMark: 'EVENTS',
     worldTagline: 'Posez au monde une question oui/non',
     worldRooms: ['Politique et élections', 'Divertissement', 'Sport', 'Immobilier', 'Tech et classements IA'],
     enter: 'Entrer',
@@ -352,10 +366,12 @@ const es: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'Liga de predicción IA',
     financeTitle: 'Finanzas',
+    financeMark: 'MARKETS',
     financeTagline: 'Cuarenta IA predicen la dirección del mercado',
     financeRooms: ['Acciones', 'Cripto', 'Divisas', 'Oro y metales', 'Índices / ETF', 'Materias y energía'],
     memecoinRoom: 'Memecoins',
-    worldTitle: 'El mundo',
+    worldTitle: 'Predicciones de eventos',
+    worldMark: 'EVENTS',
     worldTagline: 'Hazle al mundo una pregunta de sí o no',
     worldRooms: ['Política y elecciones', 'Entretenimiento', 'Deporte', 'Vivienda', 'Tech y rankings de IA'],
     enter: 'Entrar',
@@ -401,10 +417,12 @@ const ar: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'دوري توقعات الذكاء الاصطناعي',
     financeTitle: 'توقعات المال',
+    financeMark: 'MARKETS',
     financeTagline: 'أربعون نموذج ذكاء اصطناعي يتوقعون اتجاه السوق',
     financeRooms: ['أسهم', 'عملات مشفرة', 'نقد', 'ذهب ومعادن', 'مؤشرات/صناديق', 'سلع وطاقة'],
     memecoinRoom: 'عملات الميم',
-    worldTitle: 'توقعات العالم',
+    worldTitle: 'توقعات الأحداث',
+    worldMark: 'EVENTS',
     worldTagline: 'اسأل عن شؤون العالم بنعم أو لا',
     worldRooms: ['سياسة وانتخابات', 'ترفيه', 'رياضة', 'عقار', 'تقنية وترتيب الذكاء'],
     enter: 'دخول',
@@ -450,10 +468,12 @@ const pt: LeagueSurfaceCopy = {
   doors: {
     sceneTitle: 'Liga de previsão de IA',
     financeTitle: 'Finanças',
+    financeMark: 'MARKETS',
     financeTagline: 'Quarenta IAs preveem a direção do mercado',
     financeRooms: ['Ações', 'Cripto', 'Câmbio', 'Ouro e metais', 'Índices / ETF', 'Commodities e energia'],
     memecoinRoom: 'Memecoins',
-    worldTitle: 'O mundo',
+    worldTitle: 'Previsões de eventos',
+    worldMark: 'EVENTS',
     worldTagline: 'Faça ao mundo uma pergunta de sim ou não',
     worldRooms: ['Política e eleições', 'Entretenimento', 'Esporte', 'Imóveis', 'Tech e rankings de IA'],
     enter: 'Entrar',

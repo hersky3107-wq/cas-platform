@@ -144,7 +144,8 @@ export function DoorScene({ locale, hideMemecoin }: { locale: LeagueLocale; hide
             door={door}
             hinge={(index === 0) === (dir === 'ltr') ? 'left' : 'right'}
             numeral={NUMERALS[door]}
-            title={door === 'finance' ? copy.financeTitle : copy.worldTitle}
+            title={door === 'finance' ? copy.financeMark : copy.worldMark}
+            subtitle={door === 'finance' ? copy.financeTitle : copy.worldTitle}
             tagline={door === 'finance' ? copy.financeTagline : copy.worldTagline}
             rooms={door === 'finance' ? financeRoomLabels(copy, hideMemecoin) : copy.worldRooms}
             enter={copy.enter}
@@ -175,6 +176,7 @@ function Gate({
   hinge,
   numeral,
   title,
+  subtitle,
   tagline,
   rooms,
   enter,
@@ -186,6 +188,7 @@ function Gate({
   hinge: 'left' | 'right'
   numeral: string
   title: string
+  subtitle: string
   tagline: string
   rooms: readonly string[]
   enter: string
@@ -225,6 +228,7 @@ function Gate({
               <h2 id={titleId} className="league-gate__title">
                 {title}
               </h2>
+              <p className="league-gate__subtitle">{subtitle}</p>
               <span aria-hidden="true" className="league-gate__rule" />
               <p id={taglineId} className="league-gate__tagline">
                 {tagline}

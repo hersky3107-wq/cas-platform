@@ -55,7 +55,9 @@ describe('door scene markup', () => {
     expect(finance.open).toContain('href="/league/finance"')
     expect(world.open).toContain('href="/league/world"')
     expect(finance.body).toContain('금융 예측')
-    expect(world.body).toContain('세상 예측')
+    expect(finance.body).toContain('MARKETS')
+    expect(world.body).toContain('이슈 예측')
+    expect(world.body).toContain('EVENTS')
   })
 
   it('keeps 들어가기 inside each link so it navigates without JavaScript', () => {
