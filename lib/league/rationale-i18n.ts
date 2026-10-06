@@ -13,6 +13,11 @@ import {
   type RationaleTranslationStore,
 } from './rationale-i18n-store'
 import { rationaleTranslationGlossary, rejectsBaseRateMistranslation } from './translation-glossary'
+import {
+  hasLeftoverDiscourse,
+  replaceRationaleSentences,
+  splitRationaleSentences,
+} from './leftover-english'
 
 /**
  * View-time rationale translation. Never called from generation.
@@ -98,6 +103,52 @@ const defaultStore: RationaleTranslationStore = {
   },
 }
 
+/** One extra call for sentences that still contain English discourse words. */
+async function retranslateLeftoverSentences(text: string, lang: string): Promise<string | null> {
+  const parts = splitRationaleSentences(text)
+  const bad = parts
+    .map((sentence, index) => ({ index, sentence }))
+    .filter((row) => hasLeftoverDiscourse(row.sentence))
+  if (bad.length === 0) return text
+  const res = await runSingleAiProvider({
+    supabase: supabaseAdmin,
+    authSupabase: supabaseAdmin,
+    sessionId: null,
+    userId: null,
+    provider: TRANSLATE_PROVIDER,
+    modelOverride: TRANSLATE_MODEL,
+    prompt: JSON.stringify(bad.map((row, id) => ({ id, text: row.sentence }))),
+    systemPrompt: [
+      `You translate leftover English sentences into ${lang}.`,
+      'These sentences still contain English words such as Recent, However, or Despite. Translate those words into the target language.',
+      'Keep tickers, model names, and acronyms (HBM, DRAM, SMA) unchanged.',
+      'OUTPUT: a JSON array only. Shape: [{"id": <int>, "text": "<translation>"}].',
+    ].join('\n'),
+    skipLanguageInjection: true,
+    maxCompletionTokens: Math.min(2000, Math.max(400, bad.length * 120)),
+    timeoutMs: TRANSLATE_TIMEOUT_MS,
+  })
+  if (res.error || !res.text?.trim()) return null
+  try {
+    const parsed = JSON.parse(extractJsonArray(res.text)) as unknown
+    if (!Array.isArray(parsed)) return null
+    const replacements = new Map<number, string>()
+    for (const row of parsed) {
+      if (!row || typeof row !== 'object') continue
+      const o = row as Record<string, unknown>
+      const id = typeof o.id === 'number' ? o.id : Number(o.id)
+      const next = typeof o.text === 'string' ? o.text.trim() : ''
+      const source = bad[id]
+      if (!source || !next) continue
+      replacements.set(source.index, next)
+    }
+    if (replacements.size === 0) return null
+    return replaceRationaleSentences(text, replacements)
+  } catch {
+    return null
+  }
+}
+
 export async function translateRoundRationales(
   items: RationaleToTranslate[],
   locale: LeagueLocale,
@@ -153,9 +204,9 @@ export async function translateRoundRationales(
     }
     const hit = cached.get(item.predictionId)
     const cachedText = hit && hit.source_hash === sourceHash(item.text) ? hit.translated_text.trim() : ''
-    if (cachedText && !rejectsBaseRateMistranslation(item.text, cachedText, locale)) {
+    if (cachedText && !rejectsBaseRateMistranslation(item.text, cachedText, locale) && !hasLeftoverDiscourse(cachedText)) {
       const visible = visibleLeagueText(category, cachedText) ?? cachedText
-      if (!rejectsBaseRateMistranslation(item.text, visible, locale)) {
+      if (!rejectsBaseRateMistranslation(item.text, visible, locale) && !hasLeftoverDiscourse(visible)) {
         translations[item.predictionId] = visible
         continue
       }
@@ -184,7 +235,8 @@ export async function translateRoundRationales(
     `You translate AI prediction rationales into ${lang}.`,
     'Rules:',
     `- Output language = ${lang}. Translate every item.`,
-    '- Keep tickers, numbers, and proper nouns (AAPL, NASDAQ, model names) unchanged.',
+    '- Keep tickers, numbers, model names, and acronyms (HBM, DRAM, SMA) unchanged.',
+    '- Do not leave English discourse words such as Recent, However, or Despite.',
     '- Do not add commentary. One translation per input id.',
     glossary,
     'OUTPUT: a JSON array only. Shape: [{"id": <int>, "text": "<translation>"}].',
@@ -227,8 +279,12 @@ export async function translateRoundRationales(
           if (!text) continue
           const item = missing[i]!
           if (rejectsBaseRateMistranslation(item.text, text, locale)) continue
-          const visible = visibleLeagueText(category, text) ?? text
+          let visible = visibleLeagueText(category, text) ?? text
           if (rejectsBaseRateMistranslation(item.text, visible, locale)) continue
+          if (hasLeftoverDiscourse(visible)) {
+            const repaired = await retranslateLeftoverSentences(visible, lang)
+            if (repaired) visible = visibleLeagueText(category, repaired) ?? repaired
+          }
           translations[item.predictionId] = visible
           writes.push({
             prediction_id: item.predictionId,

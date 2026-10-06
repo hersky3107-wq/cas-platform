@@ -112,5 +112,7 @@ describe('rationale display / stream trigger helpers', () => {
         'KRX data show a 10-02 close near 115,700 and a 1.2조 rights issue…',
       ),
     ).toBe(false)
+    expect(skipKoTranslationLlm('ko', 'Recent 삼성전기 장비 수주가 늘었다.')).toBe(false)
+    expect(skipKoTranslationLlm('ko', 'HBM과 DRAM, SMA 수요가 늘었다.')).toBe(true)
   })
 })

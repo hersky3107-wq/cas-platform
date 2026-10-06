@@ -195,9 +195,12 @@ export const PLATFORM_MODEL_REGISTRY: PlatformModelEntry[] = [
   // Endpoint/model/env-key confirmed live 2026-08-10 via
   // lib/ai/league-local-providers-health.ts's mirror; registered here so the
   // league orchestrator can call it through `callPlatformModel` like every
-  // other roster entry. `reasoning_effort: 'low'` keeps hidden reasoning from
-  // burning the visible-content budget (same finding as the health mirror).
-  { id: 'upstage:solar-pro4', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 4', model: 'solar-pro4', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'low' } },
+  // other roster entry. Upstage's chat schema (console.upstage.ai/api/chat):
+  // for solar-pro4, omitted effort is reasoning ON, `low` and above reason,
+  // and only `none` / `minimal` turn reasoning off. `low` still spent
+  // hundreds of reasoning tokens and timed the world seat out. `none` is
+  // the lowest accepted off value.
+  { id: 'upstage:solar-pro4', provider: 'upstage', brand: 'Upstage', displayName: 'Solar Pro 4', model: 'solar-pro4', league: 'world', verified: true, extraRequestParams: { reasoning_effort: 'none' } },
 
   // --- Friendli Serverless ---
   // EXAONE left Model APIs (dedicated-only) 2026-09-06. WORLD LG seat moved

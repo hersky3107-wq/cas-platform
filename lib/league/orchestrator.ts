@@ -41,6 +41,7 @@ import { coalesceRoundPacketBuild } from '@/lib/league/generation/parallel-polic
 import { rosterProviderRoute, type ProviderCallGate } from '@/lib/league/generation/provider-gate'
 import { LEAGUE_JOB_TICK_BUDGET_MS } from '@/lib/league/generation/policy'
 import { isHttp429Message, waitThenRetry429 } from '@/lib/league/http-429-retry'
+import { timeoutRetryFits } from '@/lib/league/seat-timeout'
 import { emptyContentRetryBudgetMs, isEmptyContentError } from '@/lib/ai/empty-content-retry'
 import { seatIdForModel } from '@/lib/league/seats'
 import { classifyNoAnswerFailReason, type NoAnswerFailReason } from '@/lib/league/fail-reason'
@@ -497,6 +498,8 @@ type RawCall = {
    * (Anthropic web_search; OpenAI search-api estimate).
    */
   toolFeeUsd: number | null
+  reasoningTokens: number | null
+  contentTokens: number | null
   error?: string
 }
 
@@ -544,6 +547,8 @@ async function callOnce(
       serverSideToolsUsed: res.serverSideToolsUsed ?? null,
       costInUsdTicks: res.costInUsdTicks ?? null,
       toolFeeUsd: res.toolFeeUsd ?? null,
+      reasoningTokens: null,
+      contentTokens: null,
       error: res.error,
     }
   }
@@ -563,6 +568,9 @@ async function callOnce(
     platformWallMs,
     entry.model_id
   )
+  console.log(
+    `[league-generate] model=${entry.model_id} reasoning_tokens=${res.usage?.reasoningTokens ?? 'n/a'} content_tokens=${res.usage?.contentTokens ?? 'n/a'} completion_tokens=${res.usage?.completionTokens ?? 'n/a'}`,
+  )
   return {
     text: res.text,
     promptTokens: res.usage?.promptTokens ?? null,
@@ -573,6 +581,8 @@ async function callOnce(
     serverSideToolsUsed: null,
     costInUsdTicks: null,
     toolFeeUsd: null,
+    reasoningTokens: res.usage?.reasoningTokens ?? null,
+    contentTokens: res.usage?.contentTokens ?? null,
     error: res.error,
   }
 }
@@ -632,6 +642,8 @@ async function callWithRetry(
     serverSideToolsUsed: null,
     costInUsdTicks: null,
     toolFeeUsd: null,
+    reasoningTokens: null,
+    contentTokens: null,
     error,
   })
 
@@ -649,6 +661,7 @@ async function callWithRetry(
             label: entry.model_id,
           })
         }
+        if (isTimeout(first.error) && !timeoutRetryFits(remaining(), timeoutMs)) return first
         return callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
       }
       return first
@@ -666,6 +679,7 @@ async function callWithRetry(
               label: entry.model_id,
             })
           }
+          if (isTimeout(msg) && !timeoutRetryFits(remaining(), timeoutMs)) return empty(msg)
           return await callOnce(entry, contract, userPrompt, timeoutMs, userId, maxCompletionTokens, category)
         } catch (e2: unknown) {
           return empty(e2 instanceof Error ? e2.message : 'unknown error')
@@ -691,6 +705,7 @@ async function callWithRetry(
           label: entry.model_id,
         })
       }
+      if (isTimeout(first.error) && !timeoutRetryFits(remaining(), timeoutMs)) return first
       return attempt()
     }
     return first
@@ -708,6 +723,7 @@ async function callWithRetry(
             label: entry.model_id,
           })
         }
+        if (isTimeout(msg) && !timeoutRetryFits(remaining(), timeoutMs)) return empty(msg)
         return await attempt()
       } catch (e2: unknown) {
         return empty(e2 instanceof Error ? e2.message : 'unknown error')
@@ -984,7 +1000,7 @@ async function runOneModel(
         self_vendor_param: vendorFlags ? vendorFlags.isParamVendor : null,
         prompt_tokens: raw.promptTokens,
         completion_tokens: raw.completionTokens,
-        reasoning_tokens: null,
+        reasoning_tokens: raw.reasoningTokens,
         cost_usd: totalCostUsd,
         estimated_cost_usd: estimatedCostUsd,
         server_side_tools_used: toolsUsed,

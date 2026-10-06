@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { LEAGUE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
+import { getPlatformModelEntry } from '@/lib/ai/platform-providers'
 import { EXTRA_ENGINE_ROSTER, LEAGUE_ROSTER, lookupRosterDisplay, lookupRosterEntry, type WeightsKind } from '../roster'
 
 describe('roster weights classification', () => {
@@ -129,6 +130,10 @@ describe('roster weights classification', () => {
       reasoning: true,
     })
     expect(solar?.caller).toMatchObject({ kind: 'platform', platformId: 'upstage:solar-pro4' })
+    expect(solar?.timeoutMs).toBe(90_000)
+    expect(solar?.maxCompletionTokens).toBe(4500)
+    expect(solar?.timeoutMs).toBeLessThan(300_000)
+    expect(getPlatformModelEntry('upstage:solar-pro4')?.extraRequestParams).toEqual({ reasoning_effort: 'none' })
     expect(solar?.price).toEqual({ inputPerMTokens: 0.15, outputPerMTokens: 0.6 })
     expect(LEAGUE_ROSTER.some((e) => e.model_id === 'solar-pro3')).toBe(false)
     expect(lookupRosterEntry('solar-pro3')).toBeUndefined()

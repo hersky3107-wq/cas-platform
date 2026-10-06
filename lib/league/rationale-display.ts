@@ -1,5 +1,6 @@
 import type { CardModelPrediction } from './card-types'
 import type { LeagueLocale } from './i18n/locales'
+import { hasLeftoverDiscourse } from './leftover-english'
 
 /** Same skip as `rationale-i18n.shouldTranslateLocale` — kept client-safe (no server-only). */
 export function shouldTranslateRationaleLocale(locale: LeagueLocale): boolean {
@@ -31,7 +32,7 @@ export function isMostlyEnglish(text: string): boolean {
  * still goes through translation.
  */
 export function skipKoTranslationLlm(locale: LeagueLocale, text: string): boolean {
-  return locale === 'ko' && isNativeKoreanText(text) && !isMostlyEnglish(text)
+  return locale === 'ko' && isNativeKoreanText(text) && !isMostlyEnglish(text) && !hasLeftoverDiscourse(text)
 }
 
 /**

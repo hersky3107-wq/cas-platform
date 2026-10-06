@@ -82,9 +82,18 @@ describe('equity display-layer scrub — leaked samples', () => {
   })
 
   it('PER ~287x drops the multiple', () => {
-    const out = readable(scrubAnalystDisclosure('PER ~287x'))
-    expect(out).not.toMatch(/287/)
-    expect(out).toMatch(/PER/i)
+    const out = scrubAnalystDisclosure('PER ~287x')
+    expect(out ?? '').not.toMatch(/287/)
+    expect(out ?? '').not.toMatch(/PER/i)
+  })
+
+  it('drops the broken 한미반도체 scout sentence and keeps the sentence around it', () => {
+    const exact = '극단적인 PER(약 119배) 속에서 이미 애널리스트 인 274k에 도달하거나 초과하여'
+    expect(scrubAnalystDisclosure(exact) ?? '').not.toMatch(/PER|119|274|애널리스트/)
+    const around = `장비 수주는 이어진다. ${exact}`
+    const out = readable(scrubAnalystDisclosure(around))
+    expect(out).toContain('장비 수주')
+    expect(out).not.toMatch(/PER|119|274|애널리스트|도달/)
   })
 
   it('(kr.investing.com) is removed', () => {
@@ -135,7 +144,7 @@ describe('equity display-layer scrub — leaked samples', () => {
     expect(scrubsAnalystDisclosure('etf_index')).toBe(true)
     expect(scrubsAnalystDisclosure('gold_metals')).toBe(false)
     expect(visibleLeagueText('gold_metals', 'PER ~287x')).toContain('287')
-    expect(visibleLeagueText('stock', 'PER ~287x')).not.toMatch(/287/)
+    expect(visibleLeagueText('stock', 'PER ~287x') ?? '').not.toMatch(/287/)
   })
 })
 
@@ -366,6 +375,42 @@ describe('leftover English is translated after a pre- and post-scrub', () => {
     const ko = result.translations['pred-short'] ?? ''
     expect(ko).not.toMatch(/14\.30|10\.28/)
     expect(ko).toMatch(/공매도 비중|short-ratio/i)
+  })
+
+  it('retranslates a sentence that still starts with Recent and keeps HBM', async () => {
+    mocks.runSingleAiProvider
+      .mockResolvedValueOnce({
+        text: '[{"id":0,"text":"Recent 삼성전기 장비 수주가 늘었다. HBM 수요는 유지된다."}]',
+        promptTokens: 10,
+        completionTokens: 10,
+        costUsd: 0,
+        model: 'gemini-3.5-flash',
+      })
+      .mockResolvedValueOnce({
+        text: '[{"id":0,"text":"최근 삼성전기 장비 수주가 늘었다."}]',
+        promptTokens: 10,
+        completionTokens: 10,
+        costUsd: 0,
+        model: 'gemini-3.5-flash',
+      })
+    const { translateRoundRationales } = await import('../rationale-i18n')
+    const result = await translateRoundRationales(
+      [{ predictionId: 'pred-recent', text: 'Recent Samsung Electro-Mechanics equipment orders rose. HBM demand holds.' }],
+      'ko',
+      {
+        loadCached: async () => ({ rows: [], error: null }),
+        upsert: async () => ({ error: null }),
+      },
+      'stock',
+    )
+    expect(mocks.runSingleAiProvider).toHaveBeenCalledTimes(2)
+    const retryPrompt = String(mocks.runSingleAiProvider.mock.calls[1]?.[0]?.prompt ?? '')
+    expect(retryPrompt).toContain('Recent')
+    expect(retryPrompt).not.toContain('HBM 수요')
+    const ko = result.translations['pred-recent'] ?? ''
+    expect(ko).toContain('최근 삼성전기')
+    expect(ko).toContain('HBM')
+    expect(ko).not.toMatch(/\bRecent\b/)
   })
 
   it('rejects a Korean "기준 금리" rendering when the source says base rate, and the prompt carries the glossary', async () => {

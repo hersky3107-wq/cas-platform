@@ -186,8 +186,22 @@ const RULES: Array<[RegExp, string]> = [
   [new RegExp(String.raw`(OP\s*전망치|영업이익(?:\s*전망치)?)(\s*(?:는|은|이|가|약)?\s*)${ANALYST_AMT}(?:\s*(?:~|–|-|〜)\s*${ANALYST_AMT})?`, 'gi'), '$1'],
   // "25 buy / 14 hold / 3 sell", "6 strong_buy"
   [/\b\d+\s*(strong[_ ]buy|strong[_ ]sell|buys?|holds?|sells?|outperforms?|underperforms?)\b/gi, '$1'],
-  // "trailing PE 45.2", "PER ~287x", "P/B 12", "EPS estimate 1.97"
-  [new RegExp(String.raw`\b((?:trailing\s+|forward\s+)?(?:p\/?e|per|p\/?b|pbr|price[- ]to[- ](?:book|earnings)|eps(?:\s+(?:estimate|trend|actual))?))(\s*(?:of|at|is|=|:|~)?\s*)${NUM}`, 'gi'), '$1'],
+  // PER/PBR multiples, including "PER(약 119배)" and "PER ~287x". Drop the label and the figure.
+  [
+    /\b(?:trailing\s+|forward\s+)?(?:p\/e|p\/b|per|pbr|price[- ]to[- ](?:book|earnings))\b\s*(?:\(\s*[^)]{0,40}\)|\s*[~≈]?\s*(?:약\s*)?\d[\d.,]*\s*(?:배|x|X)?)/gi,
+    '',
+  ],
+  // "trailing PE 45.2", "EPS estimate 1.97" — keep the label, drop the figure.
+  [new RegExp(String.raw`\b((?:trailing\s+|forward\s+)?(?:p\/?e|eps(?:\s+(?:estimate|trend|actual))?))(\s*(?:of|at|is|=|:|~)?\s*)${NUM}`, 'gi'), '$1'],
+  // Analyst/target remnants: "애널리스트 인 274k", "target 274k".
+  [
+    /(?:애널리스트|analysts?|목표가|price\s*targets?|컨센서스\s*목표)(?:\s*(?:의|가|는|은|인|들))?[^.\n]{0,24}?\d[\d.,]*\s*[kKmMbB]\b/gi,
+    '',
+  ],
+  [
+    /\d[\d.,]*\s*[kKmMbB]\b[^.\n]{0,24}?(?:애널리스트|analysts?|목표가|price\s*targets?)/gi,
+    '',
+  ],
   // Short-ratio figures and vs-average comparisons
   [/short[- ]ratio(?:\s+spike)?\s*\(\s*\d[\d.]*(?:\s*vs\.?\s*\d[\d.]*\s*(?:avg|average)?)?\s*\)/gi, 'short-ratio spike'],
   [/short[- ]ratio\s+\d[\d.]*(?:\s*vs\.?\s*\d[\d.]*\s*(?:avg|average)?)?/gi, 'short-ratio'],
@@ -290,6 +304,28 @@ function tidyPass(text: string): string {
     .trim()
 }
 
+/**
+ * A deletion that leaves a dangling particle or an empty object ("인 에",
+ * " 에 도달") makes the sentence meaningless. Drop that sentence only.
+ */
+function sentenceIsBroken(sentence: string): boolean {
+  const s = sentence.replace(/\s+/g, ' ').trim()
+  if (!s) return true
+  if (/(?:^|\s)(?:은|는|이|가|을|를|에|에서|으로|로|와|과|의|도)\s+(?:은|는|이|가|을|를|에|에서|으로|로|와|과)/.test(s)) return true
+  if (/(?:^|\s)(?:에|을|를|이|가)\s*(?:도달|초과|상회|하회)/.test(s)) return true
+  if (/인\s+에(?:\s|$)/.test(s)) return true
+  if (/이미\s+에(?:\s|$)/.test(s)) return true
+  return false
+}
+
+function dropBrokenSentences(text: string): string {
+  return text
+    .split(/(?<=[.!?…。])\s+/)
+    .filter((part) => !sentenceIsBroken(part))
+    .join(' ')
+    .trim()
+}
+
 function tidy(text: string): string {
   let prev = ''
   let out = text
@@ -309,6 +345,8 @@ export function scrubAnalystDisclosure(text: string | null | undefined): string 
   out = scrubInvestorFlowAmounts(out)
   for (const [re, rep] of JARGON_RULES) out = out.replace(re, rep)
   out = scrubSourceResidue(out)
+  out = tidy(out)
+  out = dropBrokenSentences(out)
   out = tidy(out)
   return out || null
 }
