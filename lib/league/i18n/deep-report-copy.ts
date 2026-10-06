@@ -6,7 +6,7 @@ import type { SourceTier } from '../deep-report-dossier'
 import type { ResearchAngle } from '../deep-report-policy'
 import type { LeagueLocale } from './locales'
 
-export type DeepReportStep = 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair'
+export type DeepReportStep = 'research' | 'opening' | 'rebuttal' | 'counter' | 'revote' | 'chair'
 
 export type DeepReportCopy = {
   steps: Record<DeepReportStep, string>
@@ -18,7 +18,11 @@ export type DeepReportCopy = {
     weaker: (side: string, pct: number) => string
     opposite: (side: string, pct: number) => string
   }
+  /** Blind re-vote, after assigned sides are dropped. */
   voteHeading: string
+  /** The tally from the debate itself, before the re-vote. */
+  stanceHeading: string
+  revoteDiffers: string
   tally: (total: number, count: number, side: string) => string
   tallyTie: (total: number, yes: number, yesWord: string, no: number, noWord: string) => string
   changedBadge: string
@@ -54,7 +58,7 @@ export type DeepReportCopy = {
 
 const COPY: Record<LeagueLocale, DeepReportCopy> = {
   en: {
-    steps: { research: 'Finding sources', opening: 'Making the case', rebuttal: '1:1 rebuttals', counter: 'Counter-replies', chair: 'Chair’s summary' },
+    steps: { research: 'Finding sources', opening: 'Making the case', rebuttal: '1:1 rebuttals', counter: 'Counter-replies', revote: 'Blind re-vote', chair: 'Chair’s summary' },
     sourcesFound: (n) => `${n} sources found`,
     debatersDone: (n, total) => `${n} of ${total} debaters done`,
     verdictHeading: 'Verdict',
@@ -63,7 +67,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `Same call as the 40-AI result (${side} ${pct}%), held less strongly`,
       opposite: (side, pct) => `Opposite of the 40-AI result (${side} ${pct}%)`,
     },
-    voteHeading: 'Final vote',
+    voteHeading: 'Final vote (blind re-vote)',
+    stanceHeading: 'Positions during the debate',
+    revoteDiffers: 'Differs from the assigned side',
     tally: (total, count, side) => `${count} of ${total} say ${side}`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total} debaters split: ${yes} ${yesWord}, ${no} ${noWord}`,
     changedBadge: 'Changed its mind after the debate',
@@ -104,7 +110,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'waiting',
   },
   ko: {
-    steps: { research: '자료 찾는 중', opening: '찬반 주장', rebuttal: '1:1 반박', counter: '재반박', chair: '의장 정리' },
+    steps: { research: '자료 찾는 중', opening: '찬반 주장', rebuttal: '1:1 반박', counter: '재반박', revote: '편 떼고 재투표', chair: '의장 정리' },
     sourcesFound: (n) => `출처 ${n}건 확보`,
     debatersDone: (n, total) => `토론자 ${total}명 중 ${n}명 완료`,
     verdictHeading: '결론',
@@ -113,7 +119,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `40개 AI 결과(${side} ${pct}%)와 같은 방향, 더 약하게`,
       opposite: (side, pct) => `40개 AI 결과(${side} ${pct}%)와 반대`,
     },
-    voteHeading: '최종 투표',
+    voteHeading: '최종 투표 (편 떼고 재투표)',
+    stanceHeading: '토론 중 입장',
+    revoteDiffers: '배정된 편과 다름',
     tally: (total, count, side) => `${total}명 중 ${count}명 ${side}`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total}명이 갈림: ${yesWord} ${yes}명, ${noWord} ${no}명`,
     changedBadge: '토론 후 생각을 바꾼 AI',
@@ -154,7 +162,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: '대기 중',
   },
   ja: {
-    steps: { research: '資料を探しています', opening: '賛否の主張', rebuttal: '1対1の反論', counter: '再反論', chair: '議長のまとめ' },
+    steps: { research: '資料を探しています', opening: '賛否の主張', rebuttal: '1対1の反論', counter: '再反論', revote: '再投票', chair: '議長のまとめ' },
     sourcesFound: (n) => `出典 ${n}件`,
     debatersDone: (n, total) => `討論者 ${total}人中 ${n}人 完了`,
     verdictHeading: '結論',
@@ -163,7 +171,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `40AIの結果（${side} ${pct}%）と同じ方向、より弱く`,
       opposite: (side, pct) => `40AIの結果（${side} ${pct}%）と逆`,
     },
-    voteHeading: '最終投票',
+    voteHeading: '最終投票（割り当てを外した再投票）',
+    stanceHeading: '討論中の立場',
+    revoteDiffers: '割り当てと違う',
     tally: (total, count, side) => `${total}人中 ${count}人が「${side}」`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total}人で割れた：「${yesWord}」${yes}人、「${noWord}」${no}人`,
     changedBadge: '討論後に考えを変えたAI',
@@ -204,7 +214,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: '待機中',
   },
   'zh-TW': {
-    steps: { research: '正在找資料', opening: '正反主張', rebuttal: '一對一反駁', counter: '再反駁', chair: '主席總結' },
+    steps: { research: '正在找資料', opening: '正反主張', rebuttal: '一對一反駁', counter: '再反駁', revote: '再投票', chair: '主席總結' },
     sourcesFound: (n) => `已找到 ${n} 個來源`,
     debatersDone: (n, total) => `${total} 位辯手中 ${n} 位完成`,
     verdictHeading: '結論',
@@ -213,7 +223,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `與40個AI結果（${side} ${pct}%）同方向，較弱`,
       opposite: (side, pct) => `與40個AI結果（${side} ${pct}%）相反`,
     },
-    voteHeading: '最終投票',
+    voteHeading: '最終投票（卸下立場再投）',
+    stanceHeading: '討論中的立場',
+    revoteDiffers: '與指定立場不同',
     tally: (total, count, side) => `${total} 位中 ${count} 位「${side}」`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total} 位意見分歧：「${yesWord}」${yes} 位、「${noWord}」${no} 位`,
     changedBadge: '辯論後改變想法的AI',
@@ -254,7 +266,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: '等待中',
   },
   fr: {
-    steps: { research: 'Recherche de sources', opening: 'Arguments pour et contre', rebuttal: 'Réfutations en duel', counter: 'Contre-répliques', chair: 'Synthèse du président' },
+    steps: { research: 'Recherche de sources', opening: 'Arguments pour et contre', rebuttal: 'Réfutations en duel', counter: 'Contre-répliques', revote: 'Second vote', chair: 'Synthèse du président' },
     sourcesFound: (n) => `${n} sources trouvées`,
     debatersDone: (n, total) => `${n} débatteurs sur ${total} ont terminé`,
     verdictHeading: 'Verdict',
@@ -263,7 +275,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `Même sens que le résultat des 40 IA (${side} ${pct} %), moins affirmé`,
       opposite: (side, pct) => `À l’opposé du résultat des 40 IA (${side} ${pct} %)`,
     },
-    voteHeading: 'Vote final',
+    voteHeading: 'Vote final (second vote à l’aveugle)',
+    stanceHeading: 'Positions pendant le débat',
+    revoteDiffers: 'Diffère du côté assigné',
     tally: (total, count, side) => `${count} sur ${total} : ${side}`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total} débatteurs partagés : ${yes} ${yesWord}, ${no} ${noWord}`,
     changedBadge: 'A changé d’avis après le débat',
@@ -304,7 +318,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'en attente',
   },
   es: {
-    steps: { research: 'Buscando fuentes', opening: 'Argumentos a favor y en contra', rebuttal: 'Réplicas 1 a 1', counter: 'Contrarréplicas', chair: 'Resumen del presidente' },
+    steps: { research: 'Buscando fuentes', opening: 'Argumentos a favor y en contra', rebuttal: 'Réplicas 1 a 1', counter: 'Contrarréplicas', revote: 'Nueva votación', chair: 'Resumen del presidente' },
     sourcesFound: (n) => `${n} fuentes encontradas`,
     debatersDone: (n, total) => `${n} de ${total} debatientes listos`,
     verdictHeading: 'Veredicto',
@@ -313,7 +327,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `Mismo sentido que el resultado de las 40 IA (${side} ${pct}%), con menos fuerza`,
       opposite: (side, pct) => `Contrario al resultado de las 40 IA (${side} ${pct}%)`,
     },
-    voteHeading: 'Votación final',
+    voteHeading: 'Voto final (nueva votación a ciegas)',
+    stanceHeading: 'Posturas durante el debate',
+    revoteDiffers: 'Difiere del lado asignado',
     tally: (total, count, side) => `${count} de ${total}: ${side}`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total} debatientes divididos: ${yes} ${yesWord}, ${no} ${noWord}`,
     changedBadge: 'Cambió de opinión tras el debate',
@@ -354,7 +370,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'en espera',
   },
   ar: {
-    steps: { research: 'جارٍ البحث عن المصادر', opening: 'حجج مع وضد', rebuttal: 'رد 1:1', counter: 'رد على الرد', chair: 'خلاصة الرئيس' },
+    steps: { research: 'جارٍ البحث عن المصادر', opening: 'حجج مع وضد', rebuttal: 'رد 1:1', counter: 'رد على الرد', revote: 'إعادة التصويت', chair: 'خلاصة الرئيس' },
     sourcesFound: (n) => `تم العثور على ${n} مصدر`,
     debatersDone: (n, total) => `أنهى ${n} من ${total} متحاورين`,
     verdictHeading: 'الحكم',
@@ -363,7 +379,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `في نفس اتجاه نتيجة الـ40 نموذجًا (${side} ${pct}%) وبقوة أقل`,
       opposite: (side, pct) => `عكس نتيجة الـ40 نموذجًا (${side} ${pct}%)`,
     },
-    voteHeading: 'التصويت النهائي',
+    voteHeading: 'التصويت النهائي (إعادة تصويت بلا جانب)',
+    stanceHeading: 'المواقف أثناء النقاش',
+    revoteDiffers: 'يختلف عن الجانب المُسند',
     tally: (total, count, side) => `${count} من ${total}: ${side}`,
     tallyTie: (total, yes, yesWord, no, noWord) => `انقسم ${total} متحاورين: ${yes} ${yesWord}، ${no} ${noWord}`,
     changedBadge: 'غيّر رأيه بعد النقاش',
@@ -404,7 +422,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'في الانتظار',
   },
   pt: {
-    steps: { research: 'Buscando fontes', opening: 'Argumentos a favor e contra', rebuttal: 'Réplicas 1 a 1', counter: 'Contrarréplicas', chair: 'Resumo do presidente' },
+    steps: { research: 'Buscando fontes', opening: 'Argumentos a favor e contra', rebuttal: 'Réplicas 1 a 1', counter: 'Contrarréplicas', revote: 'Nova votação', chair: 'Resumo do presidente' },
     sourcesFound: (n) => `${n} fontes encontradas`,
     debatersDone: (n, total) => `${n} de ${total} debatedores concluídos`,
     verdictHeading: 'Veredito',
@@ -413,7 +431,9 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
       weaker: (side, pct) => `Mesmo sentido do resultado das 40 IAs (${side} ${pct}%), com menos força`,
       opposite: (side, pct) => `Contrário ao resultado das 40 IAs (${side} ${pct}%)`,
     },
-    voteHeading: 'Votação final',
+    voteHeading: 'Voto final (nova votação às cegas)',
+    stanceHeading: 'Posições durante o debate',
+    revoteDiffers: 'Difere do lado atribuído',
     tally: (total, count, side) => `${count} de ${total}: ${side}`,
     tallyTie: (total, yes, yesWord, no, noWord) => `${total} debatedores divididos: ${yes} ${yesWord}, ${no} ${noWord}`,
     changedBadge: 'Mudou de ideia após o debate',

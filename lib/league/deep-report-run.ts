@@ -47,6 +47,7 @@ import {
   CHAIR_SYSTEM_PROMPT,
   DEBATER_SYSTEM_PROMPT,
   RESEARCH_SYSTEM_PROMPT,
+  blindRevoteUserPrompt,
   chairUserPrompt,
   counterUserPrompt,
   openingUserPrompt,
@@ -58,6 +59,7 @@ import {
   looksTruncated,
   relationTo40,
   retryInstruction,
+  validateBlindRevote,
   validateChair,
   validateCounterReply,
   validateOpening,
@@ -170,6 +172,9 @@ export type ReportPipelineState = {
   rebuttalDraft?: ReportTurn[]
   counters?: ReportTurn[]
   counterDraft?: ReportTurn[]
+  /** Blind re-vote after the counter-replies. finalSide is the referee call. */
+  revotes?: ReportTurn[]
+  revoteDraft?: ReportTurn[]
   chair?: ReportChair
   chairAttempts?: number
   chairError?: string | null
@@ -214,8 +219,16 @@ export function upcomingReportStage(state: ReportPipelineState): string {
     openings: state.openings,
     rebuttals: state.rebuttals,
     counters: state.counters,
+    revotes: state.revotes,
   })
 }
+
+/** One line in the server log when a debater turn is still missing. */
+export function formatMissingTurnLog(runId: string | undefined, stage: string, provider: string, reason: string): string {
+  return `[league-deep] report run=${runId ?? '-'} ${stage} missing provider=${provider} reason=${reason}`
+}
+
+const TURN_ATTEMPTS = REPORT_MAX_ATTEMPTS + 1
 
 // ── Hop context ───────────────────────────────────────────────────────────────
 
@@ -558,7 +571,7 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
 
   await Promise.all(
     draft.map(async (turn, index) => {
-      if (turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !eligible(turn)) return
+      if (turn.ok || turn.attempts >= TURN_ATTEMPTS || !eligible(turn)) return
       const own = openings.find((row) => row.provider === turn.provider)
       const opponent = opponentOf(pairs, turn.provider)
       const opponentOpening = opponent ? openings.find((row) => row.provider === opponent.provider) : null
@@ -586,9 +599,12 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
               opponentOpening: opponentOpening ? openingSummary(opponentOpening, sideWords) : '(none)',
             })
       let current = draft[index]!
-      while (current.attempts < REPORT_MAX_ATTEMPTS) {
+      while (current.attempts < TURN_ATTEMPTS) {
         const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.debater, hop.remaining() - 10_000)
-        if (timeoutMs < 30_000) break
+        if (timeoutMs < 30_000) {
+          console.log(formatMissingTurnLog(hop.runId, round, current.provider, current.error ?? 'stage budget'))
+          break
+        }
         const attempt = current.attempts + 1
         const checked = await callAndValidate(
           hop,
@@ -644,6 +660,7 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
                 }
         } else {
           current = { ...current, attempts: attempt, error: checked.reason }
+          console.log(formatMissingTurnLog(hop.runId, round, current.provider, checked.reason))
         }
         draft[index] = current
         saveDraft(draft)
@@ -652,7 +669,7 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
     }),
   )
 
-  const complete = draft.every((turn) => turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !eligible(turn))
+  const complete = draft.every((turn) => turn.ok || turn.attempts >= TURN_ATTEMPTS || !eligible(turn))
   if (!complete) {
     saveDraft(draft)
     return false
@@ -680,7 +697,7 @@ async function stepCounterRound(hop: Hop): Promise<boolean> {
   await Promise.all(
     draft.map(async (turn, index) => {
       const incoming = incomingFor(turn)
-      if (turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !incoming) return
+      if (turn.ok || turn.attempts >= TURN_ATTEMPTS || !incoming) return
       const opponent = opponentOf(pairs, turn.provider)
       if (!opponent) return
       const prompt = counterUserPrompt({
@@ -696,9 +713,12 @@ async function stepCounterRound(hop: Hop): Promise<boolean> {
         rebuttal: incoming.rebuttalText ?? incoming.rebuttal[0]?.text ?? '',
       })
       let current = draft[index]!
-      while (current.attempts < REPORT_MAX_ATTEMPTS) {
+      while (current.attempts < TURN_ATTEMPTS) {
         const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.debater, hop.remaining() - 10_000)
-        if (timeoutMs < 30_000) break
+        if (timeoutMs < 30_000) {
+          console.log(formatMissingTurnLog(hop.runId, 'counter', current.provider, current.error ?? 'stage budget'))
+          break
+        }
         const attempt = current.attempts + 1
         const checked = await callAndValidate(
           hop,
@@ -732,6 +752,7 @@ async function stepCounterRound(hop: Hop): Promise<boolean> {
           }
         } else {
           current = { ...current, attempts: attempt, error: checked.reason }
+          console.log(formatMissingTurnLog(hop.runId, 'counter', current.provider, checked.reason))
         }
         draft[index] = current
         saveDraft(draft)
@@ -740,7 +761,7 @@ async function stepCounterRound(hop: Hop): Promise<boolean> {
     }),
   )
 
-  const complete = draft.every((turn) => turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !incomingFor(turn))
+  const complete = draft.every((turn) => turn.ok || turn.attempts >= TURN_ATTEMPTS || !incomingFor(turn))
   if (!complete) {
     saveDraft(draft)
     return false
@@ -748,6 +769,118 @@ async function stepCounterRound(hop: Hop): Promise<boolean> {
   hop.progress({ counters: draft, counterDraft: undefined })
   const ok = draft.filter((turn) => turn.ok).length
   console.log(`[league-deep] report run=${hop.runId} counter done ok=${ok} calls=${draft.reduce((sum, turn) => sum + turn.attempts, 0)}`)
+  return true
+}
+
+function neutralTranscript(state: ReportPipelineState): string {
+  const openings = state.openings ?? []
+  const rebuttals = state.rebuttals ?? []
+  const counters = state.counters ?? []
+  return openings
+    .map((open) => {
+      const brand = deepBrandLabel(open.provider)
+      const reb = rebuttals.find((row) => row.provider === open.provider && row.ok)
+      const reply = counters.find((row) => row.provider === open.provider && row.ok)
+      return [
+        `## ${brand}`,
+        open.ok ? `Opening: ${open.headline ?? ''}\n${pointLines(open.points)}` : 'Opening: (no reply)',
+        reb?.rebuttalText ? `Rebuttal aimed at this case: ${reb.rebuttalText}` : '',
+        reply?.reply ? `Reply: ${reply.reply}` : '',
+      ]
+        .filter(Boolean)
+        .join('\n')
+    })
+    .join('\n\n')
+}
+
+export function stanceTallyLine(openings: readonly ReportTurn[], counters: readonly ReportTurn[], rebuttals: readonly ReportTurn[]): string {
+  let yes = 0
+  let no = 0
+  for (const open of openings) {
+    const line = finalCallLine(open, counters, rebuttals)
+    if (line.startsWith('YES')) yes += 1
+    else if (line.startsWith('NO')) no += 1
+  }
+  return `During the debate: YES ${yes}, NO ${no}.`
+}
+
+export function revoteTallyLine(revotes: readonly ReportTurn[]): string {
+  const yes = revotes.filter((row) => row.ok && row.finalSide === 'yes').length
+  const no = revotes.filter((row) => row.ok && row.finalSide === 'no').length
+  return `Blind re-vote: YES ${yes}, NO ${no}.`
+}
+
+async function stepRevote(hop: Hop): Promise<boolean> {
+  const state = hop.state()
+  const evidence = evidenceBlockForPrompt(state.research?.findings ?? [])
+  const openings = state.openings ?? []
+  const draft: ReportTurn[] = [...(state.revoteDraft ?? assignDebateSides(state.roundId).map(emptyTurn))]
+  const openingOk = (turn: ReportTurn) => openings.some((row) => row.provider === turn.provider && row.ok)
+  const transcript = neutralTranscript(state)
+  const saveDraft = (turns: ReportTurn[]) => hop.progress({ revoteDraft: [...turns] })
+
+  await Promise.all(
+    draft.map(async (turn, index) => {
+      if (turn.ok || turn.attempts >= TURN_ATTEMPTS || !openingOk(turn)) return
+      const prompt = blindRevoteUserPrompt({
+        locale: state.outputLanguage,
+        proposition: state.proposition,
+        packet: state.context,
+        evidence,
+        transcript,
+      })
+      let current = draft[index]!
+      while (current.attempts < TURN_ATTEMPTS) {
+        const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.debater, hop.remaining() - 10_000)
+        if (timeoutMs < 30_000) {
+          console.log(formatMissingTurnLog(hop.runId, 'revote', current.provider, current.error ?? 'stage budget'))
+          break
+        }
+        const attempt = current.attempts + 1
+        const checked = await callAndValidate(
+          hop,
+          {
+            stage: 'revote',
+            provider: current.provider,
+            model: current.model,
+            systemPrompt: DEBATER_SYSTEM_PROMPT,
+            userPrompt: withRetry(prompt, attempt > 1 ? current.error ?? null : null),
+            maxTokens: REPORT_TOKENS.debater,
+            timeoutMs,
+            attempt,
+          },
+          (called) => validateBlindRevote(called.text, called.finishReason),
+        )
+        if (checked.ok) {
+          const v = checked.value
+          current = {
+            ...current,
+            ok: true,
+            attempts: attempt,
+            error: null,
+            finalSide: v.side,
+            finalProbability: v.probability,
+            whyChanged: v.reason,
+          }
+        } else {
+          current = { ...current, attempts: attempt, error: checked.reason }
+          console.log(formatMissingTurnLog(hop.runId, 'revote', current.provider, checked.reason))
+        }
+        draft[index] = current
+        saveDraft(draft)
+        if (current.ok) break
+      }
+    }),
+  )
+
+  const complete = draft.every((turn) => turn.ok || turn.attempts >= TURN_ATTEMPTS || !openingOk(turn))
+  if (!complete) {
+    saveDraft(draft)
+    return false
+  }
+  hop.progress({ revotes: draft, revoteDraft: undefined })
+  const ok = draft.filter((turn) => turn.ok).length
+  console.log(`[league-deep] report run=${hop.runId} revote done ok=${ok} calls=${draft.reduce((sum, turn) => sum + turn.attempts, 0)}`)
   return true
 }
 
@@ -881,6 +1014,8 @@ async function stepChair(hop: Hop): Promise<'done' | 'pending' | 'failed'> {
     fortySeatAggregate: fortySeatLine(fortySeat, sideWords),
     categoryNote: categoryDeepGuards(state.category).join('\n'),
     sideWords,
+    stanceTally: stanceTallyLine(state.openings ?? [], state.counters ?? [], state.rebuttals ?? []),
+    revoteTally: revoteTallyLine(state.revotes ?? []),
   })
   let attempts = state.chairAttempts ?? 0
   let reason = state.chairError ?? null
@@ -961,7 +1096,11 @@ export async function advanceReportState(state: ReportPipelineState, hooks: Repo
   }
   if (!hop.state().counters && rebuttalsAwaitCounter(hop.state().rebuttals)) {
     const done = await stepCounterRound(hop)
-    return finish({ done: false, stage: done ? 'chair' : 'counter', state: hop.state() })
+    return finish({ done: false, stage: done ? 'revote' : 'counter', state: hop.state() })
+  }
+  if (!hop.state().revotes) {
+    const done = await stepRevote(hop)
+    return finish({ done: false, stage: done ? 'chair' : 'revote', state: hop.state() })
   }
   const chairOutcome = await stepChair(hop)
   const next = hop.state()

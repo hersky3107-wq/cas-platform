@@ -113,11 +113,14 @@ export function DeepAnalysis({
   category,
   colorBucket,
   showAdminCost = false,
+  proposition = null,
 }: {
   roundId: string
   category: string
   colorBucket: ColorBucket
   showAdminCost?: boolean
+  /** Viewer's proposition. The stored report title can be another locale. */
+  proposition?: string | null
 }) {
   const { t, locale } = useLeagueLocale()
   const [running, setRunning] = useState<DeepKind | null>(null)
@@ -337,6 +340,7 @@ export function DeepAnalysis({
           {(receipt) => (
             <DeepProcessBody
               receipt={receipt}
+              proposition={proposition}
               snapshot={displaySnap}
               result={result}
               stage={stage}
@@ -360,6 +364,7 @@ export function DeepAnalysis({
 
 function DeepProcessBody({
   receipt,
+  proposition = null,
   snapshot,
   result,
   stage,
@@ -373,6 +378,7 @@ function DeepProcessBody({
   translating,
 }: {
   receipt: ComplianceReceipt
+  proposition?: string | null
   snapshot: DeepSnapshot | null
   result: DeepPayload | null
   stage: string | null
@@ -403,8 +409,10 @@ function DeepProcessBody({
   return (
     <div className="px-4 py-4" data-testid="deep-process">
       <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{title}</p>
-      {snap.proposition ? (
-        <p className="mt-1 text-xs leading-relaxed text-league-fg-muted">{snap.proposition}</p>
+      {proposition || snap.proposition ? (
+        <p className="mt-1 text-xs leading-relaxed text-league-fg-muted" data-testid="deep-report-proposition">
+          {proposition || snap.proposition}
+        </p>
       ) : null}
       <p className="mt-2 rounded-lg bg-amber-50 px-2.5 py-1.5 text-[11px] leading-snug text-amber-900">
         {t.hub.deepUnscoredNote}

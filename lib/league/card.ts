@@ -10,6 +10,7 @@ import { getCachedLivePrice } from './live-price-cache'
 import { buildSportsMarketView } from './sports-market'
 import { decodeSportsInstrument, subjectTeamOf } from './gateway/adapters/sports-catalog'
 import { subjectImpliedPct } from './gateway/adapters/sports-packet'
+import { impliedProbabilityPct, marketBaselinePctForCard } from './sports-market'
 import { readFixtureCache } from './sports/cache'
 import type { VerdictCrossRoundGrade } from './verdict-aggregate'
 import {
@@ -494,12 +495,29 @@ async function loadBrandTableCardView(
   })
 }
 
+async function storedSportsBaselinePct(roundId: string): Promise<number | null> {
+  const { data, error } = await supabaseAdmin
+    .from('model_predictions')
+    .select('consensus_source, consensus_implied_probability')
+    .eq('round_id', roundId)
+    .eq('model_id', 'consensus')
+    .maybeSingle()
+  if (error || !data) return null
+  const row = data as { consensus_source?: string | null; consensus_implied_probability?: number | string | null }
+  const raw = row.consensus_implied_probability == null ? null : Number(row.consensus_implied_probability)
+  return impliedProbabilityPct(row.consensus_source, raw)
+}
+
 async function loadSportsMarket(card: CardData, instrument: string) {
   const parts = decodeSportsInstrument(instrument)
-  let marketBaselinePct: number | null = null
+  const storedPct = await storedSportsBaselinePct(card.round.round_id).catch(() => null)
+  let cachePct: number | null = null
   if (parts) {
     const row = await readFixtureCache(parts.eventId)
-    marketBaselinePct = subjectImpliedPct(row?.devigged_odds ?? null, subjectTeamOf(parts))
+    cachePct = subjectImpliedPct(row?.devigged_odds ?? null, subjectTeamOf(parts))
   }
-  return buildSportsMarketView({ consensus: card.consensus, marketBaselinePct })
+  return buildSportsMarketView({
+    consensus: card.consensus,
+    marketBaselinePct: marketBaselinePctForCard(storedPct, cachePct),
+  })
 }

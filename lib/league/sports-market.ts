@@ -79,6 +79,27 @@ export function buildSportsMarketView(args: {
   }
 }
 
+const PRICED_BASELINE_SOURCES = new Set(['kalshi', 'polymarket', 'odds_api', 'api_football'])
+
+/**
+ * The market seat's stored implied probability, as a 0–100 percent.
+ * `raw` is the 0–1 fraction written by the market matcher (0.71 → 71).
+ * Search and "no market" sources do not fill the hero.
+ */
+export function impliedProbabilityPct(source: string | null | undefined, raw: number | null | undefined): number | null {
+  if (!source || !PRICED_BASELINE_SOURCES.has(source)) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n)) return null
+  const pct = n >= 0 && n <= 1 ? n * 100 : n
+  if (pct < 0 || pct > 100) return null
+  return round1(pct)
+}
+
+/** Stored seat probability wins; the fixture cache fills the gap when the seat has none. */
+export function marketBaselinePctForCard(storedPct: number | null, cachePct: number | null): number | null {
+  return storedPct ?? cachePct
+}
+
 function round1(n: number): number {
   return Math.round(n * 10) / 10
 }

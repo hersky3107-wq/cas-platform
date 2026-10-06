@@ -13,6 +13,7 @@ import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 import { divinationChartLine } from '@/lib/league/extra/divination-chart-copy'
+import { sportsMarketBaselineLine } from '@/lib/league/sports-disclosure'
 import {
   extraDescriptionPack,
   extraNoMarketLine,
@@ -84,7 +85,11 @@ export function ModelTile({
   const consensusAbstain = showsConsensusNoMarket(model.model_id, model.direction)
   const original = consensusAbstain ? null : snippetForDisplay(model.reasoning_snippet)
   const translated = consensusAbstain ? null : snippetForDisplay(translatedRationale)
-  const rationale = translated || original
+  const marketBaseline =
+    category === 'sports' && model.model_id === 'consensus' && model.probability != null && !consensusAbstain
+      ? sportsMarketBaselineLine(t.sportsMarket.marketBaselineLabel, model.probability)
+      : null
+  const rationale = marketBaseline || translated || original
   const showNoRationale = !rationale && hasCallableSide(model.direction)
   const hasReasoning = Boolean(rationale)
   const slot: SideSlot = labels

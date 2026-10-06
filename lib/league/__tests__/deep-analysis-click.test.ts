@@ -89,7 +89,7 @@ describe('DeepAnalysis click path', () => {
 
     expect(posts).toEqual([{ roundId: ROUND_ID, locale: 'ko' }])
     const steps = [...host.querySelectorAll('[data-testid="deep-stage-strip"] li')]
-    expect(steps.map((li) => li.textContent)).toEqual(['자료 찾는 중', '찬반 주장', '1:1 반박', '재반박', '의장 정리'])
+    expect(steps.map((li) => li.textContent)).toEqual(['자료 찾는 중', '찬반 주장', '1:1 반박', '재반박', '편 떼고 재투표', '의장 정리'])
     expect(steps[0]?.getAttribute('data-active')).toBe('true')
     const text = host.textContent ?? ''
     for (const internal of ['research', 'opening', 'rebuttal', 'chair', 'TECH:', 'STOCK:']) {

@@ -7,6 +7,7 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { OUTPUT_LANGUAGE_NAME } from './deep-output-language'
 import { categoryDeepGuards } from './deep-prompts'
 import type { LeagueDeepSnapshot } from './deep-types'
+import { resolveLocalizedProposition } from './proposition-i18n'
 import type { SideRoundContext } from './side-labels'
 
 /**
@@ -41,12 +42,13 @@ type DeepRoundRow = {
   resolves_at: string
   proposition_kind?: string | null
   subject_label?: string | null
+  propositions?: Record<string, string> | null
 }
 
 export async function loadRoundRow(roundId: string): Promise<DeepRoundRow | null> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, instrument, category, horizon, proposition_text, resolution_rule, resolves_at, proposition_kind, subject_label')
+    .select('id, instrument, category, horizon, proposition_text, resolution_rule, resolves_at, proposition_kind, subject_label, propositions')
     .eq('id', roundId)
     .maybeSingle()
   if (error || !data) return null
@@ -80,6 +82,15 @@ export async function buildLeagueDeepContext(
   ])
 
   const outputLanguage: LeagueLocale = locale ?? 'en'
+  const proposition = resolveLocalizedProposition(
+    {
+      proposition_text: round.proposition_text,
+      category: round.category,
+      instrument: round.instrument,
+      propositions: round.propositions ?? null,
+    },
+    outputLanguage,
+  )
   const language = OUTPUT_LANGUAGE_NAME[outputLanguage]
   const question = [
     `Write in ${language}.`,
@@ -87,7 +98,7 @@ export async function buildLeagueDeepContext(
     'Grammatical subject = the analysis / the models. Never instruct the reader to buy, sell, or place a bet.',
     ...categoryDeepGuards(round.category),
     '',
-    `Proposition: ${round.proposition_text}`,
+    `Proposition: ${proposition}`,
   ].join('\n')
 
   const priceBlock = packet.available ? formatDataPacketForPrompt(packet) : `Price packet unavailable${packet.error ? `: ${packet.error}` : ''}.`
@@ -108,7 +119,7 @@ export async function buildLeagueDeepContext(
   const snapshot: LeagueDeepSnapshot = {
     ok: packet.available || research.available,
     sources: [
-      { id: 'proposition', label: 'League proposition', ok: true, text: round.proposition_text },
+      { id: 'proposition', label: 'League proposition', ok: true, text: proposition },
       { id: 'price', label: 'Market packet', ok: !!packet.available, text: priceBlock },
       { id: 'research', label: 'Research packet', ok: research.available, text: researchBlock },
     ],
@@ -119,7 +130,7 @@ export async function buildLeagueDeepContext(
     instrument: round.instrument,
     category: round.category,
     horizon: round.horizon,
-    proposition: round.proposition_text,
+    proposition,
     resolutionRule: round.resolution_rule,
     question,
     context,

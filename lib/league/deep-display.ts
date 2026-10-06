@@ -464,6 +464,8 @@ export function mergeDeepSnapshots(
       seats: next.seats.length > 0 ? next.seats : prev.seats,
       dossier: next.dossier.length > 0 ? next.dossier : prev.dossier,
       verdict: next.verdict ?? prev.verdict,
+      vote: next.vote ?? prev.vote,
+      revote: next.revote ?? prev.revote,
       legacyText: next.legacyText ?? prev.legacyText,
     }
   }

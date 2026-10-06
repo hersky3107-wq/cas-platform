@@ -184,7 +184,7 @@ export function emptyReportStageCosts(): ReportStageCosts {
 
 export function reportCostBucket(stage: string): keyof ReportStageCosts | null {
   if (stage === 'research') return 'research'
-  if (stage === 'opening' || stage === 'rebuttal' || stage === 'counter') return 'debate'
+  if (stage === 'opening' || stage === 'rebuttal' || stage === 'counter' || stage === 'revote') return 'debate'
   if (stage === 'chair') return 'chair'
   return null
 }
@@ -223,11 +223,13 @@ export function reportStageFor(state: {
   openings?: unknown
   rebuttals?: unknown
   counters?: unknown
+  revotes?: unknown
   chairReport?: unknown
-}): 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair' {
+}): 'research' | 'opening' | 'rebuttal' | 'counter' | 'revote' | 'chair' {
   if (!state.research) return 'research'
   if (!state.openings) return 'opening'
   if (!state.rebuttals) return 'rebuttal'
   if (!state.counters && rebuttalsAwaitCounter(state.rebuttals)) return 'counter'
+  if (!state.revotes) return 'revote'
   return 'chair'
 }

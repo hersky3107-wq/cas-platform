@@ -10,7 +10,7 @@ import type {
 import { deepReportCopy, type DeepReportCopy, type DeepReportStep } from '@/lib/league/i18n/deep-report-copy'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
-export const DEEP_REPORT_STEPS: readonly DeepReportStep[] = ['research', 'opening', 'rebuttal', 'counter', 'chair']
+export const DEEP_REPORT_STEPS: readonly DeepReportStep[] = ['research', 'opening', 'rebuttal', 'counter', 'revote', 'chair']
 
 /** Server stage ids → the 4 plain-language steps. */
 export function reportStepIndex(stage: string | null): number {
@@ -49,6 +49,7 @@ export function DeepReportProgress({
     if (step === 'opening') return copy.debatersDone(snap.progress.openingsDone, snap.progress.debaters)
     if (step === 'rebuttal') return copy.debatersDone(snap.progress.rebuttalsDone, snap.progress.debaters)
     if (step === 'counter') return copy.debatersDone(snap.progress.countersDone, snap.progress.debaters)
+    if (step === 'revote') return snap.revote ? copy.debatersDone(snap.revote.counted, snap.progress.debaters) : null
     return null
   }
   return (
@@ -91,11 +92,12 @@ export function DeepReportView({
   running?: boolean
 }) {
   const copy = deepReportCopy(locale)
-  const showVote = snap.vote && (snap.stage === 'chair' || snap.stage === 'done')
+  const showVote = snap.vote && (snap.stage === 'revote' || snap.stage === 'chair' || snap.stage === 'done')
   return (
     <div className="mt-4 flex flex-col gap-4 text-league-fg" data-testid="deep-report-process">
       {snap.verdict ? <VerdictCard snap={snap} copy={copy} /> : null}
       {showVote ? <VoteBlock snap={snap} copy={copy} /> : null}
+      {snap.revote && (snap.stage === 'chair' || snap.stage === 'done') ? <RevoteBlock snap={snap} copy={copy} /> : null}
       {snap.keyEvidence.length > 0 ? (
         <Block heading={copy.evidenceHeading} testId="deep-report-evidence">
           <ul className="space-y-2">
@@ -198,7 +200,7 @@ function VoteBlock({ snap, copy }: { snap: DeepReportSnapshot; copy: DeepReportC
     : copy.tallyTie(vote.total, vote.yes, snap.sideWords.yes, vote.no, snap.sideWords.no)
   const changed = snap.seats.filter((seat) => seat.changedMind)
   return (
-    <Block heading={copy.voteHeading} testId="deep-report-vote">
+    <Block heading={copy.stanceHeading} testId="deep-report-vote">
       <p className="text-[15px] font-bold" data-testid="deep-report-tally">
         {tallyLine}
       </p>
@@ -234,6 +236,43 @@ function VoteBlock({ snap, copy }: { snap: DeepReportSnapshot; copy: DeepReportC
           ))}
         </div>
       ) : null}
+    </Block>
+  )
+}
+
+function RevoteBlock({ snap, copy }: { snap: DeepReportSnapshot; copy: DeepReportCopy }) {
+  const vote = snap.revote!
+  const tallyLine = vote.majority
+    ? copy.tally(vote.total, vote.majorityCount, sideWord(snap, vote.majority))
+    : copy.tallyTie(vote.total, vote.yes, snap.sideWords.yes, vote.no, snap.sideWords.no)
+  const assigned = new Map(snap.seats.map((seat) => [seat.provider, seat]))
+  return (
+    <Block heading={copy.voteHeading} testId="deep-report-revote">
+      <p className="text-[15px] font-bold" data-testid="deep-report-revote-tally">
+        {tallyLine}
+      </p>
+      <ul className="mt-2 grid grid-cols-3 gap-2 sm:grid-cols-6">
+        {vote.seats.map((seat) => {
+          const brand = assigned.get(seat.provider)?.brand ?? seat.provider
+          return (
+            <li key={seat.provider} className="flex flex-col items-center gap-1 text-center" data-testid="deep-report-revoter" data-revote-flip={seat.differs ? 'true' : undefined}>
+              <span
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border-2 text-[14px] font-black ${
+                  seat.side ? SIDE_TONE[seat.side] : 'border-slate-300 bg-slate-50 text-slate-500'
+                } ${seat.differs ? 'ring-2 ring-amber-400 ring-offset-1' : ''}`}
+                aria-hidden
+              >
+                {brand.slice(0, 1)}
+              </span>
+              <span className="text-[11px] font-semibold">{brand}</span>
+              <span className="text-[11px] text-league-fg-muted">
+                {seat.side && seat.probability != null ? `${sideWord(snap, seat.side)} ${seat.probability}%` : copy.noFinal}
+              </span>
+              {seat.differs ? <span className="text-[10px] font-bold text-amber-800">{copy.revoteDiffers}</span> : null}
+            </li>
+          )
+        })}
+      </ul>
     </Block>
   )
 }

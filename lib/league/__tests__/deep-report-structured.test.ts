@@ -326,14 +326,14 @@ describe('deep report copy', () => {
   it('has the four plain-language steps and vote strings in every locale', () => {
     for (const locale of LEAGUE_LOCALES) {
       const copy = deepReportCopy(locale)
-      for (const step of ['research', 'opening', 'rebuttal', 'counter', 'chair'] as const) {
+      for (const step of ['research', 'opening', 'rebuttal', 'counter', 'revote', 'chair'] as const) {
         expect(copy.steps[step].length).toBeGreaterThan(1)
         expect(copy.steps[step]).not.toBe(step)
       }
       expect(copy.tally(6, 5, 'X')).toContain('5')
       expect(copy.changedBadge.length).toBeGreaterThan(2)
     }
-    expect(Object.values(deepReportCopy('ko').steps)).toEqual(['자료 찾는 중', '찬반 주장', '1:1 반박', '재반박', '의장 정리'])
+    expect(Object.values(deepReportCopy('ko').steps)).toEqual(['자료 찾는 중', '찬반 주장', '1:1 반박', '재반박', '편 떼고 재투표', '의장 정리'])
     expect(deepReportCopy('ko').changedBadge).toBe('토론 후 생각을 바꾼 AI')
   })
 })

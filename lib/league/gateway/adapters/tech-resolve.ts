@@ -5,6 +5,7 @@
  */
 
 import { properNameCasing, restoreAcronymCasing } from '../../acronym-casing'
+import { fixKoreanJosa, josa } from '../../korean-josa'
 import type { UiHorizon } from '../../horizon'
 import type { LeagueLocale } from '../../i18n/locales'
 import { horizonForResolveDate } from './tech-compose'
@@ -450,7 +451,9 @@ export function parseOpenTechPrompt(raw: string, now: Date = new Date()): TechPa
 
 export function formatOpenTechProposition(claim: OpenTechClaim): string {
   if (claim.korean) {
-    return `${claim.subjectLabel}, ${claim.windowStart} 이후 ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}할까?`
+    return fixKoreanJosa(
+      `${claim.subjectLabel}, ${claim.windowStart} 이후 ${claim.deadline}까지 ${claim.object}${josa(claim.object, '을/를')} ${EVENT_KO[claim.event]}할까?`,
+    )
   }
   return `Will ${claim.subjectLabel} ${EVENT_EN[claim.event]} ${claim.object} after ${claim.windowStart} and by ${claim.deadline}?`
 }
@@ -462,7 +465,7 @@ export function formatOpenTechPropositionAllLocales(claim: OpenTechClaim): Recor
   const by = claim.deadline
   return {
     en: `Will ${s} ${EVENT_EN[claim.event]} ${o} after ${open} and by ${by}?`,
-    ko: `${s}, ${open} 이후 ${by}까지 ${o}를 ${EVENT_KO[claim.event]}할까?`,
+    ko: fixKoreanJosa(`${s}, ${open} 이후 ${by}까지 ${o}${josa(o, '을/를')} ${EVENT_KO[claim.event]}할까?`),
     ja: `${s}は${open}以降${by}までに${o}を${EVENT_JA[claim.event]}するか？`,
     'zh-TW': `${s}會在${open}之後到${by}之前${EVENT_ZH[claim.event]}${o}嗎？`,
     fr: `${s} va-t-il ${EVENT_FR[claim.event]} ${o} après le ${open} et d'ici le ${by} ?`,
@@ -482,7 +485,7 @@ export function openTechResolutionRule(claim: OpenTechClaim): string {
 
 export function openTechResolutionRuleKo(claim: OpenTechClaim): string {
   return (
-    `${claim.subjectLabel}가 ${claim.windowStart} 이후 ${claim.deadline}까지 ${claim.object}를 ${EVENT_KO[claim.event]}하면 실현. ` +
+    `${claim.subjectLabel}${josa(claim.subjectLabel, '이/가')} ${claim.windowStart} 이후 ${claim.deadline}까지 ${claim.object}${josa(claim.object, '을/를')} ${EVENT_KO[claim.event]}하면 실현. ` +
     `${claim.windowStart} 이전 날짜의 사건은 세지 않는다. ` +
     `확인: ${VERIFY_EN[claim.verification]}. 주가나 AI 순위가 아니라 그 출처로만 판정.`
   )

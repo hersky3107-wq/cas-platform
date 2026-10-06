@@ -818,6 +818,13 @@ function CardsPanel({
                   category={view.card.round.category}
                   colorBucket={view.card.round.color_bucket}
                   showAdminCost={effectiveIsAdmin}
+                  proposition={rankedPropositionDisplay(
+                    view.card.round.instrument,
+                    view.card.round.proposition_text,
+                    locale,
+                    view.card.round.propositions,
+                    view.card.round.horizon,
+                  )}
                 />
               )}
             </>

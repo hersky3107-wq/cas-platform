@@ -103,7 +103,7 @@ export type DeepDebateSnapshot = {
 }
 
 export type DeepReportSide = 'yes' | 'no'
-export type DeepReportStage = 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair' | 'done'
+export type DeepReportStage = 'research' | 'opening' | 'rebuttal' | 'counter' | 'revote' | 'chair' | 'done'
 
 export type DeepReportExchange = {
   claimBrand: string
@@ -174,7 +174,18 @@ export type DeepReportSnapshot = {
   concessions: DeepReportConcession[]
   researchPath: string | null
   verdict: DeepReportVerdict | null
+  /** Positions still held when the debate ended. */
   vote: { yes: number; no: number; counted: number; total: number; majority: DeepReportSide | null; majorityCount: number } | null
+  /** Blind re-vote after every assigned side was dropped. */
+  revote: {
+    yes: number
+    no: number
+    counted: number
+    total: number
+    majority: DeepReportSide | null
+    majorityCount: number
+    seats: { provider: string; side: DeepReportSide | null; probability: number | null; reason: string | null; differs: boolean }[]
+  } | null
   seats: DeepReportSeat[]
   keyEvidence: DeepReportEvidence[]
   judgment: string[]
@@ -450,6 +461,28 @@ function reportThreads(
     .filter((row): row is DeepReportThread => row !== null)
 }
 
+function revoteOf(openings: readonly RawTurn[], revotes: readonly RawTurn[]): DeepReportSnapshot['revote'] {
+  if (revotes.length === 0) return null
+  const seats = revotes
+    .map((row) => {
+      const provider = str(row.provider) ?? ''
+      const assigned = asReportSide(openings.find((open) => str(open.provider) === provider)?.side)
+      const side = row.ok === true ? asReportSide(row.finalSide) : null
+      return {
+        provider,
+        side,
+        probability: num(row.finalProbability),
+        reason: str(row.whyChanged),
+        differs: side != null && assigned != null && side !== assigned,
+      }
+    })
+    .filter((row) => row.provider.length > 0)
+  const yes = seats.filter((seat) => seat.side === 'yes').length
+  const no = seats.filter((seat) => seat.side === 'no').length
+  const majority: DeepReportSide | null = yes === no ? null : yes > no ? 'yes' : 'no'
+  return { yes, no, counted: yes + no, total: seats.length, majority, majorityCount: Math.max(yes, no), seats }
+}
+
 function reportStage(state: Record<string, unknown>): DeepReportStage {
   const result = state.result as { ok?: unknown } | null | undefined
   if (result?.ok === true) return 'done'
@@ -457,6 +490,7 @@ function reportStage(state: Record<string, unknown>): DeepReportStage {
   if (!state.openings) return 'opening'
   if (!state.rebuttals) return 'rebuttal'
   if (!state.counters && rebuttalsAwaitCounter(state.rebuttals)) return 'counter'
+  if (!state.revotes) return 'revote'
   return 'chair'
 }
 
@@ -606,6 +640,7 @@ function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot
     researchPath: str(research?.path) ?? str(pending?.path),
     verdict,
     vote: tally.counted > 0 ? { yes: tally.yes, no: tally.no, counted: tally.counted, total: tally.total, majority: tally.majority, majorityCount: tally.majorityCount } : null,
+    revote: revoteOf(openings, turnRows(state.revotes)),
     seats,
     keyEvidence,
     judgment: proseList(chair?.debateJudgment).slice(0, 3),
@@ -641,6 +676,7 @@ export function emptyReportSnapshot(): DeepReportSnapshot {
     researchPath: null,
     verdict: null,
     vote: null,
+    revote: null,
     seats: [],
     keyEvidence: [],
     judgment: [],

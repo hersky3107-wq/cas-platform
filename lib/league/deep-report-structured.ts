@@ -337,6 +337,19 @@ export function validateCounterReply(
   }
 }
 
+export type BlindRevote = { side: DebateSide; probability: number; reason: string }
+
+/** Referee call after the assigned side is dropped. */
+export function validateBlindRevote(text: string | null | undefined, finishReason?: string | null): Validation<BlindRevote> {
+  const obj = parseOrReason(text, finishReason)
+  if (typeof obj === 'string') return { ok: false, reason: obj }
+  const call = normalizeFinalCall(obj.side, obj.probability)
+  const reason = short(obj.one_line_reason ?? obj.reason, REPORT_TEXT_LIMITS.oneLine)
+  if (!call) return { ok: false, reason: 'missing side/probability' }
+  if (!reason) return { ok: false, reason: 'missing reason' }
+  return { ok: true, value: { side: call.side, probability: call.probability, reason } }
+}
+
 export function validateRebuttal(text: string | null | undefined, finishReason?: string | null): Validation<DebaterRebuttal> {
   const obj = parseOrReason(text, finishReason)
   if (typeof obj === 'string') return { ok: false, reason: obj }

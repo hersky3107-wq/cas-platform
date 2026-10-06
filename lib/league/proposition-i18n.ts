@@ -10,6 +10,7 @@ import {
   airankAllPropositions,
 } from './ai-ranking/instrument'
 import { restoreTechOpenCasing } from './acronym-casing'
+import { fixKoreanJosa } from './korean-josa'
 import type { LeagueLocale } from './i18n/locales'
 import { sportsPropositionDisplay } from './sports-display'
 
@@ -47,7 +48,7 @@ export function resolveLocalizedProposition(
     if (shown.trim()) return shown
   }
 
-  return restoreTechOpenCasing(round.instrument, storedProposition(round, locale))
+  return fixKoreanJosa(restoreTechOpenCasing(round.instrument, storedProposition(round, locale)))
 }
 
 function storedProposition(round: LocalizedPropositionTarget, locale: LeagueLocale): string {

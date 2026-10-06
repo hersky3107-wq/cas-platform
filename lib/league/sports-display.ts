@@ -18,6 +18,8 @@ import {
 import { displayDomesticTeam } from './sports/domestic-baseball'
 import { isDomesticBaseballLeague } from './sports/types'
 import { FOOTBALL_LEAGUE_LABEL_KO } from './sports/api-football-leagues'
+import { CLUB_ALIAS, clubDisplayName } from './sports/club-names'
+import { fixKoreanJosa, josa } from './korean-josa'
 import type { SportsLeagueKey } from './sports/types'
 
 type TeamKo = { short: string; full: string }
@@ -126,6 +128,8 @@ const TEAM_ALIAS: Record<string, string> = {
   'Daejeon Hana': 'Daejeon Hana Citizen',
   'Jeju SK': 'Jeju United',
   'Gimcheon Sangmu FC': 'Gimcheon Sangmu',
+  Leeds: 'Leeds United',
+  Wolves: 'Wolverhampton Wanderers',
   'Bayern München': 'Bayern Munich',
   'Bayern Munchen': 'Bayern Munich',
   'Paris Saint-Germain': 'Paris Saint Germain',
@@ -174,7 +178,7 @@ const LEAGUE_KO: Record<SportsLeagueKey, string> = {
 }
 
 function canonicalTeam(name: string): string {
-  return TEAM_ALIAS[name] ?? name
+  return TEAM_ALIAS[name] ?? CLUB_ALIAS[name] ?? name
 }
 
 function lookupKo(name: string): TeamKo | null {
@@ -190,11 +194,12 @@ export function displaySportsTeam(
   const key = canonicalTeam(name)
   const domestic = displayDomesticTeam(key, locale) ?? displayDomesticTeam(name, locale)
   if (domestic && (locale === 'ko' || locale === 'ja' || locale === 'zh-TW')) return domestic
-  if (locale === 'ja') return TEAM_JA[key] ?? TEAM_JA[name] ?? name
+  if (locale === 'ja') return TEAM_JA[key] ?? TEAM_JA[name] ?? clubDisplayName(name, 'ja') ?? name
+  if (locale === 'zh-TW') return clubDisplayName(name, 'zh-TW') ?? name
   if (locale !== 'ko') return name
   const row = lookupKo(name)
-  if (!row) return name
-  return form === 'full' ? row.full : row.short
+  if (row) return form === 'full' ? row.full : row.short
+  return clubDisplayName(name, 'ko') ?? name
 }
 
 /** Football and NFL can finish level. NHL's official result includes OT/SO. */
@@ -268,13 +273,16 @@ export function formatSportsPropositionLocalized(parts: SportsInstrumentParts, l
   const nfl = isNflLeague(parts.league)
   const nhl = isNhlLeague(parts.league)
   if (locale === 'ko') {
-    if (soccer) return `${subject}가 ${opponent}와의 ${competition} 경기에서 정규시간(90분+추가시간, 무승부는 패)에 이길까?`
-    if (nfl) return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 무승부는 패.`
-    if (nhl) return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장·승부치기 포함 최종 결과.`
+    const subjectJ = josa(subject, '이/가')
+    const opponentJ = josa(opponent, '와/과')
+    const matchup = `${subject}${subjectJ} ${opponent}${opponentJ}의 ${competition} 경기에서`
+    if (soccer) return fixKoreanJosa(`${matchup} 정규시간(90분+추가시간, 무승부는 패)에 이길까?`)
+    if (nfl) return fixKoreanJosa(`${matchup} 이길까? 무승부는 패.`)
+    if (nhl) return fixKoreanJosa(`${matchup} 이길까? 연장·승부치기 포함 최종 결과.`)
     if (isDomesticBaseballLeague(parts.league)) {
-      return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까? 연장 포함 최종 결과. 무승부는 패.`
+      return fixKoreanJosa(`${matchup} 이길까? 연장 포함 최종 결과. 무승부는 패.`)
     }
-    return `${subject}가 ${opponent}와의 ${competition} 경기에서 이길까?`
+    return fixKoreanJosa(`${matchup} 이길까?`)
   }
   if (locale === 'ja') {
     if (soccer) return `${subject}は${opponent}との${competition}の試合で、通常時間（90分＋アディショナル、引き分けは否）に勝つか？`
@@ -334,6 +342,6 @@ export function sportsAllPropositions(parts: SportsInstrumentParts): Record<Leag
 /** Card / locked-panel proposition. Falls back to the stored English text. */
 export function sportsPropositionDisplay(instrument: string, stored: string, locale: LeagueLocale): string {
   const parts = decodeSportsInstrument(instrument)
-  if (!parts) return stored
+  if (!parts) return /[가-힣]/.test(stored) ? fixKoreanJosa(stored) : stored
   return formatSportsPropositionLocalized(parts, locale)
 }

@@ -79,6 +79,29 @@ const BOOKMAKER_RE = bookmakerPattern()
 
 const ODDS_CTX = String.raw`(?:odds|line|moneyline|price|배당|오즈)`
 
+/**
+ * A sentence that is about a book, a price, or an implied win rate is removed
+ * whole. Stripping the words out of the middle leaves a broken sentence.
+ */
+const BANNED_SENTENCE =
+  /북\s*메이커|bookmakers?|sportsbooks?|배당|오즈|\bodds\b|moneyline|betting[-\s]?line|implied\s+probabilit|내재\s*승률|내재\s*확률|탑독|point\s*spread/i
+
+function sentencesOf(text: string): string[] {
+  return text
+    .split(/\n+|(?<=[.!?。])\s+|(?<=[;；])\s*/)
+    .map((part) => part.trim())
+    .filter(Boolean)
+}
+
+function scrubSentence(sentence: string): string | null {
+  if (BANNED_SENTENCE.test(sentence)) return null
+  let out = sentence
+  for (const [re, rep] of RULES) out = out.replace(re, rep)
+  out = out.replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s*\)/g, '').trim()
+  if (!out || /^[\s,.;:()\-~/]+$/.test(out) || BANNED_SENTENCE.test(out)) return null
+  return out
+}
+
 const RULES: Array<[RegExp, string]> = [
   [BOOKMAKER_RE, ''],
   // Decimal odds: @2.10, @1.85
@@ -96,10 +119,13 @@ const RULES: Array<[RegExp, string]> = [
 
 export function scrubSportsDisclosure(text: string | null | undefined): string | null {
   if (typeof text !== 'string') return null
-  let out = text
-  for (const [re, rep] of RULES) out = out.replace(re, rep)
-  out = out.replace(/[ \t]{2,}/g, ' ').replace(/\s+([,.;:)])/g, '$1').replace(/\(\s*\)/g, '').trim()
-  return out || null
+  const kept = sentencesOf(text).map(scrubSentence).filter((part): part is string => Boolean(part))
+  return kept.join(' ').trim() || null
+}
+
+/** The only line the market-baseline seat may show on a sports card. */
+export function sportsMarketBaselineLine(label: string, pct: number): string {
+  return `${label} ${Math.round(pct)}%`
 }
 
 /** Apply the sports scrub when the round category is sports; otherwise pass through. */

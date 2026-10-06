@@ -180,6 +180,38 @@ export function counterUserPrompt(input: {
   ].join('\n')
 }
 
+/**
+ * After the counter-replies. The model is not told which side it was assigned.
+ * The transcript passed in must also omit that assignment.
+ */
+export function blindRevoteUserPrompt(input: {
+  locale: LeagueLocale
+  proposition: string
+  packet: string
+  evidence: string
+  transcript: string
+}): string {
+  return [
+    languageLockLine(input.locale),
+    'You are a neutral referee. Drop every earlier side and judge the proposition only from the transcript and the dossier.',
+    'Do not defend a position from the debate. Return the side you now believe, with the chance that side is right.',
+    'Return ONLY this JSON:',
+    '{"side":"yes|no","probability":50-100,"one_line_reason":"<one sentence>"}',
+    '',
+    '[Proposition]',
+    input.proposition,
+    '',
+    '[Dossier]',
+    input.evidence,
+    '',
+    '[Closed-book packet]',
+    input.packet,
+    '',
+    '[Full transcript]',
+    input.transcript,
+  ].join('\n')
+}
+
 export function chairUserPrompt(input: {
   locale: LeagueLocale
   proposition: string
@@ -189,6 +221,10 @@ export function chairUserPrompt(input: {
   fortySeatAggregate: string
   categoryNote: string
   sideWords: SideWords
+  /** Positions still held at the end of the debate, before the blind re-vote. */
+  stanceTally?: string
+  /** The blind re-vote, taken after every side assignment was dropped. */
+  revoteTally?: string
 }): string {
   return [
     languageLockLine(input.locale),
@@ -229,5 +265,11 @@ export function chairUserPrompt(input: {
     '',
     '[40-seat aggregate and distribution]',
     input.fortySeatAggregate,
+    '',
+    '[Positions during the debate]',
+    input.stanceTally ?? '(none)',
+    '',
+    '[Blind re-vote]',
+    input.revoteTally ?? '(none)',
   ].join('\n')
 }

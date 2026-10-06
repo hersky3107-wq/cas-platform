@@ -16,6 +16,7 @@ import { krStockPropositionDisplay, parseKrStockProposition } from './korea-stoc
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 import { publicFacingLabel } from './public-label'
 import { restoreTechOpenCasing } from './acronym-casing'
+import { fixKoreanJosa } from './korean-josa'
 import {
   decodeAirankInstrument,
   isAirankInstrument,
@@ -238,12 +239,14 @@ export function rankedPropositionDisplay(
     const parts = decodeAirankInstrument(instrument)
     if (parts) return airankDisplayProposition(parts, locale, horizon)
   }
-  if (propositions && typeof propositions === 'object') {
-    const own = propositions[locale]?.trim() || propositions.en?.trim() || propositions.ko?.trim()
-    if (own) return restoreTechOpenCasing(instrument, publicFacingLabel(own, stored))
-  }
+  // Sports names and particles are rebuilt from the instrument. A stored
+  // propositions row can still say "Leeds" or carry the wrong 조사.
   if (decodeSportsInstrument(instrument)) {
     return publicFacingLabel(sportsPropositionDisplay(instrument, stored, locale), stored)
+  }
+  if (propositions && typeof propositions === 'object') {
+    const own = propositions[locale]?.trim() || propositions.en?.trim() || propositions.ko?.trim()
+    if (own) return fixKoreanJosa(restoreTechOpenCasing(instrument, publicFacingLabel(own, stored)))
   }
   if (decodePoliticsInstrument(instrument)) {
     return publicFacingLabel(politicsPropositionDisplay(instrument, stored, locale), stored)
@@ -257,7 +260,7 @@ export function rankedPropositionDisplay(
   if (decodeKrStockInstrument(instrument)) {
     return publicFacingLabel(krStockPropositionDisplay(instrument, stored, locale), stored)
   }
-  return restoreTechOpenCasing(instrument, publicFacingLabel(stored, ''))
+  return fixKoreanJosa(restoreTechOpenCasing(instrument, publicFacingLabel(stored, '')))
 }
 
 export function headerHeadline(args: {

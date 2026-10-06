@@ -397,6 +397,37 @@ function normalizeSideFields(
   return { ...base, ...readStrongestCounter(obj) }
 }
 
+function lastGroup(text: string, pattern: RegExp): string | undefined {
+  const re = new RegExp(pattern.source, pattern.flags.includes('g') ? pattern.flags : `${pattern.flags}g`)
+  let found: string | undefined
+  let match: RegExpExecArray | null
+  while ((match = re.exec(text))) found = match[1]
+  return found
+}
+
+/** A side answer whose JSON never closed, or that nemotron wrote as key: value lines. The last copy wins. */
+function looseSideObject(text: string): Record<string, unknown> | null {
+  const side =
+    lastGroup(text, /"(?:side|answer|verdict)"\s*:\s*"(yes|no)"/i) ??
+    lastGroup(text, /\b(?:side|answer|verdict)\s*[:=]\s*"?(yes|no)\b/i)
+  if (!side) return null
+  const probability =
+    lastGroup(text, /"(?:probability|confidence)"\s*:\s*(\d{1,3})/i) ??
+    lastGroup(text, /\b(?:probability|confidence)\s*[:=]\s*(\d{1,3})/i)
+  const qualifier =
+    lastGroup(text, /"(?:qualifier|scoreline|score)"\s*:\s*"([^"\n]+)/i) ??
+    lastGroup(text, /\b(?:qualifier|scoreline|score)\s*[:=]\s*"?([^"\n,}]+)/i)
+  const rationale = lastGroup(text, /"(?:rationale|reason)"\s*:\s*"([^"\n]+)/i)
+  const counter = lastGroup(text, /"strongest_counter"\s*:\s*"([^"\n]+)/i)
+  return {
+    side: side.toLowerCase(),
+    ...(probability ? { probability: Number(probability) } : {}),
+    ...(qualifier ? { qualifier: qualifier.trim() } : {}),
+    ...(rationale ? { rationale: rationale.trim() } : {}),
+    ...(counter ? { strongest_counter: counter.trim() } : {}),
+  }
+}
+
 function parseSideAnswer(
   text: string | null,
   sides: readonly [AnswerSide, AnswerSide],
@@ -414,6 +445,11 @@ function parseSideAnswer(
     return parsed
   }
 
+  // Truncated nemotron JSON sits after a thought marker. Read that answer
+  // before treating the marker itself as a leak.
+  const loose = looseSideObject(stripped)
+  if (loose) return normalizeSideFields(loose, sides, qualifierKey, qualifierShape)
+
   if (hasReasoningTrace(text) || hasReasoningTrace(stripped)) {
     return {
       side: null,
@@ -426,6 +462,7 @@ function parseSideAnswer(
       parseFailure: 'reasoning_leak',
     }
   }
+
   if (stripped.length > RATIONALE_SNIPPET_MAX_CHARS) {
     return {
       side: null,

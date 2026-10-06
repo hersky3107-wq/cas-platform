@@ -226,6 +226,7 @@ describe('deep report debate and chair hops', () => {
         { provider: 'openai', model: 'gpt-5.6-terra', side: 'yes', ok: true, attempts: 1, headline: 'h2', points: [], rebuttal: [{ text: 'r', ref: null }], finalSide: 'no', finalProbability: 76, whyChanged: 'w' },
       ],
       fortySeat: { side: 'no', confidence: 70, yes: 10, no: 30, noAnswer: 0, total: 40 },
+      revotes: [],
     }
     mocks.callLeagueDeepModel
       .mockResolvedValueOnce(reply(JSON.stringify({ ...JSON.parse(CHAIR_JSON), flip_triggers: [] })))

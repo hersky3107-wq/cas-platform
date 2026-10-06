@@ -592,9 +592,10 @@ function isHttp429(message: string | undefined): boolean {
 }
 
 /** Server log only. The public tile never receives this snippet or a fail_reason code. */
-export function logUnparseableRaw(modelId: string, text: string | null | undefined): void {
+/** Server log only. Never persisted: fail_reason stays a machine code, and the public tile does not receive this snippet. */
+export function logUnparseableRaw(modelId: string, text: string | null | undefined, roundId?: string): void {
   const raw = (text ?? '').replace(/\s+/g, ' ').slice(0, 300)
-  console.log(`[league-generate] unparseable model=${modelId} raw=${raw}`)
+  console.log(`[league-generate] unparseable model=${modelId}${roundId ? ` round=${roundId}` : ''} raw=${raw}`)
 }
 
 /** One provider call. With a gate, the permit covers only this attempt. */
@@ -929,7 +930,7 @@ async function runOneModel(
             ? answer.parseFailure
             : 'unparseable',
       })
-      logUnparseableRaw(entry.model_id, raw.text)
+      logUnparseableRaw(entry.model_id, raw.text, roundId)
       await upsertNullPrediction(roundId, entry, failReason, lensId)
       logNoAnswer(roundId, entry, failReason)
       return {
