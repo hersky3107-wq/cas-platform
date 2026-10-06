@@ -15,6 +15,7 @@
  */
 
 import type { GradingState } from '../prediction/grading-state'
+import type { DivinationChart } from './extra/divination-chart-types'
 import type { VerdictPayload } from './verdict-aggregate'
 
 export type { GradingState }
@@ -96,6 +97,8 @@ export type CardModelPrediction = {
   reasoning_snippet: string | null
   /** Assigned analysis lens id. Null on extras and on rows written before lenses. */
   analysisLens?: string | null
+  /** Divination seat only: 사주 / 구성기학 chart behind the tile's small line. */
+  divinationChart?: DivinationChart | null
   /** null = round not yet resolved / this row not yet graded. */
   is_correct: boolean | null
   cost_usd: number | null

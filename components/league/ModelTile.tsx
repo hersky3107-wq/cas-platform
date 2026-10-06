@@ -12,6 +12,7 @@ import { visibleLeagueText } from '@/lib/league/visible-disclosure'
 import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
+import { divinationChartLine } from '@/lib/league/extra/divination-chart-copy'
 import { isExtraSeatId } from '@/lib/league/extra/seats'
 import { lensDisplayLabel } from '@/lib/league/analysis-lenses'
 import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
@@ -99,6 +100,7 @@ export function ModelTile({
     isDivination && model.direction
       ? divinationConfidenceLabel(model.probability ?? model.qualifierText, t)
       : null
+  const divinationChartText = isDivination ? divinationChartLine(locale, model.divinationChart) : null
   const pct =
     !isDivination && model.direction && model.probability !== null
       ? `${Math.round(model.probability)}%`
@@ -241,6 +243,11 @@ export function ModelTile({
           {model.model_identifier}
         </p>
         <CountryFlag brand={model.brand} camp={model.camp} />
+        {divinationChartText ? (
+          <p className="text-[10px] font-semibold text-league-fg-muted" data-testid="divination-chart-line">
+            {divinationChartText}
+          </p>
+        ) : null}
 
         {consensusAbstain ? (
           <p className="text-[11px] font-semibold text-league-fg-muted" data-testid="consensus-no-market">

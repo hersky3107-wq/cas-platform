@@ -61,6 +61,8 @@ const PREDICTION_COLUMNS_NO_LENS =
 const PREDICTION_COLUMNS_ADMIN_NO_LENS =
   'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, predicted_qualifier_text, reasoning_snippet, is_correct, cost_usd, predicted_at, fail_reason'
 
+const DIVINATION_CHART_COLUMN = ', divination_chart'
+
 /** Pre-20260829000002 environments lack `predicted_qualifier_text`; retried without it (see `loadPredictions`). */
 const PREDICTION_COLUMNS_LEGACY =
   'id, model_id, brand, camp, league_tier, predicted_direction, predicted_value, predicted_magnitude_pct, reasoning_snippet, is_correct, cost_usd, predicted_at'
@@ -263,11 +265,20 @@ async function loadOperatorEvidence(
 
 async function loadPredictions(roundId: string, includeFailReasons = false): Promise<PredictionRow[]> {
   const primary = includeFailReasons ? PREDICTION_COLUMNS_ADMIN : PREDICTION_COLUMNS
-  const first = await supabaseAdmin
+  const withChart = await supabaseAdmin
     .from('model_predictions')
-    .select(primary)
+    .select(`${primary}${DIVINATION_CHART_COLUMN}`)
     .eq('round_id', roundId)
     .order('predicted_at', { ascending: true })
+  if (!withChart.error) return (withChart.data ?? []) as unknown as PredictionRow[]
+  // Pre-20261006000010 environments lack `divination_chart`; the tile just omits its line.
+  const first = /divination_chart/i.test(withChart.error.message)
+    ? await supabaseAdmin
+        .from('model_predictions')
+        .select(primary)
+        .eq('round_id', roundId)
+        .order('predicted_at', { ascending: true })
+    : withChart
   if (!first.error) return (first.data ?? []) as unknown as PredictionRow[]
   if (/analysis_lens/i.test(first.error.message)) {
     const stripped = includeFailReasons ? PREDICTION_COLUMNS_ADMIN_NO_LENS : PREDICTION_COLUMNS_NO_LENS

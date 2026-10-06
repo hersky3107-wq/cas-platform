@@ -21,6 +21,7 @@ import { sidePairOf, tallySlotOfToken, toSideToken, hasCallableSide, type SideRo
 import type { AnswerSide } from './answer-contract'
 import { gradingStateOf, type GradingState } from '../prediction/grading-state'
 import { isExtraSeat, officialRowsForConsensus } from './extra/seats'
+import { parseDivinationChart } from './extra/divination-chart-types'
 import { droppedRosterModelIds } from './generation-progress'
 import { lookupRosterDisplay, lookupRosterEntry, LEAGUE_ROSTER } from './roster'
 import { coerceStoredRationaleSnippet, extractAnswerJsonSupplement } from './prediction-parse'
@@ -103,6 +104,7 @@ export type PredictionRow = {
   predicted_qualifier_text?: string | null
   reasoning_snippet: string | null
   analysis_lens?: string | null
+  divination_chart?: unknown
   is_correct: boolean | null
   cost_usd: number | null
   predicted_at: string
@@ -323,6 +325,7 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
   if (probability == null && supplement?.probability != null) probability = supplement.probability
   let magnitude = row.predicted_magnitude_pct ?? null
   if (magnitude == null && supplement?.magnitude != null) magnitude = supplement.magnitude
+  const divinationChart = row.model_id === 'divination' ? parseDivinationChart(row.divination_chart) : null
   return {
     prediction_id: row.id ?? null,
     model_id: row.model_id,
@@ -338,6 +341,7 @@ function toCardModel(row: PredictionRow): CardModelPrediction {
     qualifierText: row.predicted_qualifier_text ?? null,
     reasoning_snippet: coerceStoredRationaleSnippet(row.reasoning_snippet),
     analysisLens: row.analysis_lens ?? null,
+    ...(divinationChart ? { divinationChart } : {}),
     is_correct: row.is_correct,
     cost_usd: row.cost_usd,
     predicted_at: row.predicted_at,

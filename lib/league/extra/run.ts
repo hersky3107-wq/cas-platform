@@ -33,6 +33,9 @@ import {
   leagueSideFromDivination,
   type DivinationReader,
 } from './divination'
+import { buildDivinationChart, divinationChartPromptLines, type DivinationChartDeps } from './divination-chart'
+import type { DivinationChart } from './divination-chart-types'
+import { liveDivinationChartDeps, readLeagueDivinationWithChart } from './divination-live.server'
 import {
   HISTORY_ENGINE_MODEL_ID,
   extractTechCadenceFromPacket,
@@ -205,8 +208,10 @@ export type GenerateExtraSeatsOpts = {
   roundId: string
   excludeModelIds?: readonly string[]
   onSeatResult?: (result: ExtraSeatOutcome) => void
-  /** Test seam — default is readLeagueDivinationLive. */
+  /** Test seam — default is readLeagueDivinationLive (with chart lines when present). */
   divinationReader?: DivinationReader
+  /** Test seam — default resolves 사주 subjects on Wikidata with the subject cache table. */
+  divinationChartDeps?: DivinationChartDeps
   /** Test seam — default calls challenger Claude Sonnet 5. */
   historyCaller?: HistoryCaller
   /** Test seam — default calls extra Perplexity `sonar`. */
@@ -288,6 +293,7 @@ async function upsertExtraPrediction(row: {
   error?: string | null
   market?: ConsensusMarketRecord | null
   applied_lesson?: string | null
+  divination_chart?: DivinationChart | null
 }): Promise<void> {
   const base = {
     round_id: row.roundId,
@@ -316,8 +322,15 @@ async function upsertExtraPrediction(row: {
         : null,
   }
   const withLesson = row.applied_lesson ? { ...base, applied_lesson: row.applied_lesson } : base
-  const payload = row.market ? { ...withLesson, ...row.market } : withLesson
+  const withChart = row.divination_chart ? { ...withLesson, divination_chart: row.divination_chart } : withLesson
+  const payload = row.market ? { ...withChart, ...row.market } : withChart
   const { error } = await supabaseAdmin.from('model_predictions').upsert(payload, { onConflict: 'round_id,model_id' })
+  if (error && row.divination_chart && /divination_chart/i.test(error.message)) {
+    const without = row.market ? { ...withLesson, ...row.market } : withLesson
+    const retry = await supabaseAdmin.from('model_predictions').upsert(without, { onConflict: 'round_id,model_id' })
+    if (retry.error) throw new Error(`extra seat upsert ${row.model_id}: ${retry.error.message}`)
+    return
+  }
   if (error && /applied_lesson/i.test(error.message)) {
     const without = row.market ? { ...base, ...row.market } : base
     const retry = await supabaseAdmin.from('model_predictions').upsert(without, { onConflict: 'round_id,model_id' })
@@ -486,14 +499,25 @@ function baseOutcome(id: ExtraSeatId, brand: string): ExtraSeatOutcome {
   }
 }
 
+async function divinationChartFor(round: ExtraRoundRow, deps: DivinationChartDeps): Promise<DivinationChart | null> {
+  try {
+    return await buildDivinationChart(round, deps)
+  } catch (e: unknown) {
+    console.warn('[extra:divination] chart skipped:', e instanceof Error ? e.message : e)
+    return null
+  }
+}
+
 async function runDivinationSeat(
   round: ExtraRoundRow,
   read: DivinationReader,
+  chartDeps: DivinationChartDeps,
 ): Promise<ExtraSeatOutcome> {
   const seat = lookupExtraSeat('divination')!
   const input = buildDivinationInput(round)
+  const chart = await divinationChartFor(round, chartDeps)
   try {
-    const raw = await read(input)
+    const raw = await read(input, chart ? { promptLines: divinationChartPromptLines(chart) } : undefined)
     const customer = customerFacingDivination(raw)
     const leak = findInternalDivinationLeak(customer)
     if (leak) throw new Error(`divination customer payload leaked ${leak}`)
@@ -512,6 +536,7 @@ async function runDivinationSeat(
       reasoning_snippet: customer.rationale,
       cost_usd: cost.costUsd,
       estimated_cost_usd: cost.estimatedCostUsd,
+      divination_chart: chart,
     })
     return {
       ...baseOutcome('divination', seat.brand),
@@ -1564,10 +1589,13 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
   if (pending.length === 0) return []
 
   const round = await loadRound(opts.roundId)
-  const read = opts.divinationReader ?? (async (input) => {
+  const read: DivinationReader = opts.divinationReader ?? (async (input, context) => {
     assertNoPacketOnDivinationInput(input)
-    return readLeagueDivinationLive(input)
+    return context && context.promptLines.length > 0
+      ? readLeagueDivinationWithChart(input, context.promptLines)
+      : readLeagueDivinationLive(input)
   })
+  const chartDeps = opts.divinationChartDeps ?? liveDivinationChartDeps
   const wrapExtraCall = <T extends { error?: string }>(
     call: (args: { systemPrompt: string; userPrompt: string }) => Promise<T>,
     label: string,
@@ -1613,7 +1641,7 @@ export async function generateExtraSeats(opts: GenerateExtraSeatsOpts): Promise<
       return silentBrandTableAbstain(round, seat.model_id)
     }
     return seat.kind === 'divination'
-      ? runDivinationSeat(round, read)
+      ? runDivinationSeat(round, read, chartDeps)
       : seat.kind === 'history'
         ? runHistorySeat(round, historyCall, opts.priceSeries)
         : seat.kind === 'sentiment'

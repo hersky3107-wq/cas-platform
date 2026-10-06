@@ -199,10 +199,23 @@ export function estimatedDivinationCostUsd(output: LeagueDivinationAdapterOutput
   }
 }
 
-export type DivinationReader = (input: LeagueDivinationAdapterInput) => Promise<LeagueDivinationAdapterOutput>
+/** 사주 / 구성기학 colour lines for the reader prompt (see `divination-chart.ts`). Never market data. */
+export type DivinationReadContext = { promptLines: readonly string[] }
 
-export async function defaultDivinationReader(input: LeagueDivinationAdapterInput): Promise<LeagueDivinationAdapterOutput> {
+export type DivinationReader = (
+  input: LeagueDivinationAdapterInput,
+  context?: DivinationReadContext,
+) => Promise<LeagueDivinationAdapterOutput>
+
+export async function defaultDivinationReader(
+  input: LeagueDivinationAdapterInput,
+  context?: DivinationReadContext,
+): Promise<LeagueDivinationAdapterOutput> {
   assertNoPacketOnDivinationInput(input)
+  if (context && context.promptLines.length > 0) {
+    const { readLeagueDivinationWithChart } = await import('./divination-live.server')
+    return readLeagueDivinationWithChart(input, context.promptLines)
+  }
   const { readLeagueDivinationLive } = await import('@/lib/oracle/league-divination/live')
   return readLeagueDivinationLive(input)
 }
