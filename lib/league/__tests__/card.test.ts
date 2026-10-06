@@ -388,7 +388,7 @@ describe('compliance: approved phrasing helpers', () => {
   }
 
   it('renders the strength headline from weighted confidence, not the head count', () => {
-    expect(consensusHeadline(baseConsensus, en)).toBe('UP lean 58% · toss-up')
+    expect(consensusHeadline(baseConsensus, en)).toBe('UP lean 58% · toss-up (DOWN chance 42%)')
     expect(consensusHeadline(baseConsensus, en)).not.toMatch(/\d+ of \d+/)
   })
 
@@ -496,7 +496,7 @@ describe('compliance: approved phrasing helpers', () => {
   it('produces a translated headline for a non-English locale without changing the underlying data', () => {
     const ko = LEAGUE_UI.ko
     const headline = consensusHeadline(baseConsensus, ko)
-    expect(headline).toBe('상승 우세 58% · 박빙')
+    expect(headline).toBe('상승 우세 58% · 박빙 (하락 가능성 42%)')
     expect(headline).not.toBe(consensusHeadline(baseConsensus, en))
   })
 })

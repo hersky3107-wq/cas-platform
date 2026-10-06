@@ -51,7 +51,7 @@ describe('confidence strength — SK스퀘어 40:0 at 63%', () => {
         seats,
       }),
     )
-    expect(html).toContain('상승 우세 63% · 박빙에 가까운 우세')
+    expect(html).toContain('상승 우세 63% · 박빙에 가까운 우세 (하락 가능성 37%)')
     expect(html).toContain('data-testid="consensus-strength-headline"')
     expect(html).toContain('data-bands="0,40,0,0"')
     expect(html).toContain('약한 확신의 쏠림 — 박빙일 수 있음')
@@ -61,7 +61,7 @@ describe('confidence strength — SK스퀘어 40:0 at 63%', () => {
     expect(html).not.toMatch(/text-xl[^"]*" data-testid="consensus-count-line"/)
     expect(html).not.toContain('압도')
     expect(html).not.toContain('철벽')
-    expect(consensusHeadline(consensus, t)).toBe('상승 우세 63% · 박빙에 가까운 우세')
+    expect(consensusHeadline(consensus, t)).toBe('상승 우세 63% · 박빙에 가까운 우세 (하락 가능성 37%)')
   })
 
   it('uses a strength headline in every locale and keeps 압도 off a 63% card', () => {

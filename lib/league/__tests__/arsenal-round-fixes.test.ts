@@ -4,12 +4,15 @@ import { describe, expect, it, vi } from 'vitest'
 import { DeepReportView } from '../../../components/league/DeepReportView'
 import { ModelTile } from '../../../components/league/ModelTile'
 import { answerContractFor } from '../answer-contract'
-import type { CardModelPrediction } from '../card-types'
+import type { CardModelPrediction, ConsensusSummary } from '../card-types'
 import { rankedPropositionDisplay } from '../card-header-copy'
+import { consensusHeadline } from '../compliance'
 import { buildDeepSnapshot, type DeepReportSnapshot } from '../deep-snapshot'
 import { blindRevoteUserPrompt, chairUserPrompt } from '../deep-report-prompts'
-import { formatMissingTurnLog, revoteTallyLine, stanceTallyLine, type ReportTurn } from '../deep-report-run'
+import { formatMissingTurnLog, keepRevoteTally, revoteTallyLine, stanceTallyLine, type ReportTurn } from '../deep-report-run'
+import { LEAGUE_LOCALES } from '../i18n/locales'
 import { getLeagueUiPack } from '../i18n/dictionary'
+import { sideLabelsFor } from '../side-labels'
 import { fixKoreanJosa, josa } from '../korean-josa'
 import { logUnparseableRaw } from '../orchestrator'
 import { resolveLocalizedProposition } from '../proposition-i18n'
@@ -129,6 +132,13 @@ describe('deep report title and Korean names', () => {
     expect(josa('아스날', '이/가')).toBe('이')
     expect(josa('3단 폴더블', '을/를')).toBe('을')
     expect(josa('새 GPU', '을/를')).toBe('를')
+    expect(josa('폴더블 GPU', '을/를')).toBe('를')
+    expect(josa('2026', '이/가')).toBe('가')
+    expect(josa('NVIDIA', '이/가')).toBe('가')
+    expect(fixKoreanJosa('새 GPU를 발표할까?')).toBe('새 GPU를 발표할까?')
+    expect(fixKoreanJosa('폴더블 GPU를 출시할까?')).toBe('폴더블 GPU를 출시할까?')
+    expect(fixKoreanJosa('NVIDIA가 발표할까?')).toBe('NVIDIA가 발표할까?')
+    expect(fixKoreanJosa('2026을 넘길까?')).toBe('2026을 넘길까?')
     expect(fixKoreanJosa('아스날가 이긴다')).toBe('아스날이 이긴다')
     expect(fixKoreanJosa('3단 폴더블를 출시할까?')).toBe('3단 폴더블을 출시할까?')
     expect(fixKoreanJosa(fixKoreanJosa('아스날이 이긴다'))).toBe('아스날이 이긴다')
@@ -287,5 +297,95 @@ describe('blind re-vote', () => {
     expect(chair).toContain(stance)
     expect(chair).toContain('[Blind re-vote]')
     expect(chair).toContain(revote)
+  })
+
+  it('drops a broken re-vote and keeps the debate tally', () => {
+    const openings = [turn('xai', 'no', 'no', 58), turn('openai', 'yes', 'yes', 70)]
+    const broken = [{ ...turn('xai', 'no', 'yes', 62), ok: false, finalSide: null }]
+    expect(keepRevoteTally(broken, openings)).toBe(false)
+    expect(keepRevoteTally([turn('xai', 'no', 'yes', 62), turn('openai', 'yes', 'yes', 70)], openings)).toBe(true)
+    expect(revoteTallyLine([])).toBe('Blind re-vote: unavailable. Use the debate tally.')
+    const snap = buildDeepSnapshot('report', {
+      category: 'sports',
+      proposition: STORED_EN,
+      sideWords,
+      openings,
+      rebuttals: [],
+      counters: [],
+      revotes: [],
+      result: { ok: true, report: '승' },
+    }) as DeepReportSnapshot
+    expect(snap.vote).toMatchObject({ yes: 1, no: 1 })
+    expect(snap.revote).toBeNull()
+    const html = shown(renderToStaticMarkup(createElement(DeepReportView, { snap, locale: 'ko' })))
+    expect(html).toContain('토론 중 입장')
+    expect(html).not.toContain('data-testid="deep-report-revote"')
+    const chair = chairUserPrompt({
+      locale: 'ko',
+      proposition: '아스날이 이길까?',
+      packet: 'packet',
+      evidence: 'E1',
+      debate: 'debate',
+      fortySeatAggregate: 'n=40',
+      categoryNote: '',
+      sideWords,
+      stanceTally: stanceTallyLine(openings, [], []),
+      revoteTally: revoteTallyLine([]),
+    })
+    expect(chair).toContain('During the debate: YES 1, NO 1.')
+    expect(chair).toContain('Blind re-vote: unavailable. Use the debate tally.')
+  })
+})
+
+describe('card headline opposite share', () => {
+  const close: ConsensusSummary = {
+    tally: { up: 22, down: 18, flat: 0, abstain: 0 },
+    majorityDirection: 'up',
+    totalModels: 40,
+    respondedModels: 40,
+    avgProbability: 54,
+    aggregateDirection: 'up',
+    aggregateProbability: 54,
+    aggregateMagnitudePct: 0.4,
+    aggregateMagnitudeN: 40,
+  }
+
+  it('keeps the probability line primary and appends 100 minus that share in every locale', () => {
+    for (const locale of LEAGUE_LOCALES) {
+      const t = getLeagueUiPack(locale)
+      const line = consensusHeadline(close, t)
+      expect(line, locale).toContain('54')
+      expect(line, locale).toContain('46')
+      expect(line, locale).toContain(t.direction.badge.up)
+      expect(line, locale).toContain(t.direction.badge.down)
+      expect(line, locale).toBe(t.hero.strengthHeadline(t.direction.badge.up, 54, t.hero.strength.toss, t.direction.badge.down, 46))
+    }
+    expect(consensusHeadline(close, getLeagueUiPack('ko'))).toBe('상승 우세 54% · 박빙 (하락 가능성 46%)')
+  })
+
+  it('names the sports opposite as draw-or-loss', () => {
+    const t = getLeagueUiPack('ko')
+    const labels = sideLabelsFor(
+      {
+        proposition_kind: 'binary_subject_outcome',
+        category: 'sports',
+        subject_label: 'Arsenal',
+        instrument: ARSENAL,
+      },
+      t,
+      'ko',
+    )
+    const sports: ConsensusSummary = {
+      ...close,
+      tally: { up: 39, down: 1, flat: 0, abstain: 0 },
+      majorityDirection: 'yes',
+      aggregateDirection: 'yes',
+      aggregateProbability: 69,
+      aggregateMagnitudePct: null,
+      aggregateMagnitudeN: 0,
+    }
+    expect(consensusHeadline(sports, t, labels)).toBe(
+      '아스날 승 우세 69% · 박빙에 가까운 우세 (아스날 무·패 가능성 31%)',
+    )
   })
 })

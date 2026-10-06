@@ -102,7 +102,15 @@ export function confidenceStrengthHeadline(
   const slot = binarySlot(consensus.aggregateDirection)
   if (!slot || consensus.aggregateProbability == null || !Number.isFinite(consensus.aggregateProbability)) return null
   const pct = Math.round(consensus.aggregateProbability)
-  return t.hero.strengthHeadline(strengthSideWord(slot, t, labels), pct, t.hero.strength[strengthBand(pct)])
+  const oppositePct = Math.max(0, Math.min(100, 100 - pct))
+  const opposite = slot === 'up' ? 'down' : 'up'
+  return t.hero.strengthHeadline(
+    strengthSideWord(slot, t, labels),
+    pct,
+    t.hero.strength[strengthBand(pct)],
+    strengthSideWord(opposite, t, labels),
+    oppositePct,
+  )
 }
 
 export type ConsensusHeroCounts = {

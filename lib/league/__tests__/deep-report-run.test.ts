@@ -28,7 +28,7 @@ vi.mock('../deep-perplexity-agent', async (importOriginal) => {
 })
 
 import { stageCostsFromLedger } from '../deep-report-ledger'
-import { advanceReportState, reportSideWords, type ReportPipelineState } from '../deep-report-run'
+import { advanceReportState, keepRevoteTally, reportSideWords, type ReportPipelineState } from '../deep-report-run'
 
 type CallArgs = { provider: string; modelOverride: string; userPrompt: string; maxCompletionTokens: number }
 
@@ -245,6 +245,27 @@ describe('deep report debate and chair hops', () => {
     const chairCost = stageCostsFromLedger(out.state.ledger!).chair
     expect(chairCost.calls).toBe(2)
     expect(chairCost.estimatedUsd).toBeGreaterThan(0.14)
+  })
+
+  it('drops an invalid re-vote and still reaches the chair without failing the report', async () => {
+    const ready: ReportPipelineState = {
+      ...researched,
+      openings: [
+        { provider: 'openai', model: 'gpt-5.6-terra', side: 'yes', ok: true, attempts: 1, headline: 'h', points: [{ text: 'p', ref: 'E1' }], rebuttal: [], finalSide: 'yes', finalProbability: 60, whyChanged: null },
+      ],
+      rebuttals: [],
+      counters: [],
+    }
+    mocks.callLeagueDeepModel.mockResolvedValue(reply('not a revote'))
+
+    const out = await advanceReportState(ready, { runId: 'run-revote-drop' })
+    expect(out.done).toBe(false)
+    if (out.done) return
+    expect(out.stage).toBe('chair')
+    expect(out.state.revotes).toEqual([])
+    expect(out.state.result).toBeUndefined()
+    expect(keepRevoteTally(out.state.revotes ?? [], ready.openings ?? [])).toBe(false)
+    expect(mocks.callLeagueDeepModel.mock.calls.every(([args]) => (args as CallArgs).userPrompt.includes('neutral referee'))).toBe(true)
   })
 })
 

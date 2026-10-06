@@ -181,11 +181,12 @@ export type LeagueUiPack = {
      */
     weakConfidenceExplain: (confidencePct: number) => string
     /**
-     * Primary glance for every binary card: "{side} lean {pct}% · {strength}".
+     * Primary glance for every binary card:
+     * "{side} lean {pct}% · {strength} ({opposite} chance {100-pct}%)".
      * `side` is the short badge word. `pct` is the rounded weighted confidence.
      * The raw head count is a smaller line, not this one.
      */
-    strengthHeadline: (side: string, pct: number, strength: string) => string
+    strengthHeadline: (side: string, pct: number, strength: string, oppositeSide: string, oppositePct: number) => string
     /** ≥80 strong, 70–79 lead, 60–69 near, <60 toss. */
     strength: {
       strong: string
@@ -917,7 +918,8 @@ const en: LeagueUiPack = {
     weakConfidenceCrowding: 'Crowded on weak confidence — this may be close',
     weakConfidenceExplain: (confidencePct) =>
       `Average confidence across the AIs is ${confidencePct}%. Agreeing on a direction does not mean the outcome is certain.`,
-    strengthHeadline: (side, pct, strength) => `${side} lean ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side} lean ${pct}% · ${strength} (${oppositeSide} chance ${oppositePct}%)`,
     strength: {
       strong: 'strong lean',
       lead: 'lean',
@@ -1576,7 +1578,8 @@ const ko: LeagueUiPack = {
     weakConfidenceCrowding: '약한 확신의 쏠림 — 박빙일 수 있음',
     weakConfidenceExplain: (confidencePct) =>
       `각 AI의 확신은 평균 ${confidencePct}%입니다. 방향이 모여도 결과가 확실하다는 뜻은 아닙니다.`,
-    strengthHeadline: (side, pct, strength) => `${side} 우세 ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side} 우세 ${pct}% · ${strength} (${oppositeSide} 가능성 ${oppositePct}%)`,
     strength: {
       strong: '강한 우세',
       lead: '우세',
@@ -2224,7 +2227,8 @@ const ja: LeagueUiPack = {
     weakConfidenceCrowding: '弱い確信への偏り — 接戦の可能性があります',
     weakConfidenceExplain: (confidencePct) =>
       `各AIの確信は平均${confidencePct}%です。方向が揃っても、結果が確実だという意味ではありません。`,
-    strengthHeadline: (side, pct, strength) => `${side}優勢 ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side}優勢 ${pct}% · ${strength}（${oppositeSide}の可能性 ${oppositePct}%）`,
     strength: {
       strong: '強い優勢',
       lead: '優勢',
@@ -2869,7 +2873,8 @@ const zhTW: LeagueUiPack = {
     weakConfidenceCrowding: '弱信心的一邊倒 — 可能是五五波',
     weakConfidenceExplain: (confidencePct) =>
       `各AI的信心平均為${confidencePct}%。方向一致不代表結果已經確定。`,
-    strengthHeadline: (side, pct, strength) => `${side}優勢 ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side}優勢 ${pct}% · ${strength}（${oppositeSide}可能性 ${oppositePct}%）`,
     strength: {
       strong: '明顯優勢',
       lead: '優勢',
@@ -3512,7 +3517,8 @@ const fr: LeagueUiPack = {
     weakConfidenceCrowding: 'Foule à faible confiance — l\u2019issue peut être serrée',
     weakConfidenceExplain: (confidencePct) =>
       `La confiance moyenne des IA est de ${confidencePct} %. Être d’accord sur un sens ne veut pas dire que le résultat est certain.`,
-    strengthHeadline: (side, pct, strength) => `${side} en tête ${pct} % · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side} en tête ${pct} % · ${strength} (possibilité ${oppositeSide} ${oppositePct} %)`,
     strength: {
       strong: 'avantage net',
       lead: 'avantage',
@@ -4184,7 +4190,8 @@ const es: LeagueUiPack = {
     weakConfidenceCrowding: 'Aglomeración con poca confianza — puede estar reñido',
     weakConfidenceExplain: (confidencePct) =>
       `La confianza media de las IA es del ${confidencePct}%. Coincidir en una dirección no significa que el resultado sea seguro.`,
-    strengthHeadline: (side, pct, strength) => `${side} por delante ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side} por delante ${pct}% · ${strength} (posibilidad de ${oppositeSide} ${oppositePct}%)`,
     strength: {
       strong: 'ventaja clara',
       lead: 'ventaja',
@@ -4847,7 +4854,8 @@ const ar: LeagueUiPack = {
     weakConfidenceCrowding: 'تزاحم بثقة ضعيفة — قد تكون النتيجة متقاربة',
     weakConfidenceExplain: (confidencePct) =>
       `متوسط ثقة النماذج ${confidencePct}%. الاتفاق على اتجاه لا يعني أن النتيجة مؤكدة.`,
-    strengthHeadline: (side, pct, strength) => `${side} متقدم ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side} متقدم ${pct}% · ${strength} (احتمال ${oppositeSide} ${oppositePct}%)`,
     strength: {
       strong: 'تفوق قوي',
       lead: 'تفوق',
@@ -5503,7 +5511,8 @@ const pt: LeagueUiPack = {
     weakConfidenceCrowding: 'Aglomeração com pouca confiança — pode ser apertado',
     weakConfidenceExplain: (confidencePct) =>
       `A confiança média das IAs é ${confidencePct}%. Concordar na direção não significa que o resultado seja certo.`,
-    strengthHeadline: (side, pct, strength) => `${side} à frente ${pct}% · ${strength}`,
+    strengthHeadline: (side, pct, strength, oppositeSide, oppositePct) =>
+      `${side} à frente ${pct}% · ${strength} (possibilidade de ${oppositeSide} ${oppositePct}%)`,
     strength: {
       strong: 'vantagem forte',
       lead: 'vantagem',

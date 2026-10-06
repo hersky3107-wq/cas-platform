@@ -162,6 +162,7 @@ export function ConsensusHero({
           ) : null}
         </p>
       ) : null}
+      <CountLine text={hero.countLine} />
       {showBands ? (
         <ConfidenceBandBar
           bands={bands}
@@ -176,7 +177,6 @@ export function ConsensusHero({
           {explain}
         </p>
       ) : null}
-      <CountLine text={hero.countLine} />
       <div className="mt-3">
         <div
           className="text-base font-semibold leading-snug text-league-fg md:text-lg"

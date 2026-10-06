@@ -807,7 +807,17 @@ export function stanceTallyLine(openings: readonly ReportTurn[], counters: reado
 export function revoteTallyLine(revotes: readonly ReportTurn[]): string {
   const yes = revotes.filter((row) => row.ok && row.finalSide === 'yes').length
   const no = revotes.filter((row) => row.ok && row.finalSide === 'no').length
+  if (yes + no === 0) return 'Blind re-vote: unavailable. Use the debate tally.'
   return `Blind re-vote: YES ${yes}, NO ${no}.`
+}
+
+/** Every opening-ok seat must return a valid side, or the debate tally stands. */
+export function keepRevoteTally(revotes: readonly ReportTurn[], openings: readonly ReportTurn[]): boolean {
+  const eligible = openings.filter((row) => row.ok).map((row) => row.provider)
+  if (eligible.length === 0) return false
+  return eligible.every((provider) =>
+    revotes.some((row) => row.provider === provider && row.ok && (row.finalSide === 'yes' || row.finalSide === 'no')),
+  )
 }
 
 async function stepRevote(hop: Hop): Promise<boolean> {
@@ -873,13 +883,12 @@ async function stepRevote(hop: Hop): Promise<boolean> {
     }),
   )
 
-  const complete = draft.every((turn) => turn.ok || turn.attempts >= TURN_ATTEMPTS || !openingOk(turn))
-  if (!complete) {
-    saveDraft(draft)
-    return false
+  const kept = keepRevoteTally(draft, openings) ? draft : []
+  if (kept.length === 0) {
+    console.log(`[league-deep] report run=${hop.runId} revote dropped; debate tally stands`)
   }
-  hop.progress({ revotes: draft, revoteDraft: undefined })
-  const ok = draft.filter((turn) => turn.ok).length
+  hop.progress({ revotes: kept, revoteDraft: undefined })
+  const ok = kept.filter((turn) => turn.ok).length
   console.log(`[league-deep] report run=${hop.runId} revote done ok=${ok} calls=${draft.reduce((sum, turn) => sum + turn.attempts, 0)}`)
   return true
 }
@@ -1091,7 +1100,7 @@ export async function advanceReportState(state: ReportPipelineState, hooks: Repo
   if (!hop.state().rebuttals) {
     const done = await stepDebateRound(hop, 'rebuttal')
     const next = hop.state()
-    const stage = !done ? 'rebuttal' : rebuttalsAwaitCounter(next.rebuttals) ? 'counter' : 'chair'
+    const stage = !done ? 'rebuttal' : rebuttalsAwaitCounter(next.rebuttals) ? 'counter' : 'revote'
     return finish({ done: false, stage, state: next })
   }
   if (!hop.state().counters && rebuttalsAwaitCounter(hop.state().rebuttals)) {
