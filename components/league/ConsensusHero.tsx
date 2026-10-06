@@ -1,18 +1,20 @@
-import type { ConsensusSummary } from '@/lib/league/card-types'
+import type { ConsensusSummary, ModelSide } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import { sideLabelsFor, type SideLabels } from '@/lib/league/side-labels'
-import { buildConsensusHero, heroSideWords, magnitudeCompareLine } from '@/lib/league/compliance'
+import { buildConsensusHero, heroSideWords, magnitudeCompareLine, strengthSideWord } from '@/lib/league/compliance'
+import { confidenceBandCounts, type ConfidenceBandCounts } from '@/lib/league/confidence-strength'
+import { officialRowsForConsensus } from '@/lib/league/extra/seats'
 import { isWeakConfidenceCrowding } from '@/lib/league/weak-crowding'
 
 /**
- * Glanceable consensus hero — count first, conclusion second, confidence last.
- * Used on BOTH pending and graded cards via `PendingVerdictPanel` / `VerdictPanel`.
+ * Glanceable consensus hero. The weighted-confidence strength is the headline.
+ * The raw head count is a smaller line under a four-segment bar (strong/weak
+ * on each side). Used on pending and graded cards.
  *
- * Direction counts render as `{n}{glyph}` (▲▼ / YN / ><) — never a
- * slash-over-total and never ✓/✗. Hit counts live elsewhere.
+ * Seat counts render as plain numbers — never a slash-over-total and never ✓/✗.
  *
- * Seat-resolution gate: while `seatComplete` is false the locked conclusion,
- * confidence, and magnitude are withheld. Only a live head-count tally
+ * Seat-resolution gate: while `seatComplete` is false the locked strength,
+ * conclusion, and magnitude are withheld. Only a live head-count tally
  * (and the pending placeholder) may render.
  */
 export function ConsensusHero({
@@ -23,6 +25,7 @@ export function ConsensusHero({
   magnitudeCompare = null,
   seatComplete = true,
   answered,
+  seats,
 }: {
   consensus: ConsensusSummary
   horizon: string
@@ -38,10 +41,17 @@ export function ConsensusHero({
   seatComplete?: boolean
   /** Resolved-seat count for the live tally line (tiles + drops). */
   answered?: number
+  /**
+   * Official and extra seats. Extras are dropped before the bar is counted.
+   * Each seat's own probability buckets it into strong (≥70) or weak.
+   */
+  seats?: readonly { direction: ModelSide | string | null; probability: number | null; model_id?: string | null; league_tier?: string | null }[]
 }) {
   const sl = labels ?? sideLabelsFor({}, t)
   const price = sl.kind === 'binary_close_higher'
   const barHeading = price ? t.verdict.distributionHeading : t.verdict.distributionHeadingSides
+  const bands = confidenceBandCounts(seats ? officialRowsForConsensus(seats) : [])
+  const showBands = seats != null
 
   if (!seatComplete) {
     const { upWord, downWord } = heroSideWords(t, labels)
@@ -92,21 +102,20 @@ export function ConsensusHero({
         {hasBar && hero.countLine ? (
           <>
             <CountLine text={hero.countLine} weakLabel={weakCrowding ? t.hero.weakConfidenceCrowding : null} />
-            <DirectionRatioBar
-              up={hero.upCount ?? 0}
-              down={hero.downCount ?? 0}
-              none={hero.noDirectionCount ?? 0}
-              upWord={hero.upWord ?? ''}
-              downWord={hero.downWord ?? ''}
-              labels={sl}
-              t={t}
-              heading={barHeading}
-              confidenceExplain={
-                weakCrowding && consensus.aggregateProbability != null
-                  ? t.hero.weakConfidenceExplain(Math.round(consensus.aggregateProbability))
-                  : null
-              }
-            />
+            {showBands ? (
+              <ConfidenceBandBar
+                bands={bands}
+                sideA={strengthSideWord('up', t, labels)}
+                sideB={strengthSideWord('down', t, labels)}
+                t={t}
+                heading={barHeading}
+                confidenceExplain={
+                  weakCrowding && consensus.aggregateProbability != null
+                    ? t.hero.weakConfidenceExplain(Math.round(consensus.aggregateProbability))
+                    : null
+                }
+              />
+            ) : null}
           </>
         ) : null}
         <p className="mt-2 text-sm font-medium leading-snug text-league-fg-muted">{hero.message}</p>
@@ -127,8 +136,10 @@ export function ConsensusHero({
 
   const tier = hero.confidenceTier
   const tierLabel = hero.confidenceTierLabel
-  /** 접전/우세/압도 badges are for subject-outcome rounds only — not price ▲▼ cards. */
-  const showConfidenceTier = Boolean(tierLabel && !price)
+  /** "압도" only at a weighted confidence of 80% or higher. The strength line carries the other bands. */
+  const showConfidenceTier = Boolean(tier === 'dominant' && tierLabel && (hero.confidencePct ?? 0) >= 80)
+  const explain =
+    weakCrowding && hero.confidencePct != null ? t.hero.weakConfidenceExplain(hero.confidencePct) : null
   const tierStyle =
     tier === 'close'
       ? 'border-amber-500 bg-amber-50 text-amber-800 dark:border-amber-600 dark:bg-amber-950 dark:text-amber-200'
@@ -138,25 +149,37 @@ export function ConsensusHero({
 
   return (
     <div className="mt-3" data-testid="consensus-hero" data-seat-complete="true">
-      <CountLine text={hero.countLine} weakLabel={weakCrowding ? t.hero.weakConfidenceCrowding : null} />
-      <DirectionRatioBar
-        up={hero.upCount}
-        down={hero.downCount}
-        none={hero.noDirectionCount}
-        upWord={hero.upWord}
-        downWord={hero.downWord}
-        labels={sl}
-        t={t}
-        heading={barHeading}
-        confidenceExplain={
-          weakCrowding && hero.confidencePct != null
-            ? t.hero.weakConfidenceExplain(hero.confidencePct)
-            : null
-        }
-      />
+      {hero.strengthHeadline ? (
+        <p className="text-xl font-extrabold leading-tight text-league-fg md:text-2xl" data-testid="consensus-strength-headline">
+          {hero.strengthHeadline}
+          {weakCrowding ? (
+            <span
+              className="ml-2 inline-block align-middle rounded-full border border-league-border px-2 py-0.5 text-[11px] font-medium leading-snug text-league-fg-muted"
+              data-testid="weak-confidence-crowding"
+            >
+              {t.hero.weakConfidenceCrowding}
+            </span>
+          ) : null}
+        </p>
+      ) : null}
+      {showBands ? (
+        <ConfidenceBandBar
+          bands={bands}
+          sideA={strengthSideWord('up', t, labels)}
+          sideB={strengthSideWord('down', t, labels)}
+          t={t}
+          heading={barHeading}
+          confidenceExplain={explain}
+        />
+      ) : explain ? (
+        <p className="mt-1.5 text-[11px] font-medium leading-snug text-league-fg-muted" data-testid="weak-confidence-explain">
+          {explain}
+        </p>
+      ) : null}
+      <CountLine text={hero.countLine} />
       <div className="mt-3">
         <div
-          className="text-2xl font-extrabold leading-tight text-league-fg md:text-3xl"
+          className="text-base font-semibold leading-snug text-league-fg md:text-lg"
           data-testid="consensus-conclusion"
         >
           {hero.diverged ? (
@@ -214,9 +237,9 @@ export function ConsensusHero({
   )
 }
 
-function CountLine({ text, weakLabel }: { text: string; weakLabel: string | null }) {
+function CountLine({ text, weakLabel }: { text: string; weakLabel?: string | null }) {
   return (
-    <p className="text-xl font-extrabold leading-tight text-league-fg md:text-2xl" data-testid="consensus-count-line">
+    <p className="mt-2 text-[11px] font-medium leading-snug text-league-fg-muted" data-testid="consensus-count-line">
       {text}
       {weakLabel ? (
         <span
@@ -227,6 +250,63 @@ function CountLine({ text, weakLabel }: { text: string; weakLabel: string | null
         </span>
       ) : null}
     </p>
+  )
+}
+
+/**
+ * Four segments from each official seat's own probability: strong side A,
+ * weak side A, weak side B, strong side B. Counts are plain numbers.
+ */
+function ConfidenceBandBar({
+  bands,
+  sideA,
+  sideB,
+  t,
+  heading,
+  confidenceExplain = null,
+}: {
+  bands: ConfidenceBandCounts
+  sideA: string
+  sideB: string
+  t: LeagueUiPack
+  heading: string
+  confidenceExplain?: string | null
+}) {
+  const parts = [
+    { key: 'strong-a', n: bands.strongA, label: t.hero.segmentStrong(sideA), bar: 'bg-emerald-600', text: 'text-emerald-800' },
+    { key: 'weak-a', n: bands.weakA, label: t.hero.segmentWeak(sideA), bar: 'bg-emerald-300', text: 'text-emerald-700' },
+    { key: 'weak-b', n: bands.weakB, label: t.hero.segmentWeak(sideB), bar: 'bg-rose-300', text: 'text-rose-700' },
+    { key: 'strong-b', n: bands.strongB, label: t.hero.segmentStrong(sideB), bar: 'bg-rose-600', text: 'text-rose-800' },
+  ]
+  const total = parts.reduce((sum, part) => sum + part.n, 0)
+  return (
+    <div
+      className="mt-3"
+      data-testid="confidence-band-bar"
+      data-bands={`${bands.strongA},${bands.weakA},${bands.weakB},${bands.strongB}`}
+    >
+      <p className="sr-only">{heading}</p>
+      <div className="grid grid-cols-4 gap-1">
+        {parts.map((part) => (
+          <div key={part.key} className="min-w-0 text-center" data-testid={`band-${part.key}`}>
+            <p className={`text-lg font-black tabular-nums ${part.text}`}>{part.n}</p>
+            <p className="truncate text-[10px] font-semibold text-league-fg-muted">{part.label}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 flex h-3.5 overflow-hidden rounded-full bg-slate-200" aria-hidden>
+        {total > 0
+          ? parts.map((part) =>
+              part.n > 0 ? <span key={part.key} className={part.bar} style={{ width: `${(part.n / total) * 100}%` }} /> : null,
+            )
+          : null}
+      </div>
+      {confidenceExplain ? (
+        <p className="mt-1.5 text-[11px] font-medium leading-snug text-league-fg-muted" data-testid="weak-confidence-explain">
+          {confidenceExplain}
+        </p>
+      ) : null}
+    </div>
   )
 }
 

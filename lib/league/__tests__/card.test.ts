@@ -387,8 +387,9 @@ describe('compliance: approved phrasing helpers', () => {
     aggregateMagnitudeN: 6,
   }
 
-  it('renders the approved "N of M AI models lean X" headline with confidence', () => {
-    expect(consensusHeadline(baseConsensus, en)).toBe('6 of 8 AI models lean UP · 58% avg confidence')
+  it('renders the strength headline from weighted confidence, not the head count', () => {
+    expect(consensusHeadline(baseConsensus, en)).toBe('UP lean 58% · toss-up')
+    expect(consensusHeadline(baseConsensus, en)).not.toMatch(/\d+ of \d+/)
   })
 
   it('never emits an imperative like "buy" or "sell" for any direction', () => {
@@ -495,8 +496,7 @@ describe('compliance: approved phrasing helpers', () => {
   it('produces a translated headline for a non-English locale without changing the underlying data', () => {
     const ko = LEAGUE_UI.ko
     const headline = consensusHeadline(baseConsensus, ko)
-    expect(headline).toContain('8')
-    expect(headline).toContain('6')
+    expect(headline).toBe('상승 우세 58% · 박빙')
     expect(headline).not.toBe(consensusHeadline(baseConsensus, en))
   })
 })

@@ -7,8 +7,14 @@ import type { ConsensusSummary } from './card-types'
 
 export type SportsFractureKind = 'iron' | 'soft' | 'warn' | 'none'
 
-/** "철벽" only when the weighted confidence is this high. */
+/**
+ * Weak-confidence crowding and the soft fracture use this ceiling:
+ * agreement above 85% with confidence under 70% is crowded, not iron.
+ */
 export const IRON_MIN_CONFIDENCE_PCT = 70
+
+/** The words 철벽 / ironclad render only at or above this weighted confidence. */
+export const IRON_WORD_MIN_CONFIDENCE_PCT = 80
 
 export type SportsMarketView = {
   ensembleWinPct: number | null
@@ -44,8 +50,9 @@ export function fractureFromAgreement(
 ): SportsFractureKind {
   if (agreementPct == null) return 'none'
   if (agreementPct > 85) {
-    if (confidencePct == null || confidencePct >= IRON_MIN_CONFIDENCE_PCT) return 'iron'
-    return 'soft'
+    if (confidencePct != null && confidencePct >= IRON_WORD_MIN_CONFIDENCE_PCT) return 'iron'
+    if (confidencePct != null && confidencePct < IRON_MIN_CONFIDENCE_PCT) return 'soft'
+    return 'none'
   }
   if (agreementPct >= 45 && agreementPct <= 55) return 'warn'
   return 'none'

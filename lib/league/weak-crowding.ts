@@ -1,7 +1,7 @@
 /**
- * Weak-confidence crowding badge. Head-count skew with a low weighted
- * confidence — the headline count line stays unchanged; this only decides
- * whether the muted badge renders beside it.
+ * Weak-confidence crowding badge. High head-count skew with a low weighted
+ * confidence. The badge sits beside the strength headline; the raw head
+ * count is a smaller line and is not this badge.
  *
  * Majority share is max(side) / answered official seats (up + down).
  * Weighted confidence is `aggregateProbability` on a 0–100 scale.

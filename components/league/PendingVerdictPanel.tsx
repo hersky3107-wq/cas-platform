@@ -1,4 +1,4 @@
-import type { BookSplit, CampSplit, CardRoundMeta, ConsensusSummary, TierSplit, WeightsSplit } from '@/lib/league/card-types'
+import type { BookSplit, CampSplit, CardModelPrediction, CardRoundMeta, ConsensusSummary, TierSplit, WeightsSplit } from '@/lib/league/card-types'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import type { SideLabels } from '@/lib/league/side-labels'
@@ -33,6 +33,7 @@ export function PendingVerdictPanel({
   now = new Date(),
   seatComplete = true,
   answered,
+  seats,
 }: {
   round: CardRoundMeta
   t: LeagueUiPack
@@ -48,6 +49,8 @@ export function PendingVerdictPanel({
   /** Seat-resolution flag. False while generation is still filling seats. */
   seatComplete?: boolean
   answered?: number
+  /** Official and extra seats. The hero drops extras before the four-segment bar. */
+  seats?: readonly CardModelPrediction[]
 }) {
   const anchorDate = round.anchorSessionDate
     ? formatSessionDate(round.anchorSessionDate, locale)
@@ -76,6 +79,7 @@ export function PendingVerdictPanel({
           labels={labels}
           seatComplete={seatComplete}
           answered={answered}
+          seats={seats}
         />
       ) : null}
       <p

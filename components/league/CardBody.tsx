@@ -181,6 +181,7 @@ export function CardBody({
           weightsSplit={data.weightsSplit}
           seatComplete={seatComplete}
           answered={answered}
+          seats={data.models}
         />
       )}
     </>

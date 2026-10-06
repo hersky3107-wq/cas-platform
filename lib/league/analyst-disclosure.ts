@@ -173,7 +173,10 @@ const RULES: Array<[RegExp, string]> = [
   // After the amount prefix is peeled, so "1.4M 컨센서스 목표가" does not leave "1.4M".
   [/증권사\s*리포트(?:도|를|은|는|가|의|에서)?/g, ''],
   [/평균\s*목표\s*주?\s*가가?\s*(?:도\s*)?(?:상향|하향|유지)?(?:됐다|했다|했습니다|하였다)?/g, ''],
-  [/컨센서스\s*목표\s*주?\s*가|목표주가\s*컨센서스|목표\s*주?\s*가\s*컨센서스/g, ''],
+  [
+    /(?:컨센서스\s*목표\s*주?\s*가|목표주가\s*컨센서스|목표\s*주?\s*가\s*컨센서스)(?:가|는|은|이|도)?(?:\s*현재가\s*대비)?(?:\s*(?:약\s*)?(?:\d[\d.,]*\s*%)?)?(?:\s*(?:큰|높은|상당한))?(?:\s*상방)?/g,
+    '',
+  ],
   [/목표\s*주\s*가\s*(?:상향|하향|유지)(?:\s*조정)?/g, ''],
   [/(?:투자의견|rating)\s*(?:을|를|이|가)?\s*(?:상향|하향|유지|upgrade|downgrade)/gi, ''],
   [/\b(?:upgrades?|downgrades?)\s+(?:to\s+)?(?:buy|sell|hold|neutral|outperform|underperform)\b/gi, ''],

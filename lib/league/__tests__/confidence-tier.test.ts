@@ -18,15 +18,16 @@ describe('ensembleConfidenceTier — calibration threshold logic', () => {
     expect(ensembleConfidenceTier(59.9)).toBe('close')
   })
 
-  it('classifies confidence 60% through 75% as "favored" (우세)', () => {
+  it('classifies confidence 60% through 79% as "favored"', () => {
     expect(ensembleConfidenceTier(60)).toBe('favored')
     expect(ensembleConfidenceTier(65)).toBe('favored')
     expect(ensembleConfidenceTier(70)).toBe('favored')
     expect(ensembleConfidenceTier(75)).toBe('favored')
+    expect(ensembleConfidenceTier(75.1)).toBe('favored')
+    expect(ensembleConfidenceTier(79.9)).toBe('favored')
   })
 
-  it('classifies confidence > 75% as "dominant" (압도)', () => {
-    expect(ensembleConfidenceTier(75.1)).toBe('dominant')
+  it('classifies confidence at or above 80% as "dominant" (압도)', () => {
     expect(ensembleConfidenceTier(80)).toBe('dominant')
     expect(ensembleConfidenceTier(90)).toBe('dominant')
     expect(ensembleConfidenceTier(100)).toBe('dominant')
@@ -127,10 +128,11 @@ describe('ConsensusHero UI — renders tier badge', () => {
       }),
     )
 
-    expect(html).toContain('data-testid="consensus-confidence-tier"')
-    expect(html).toContain('접전')
+    expect(html).toContain('data-testid="consensus-strength-headline"')
+    expect(html).toContain('박빙')
+    expect(html).not.toContain('압도')
+    expect(html).not.toContain('data-testid="consensus-confidence-tier"')
     expect(html).toContain('가중 확신 59%')
-    expect(html).toContain('(접전)')
   })
 
   it('renders "Close" badge in English hero', () => {
@@ -145,10 +147,11 @@ describe('ConsensusHero UI — renders tier badge', () => {
       }),
     )
 
-    expect(html).toContain('data-testid="consensus-confidence-tier"')
-    expect(html).toContain('Close')
+    expect(html).toContain('data-testid="consensus-strength-headline"')
+    expect(html).toContain('toss-up')
+    expect(html).not.toContain('Dominant')
+    expect(html).not.toContain('data-testid="consensus-confidence-tier"')
     expect(html).toContain('Weighted confidence 59%')
-    expect(html).toContain('(Close)')
   })
 })
 

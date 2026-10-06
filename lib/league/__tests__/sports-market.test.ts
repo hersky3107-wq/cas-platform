@@ -27,14 +27,19 @@ function consensus(over: { up: number; down: number; p: number; dir: 'yes' | 'no
 describe('sports market dual-display', () => {
   it('computes ensemble vs baseline divergence and fracture labels', () => {
     const iron = buildSportsMarketView({
+      consensus: consensus({ up: 36, down: 4, p: 82, dir: 'yes' }),
+      marketBaselinePct: 70,
+    })
+    expect(iron.ensembleWinPct).toBe(82)
+    expect(iron.marketBaselinePct).toBe(70)
+    expect(iron.divergencePp).toBe(12)
+    expect(iron.agreementPct).toBe(90)
+    expect(iron.fracture).toBe('iron')
+    const belowIronWord = buildSportsMarketView({
       consensus: consensus({ up: 36, down: 4, p: 78, dir: 'yes' }),
       marketBaselinePct: 70,
     })
-    expect(iron.ensembleWinPct).toBe(78)
-    expect(iron.marketBaselinePct).toBe(70)
-    expect(iron.divergencePp).toBe(8)
-    expect(iron.agreementPct).toBe(90)
-    expect(iron.fracture).toBe('iron')
+    expect(belowIronWord.fracture).not.toBe('iron')
     expect(fractureFromAgreement(50)).toBe('warn')
     expect(fractureFromAgreement(70)).toBe('none')
     const soft = buildSportsMarketView({
@@ -44,7 +49,8 @@ describe('sports market dual-display', () => {
     expect(soft.agreementPct).toBeGreaterThan(85)
     expect(soft.fracture).toBe('soft')
     expect(fractureFromAgreement(89.7, 58)).toBe('soft')
-    expect(fractureFromAgreement(89.7, 70)).toBe('iron')
+    expect(fractureFromAgreement(89.7, 70)).not.toBe('iron')
+    expect(fractureFromAgreement(89.7, 80)).toBe('iron')
   })
 
   it('sports UI copy never uses 토토/배당/핸디캡/픽/베팅', () => {

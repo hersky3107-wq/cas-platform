@@ -58,6 +58,7 @@ describe('equity display-layer scrub — leaked samples', () => {
       '컨센서스 목표가',
       '목표주가 컨센서스',
       '증권사 리포트도 평균 목표가가 상향',
+      '목표주가 컨센서스가 현재가 대비 큰 상방',
     ]
     for (const leak of leaks) {
       const out = readable(scrubAnalystDisclosure(`실적 가이던스가 올랐다. ${leak}. 유상증자 공시는 유지.`))
@@ -67,6 +68,7 @@ describe('equity display-layer scrub — leaked samples', () => {
       expect(out, leak).not.toContain('증권사 리포트')
       expect(out, leak).not.toContain('평균 목표가')
       expect(out, leak).not.toContain('목표 주가 상향')
+      expect(out, leak).not.toContain('큰 상방')
       expect(out, leak).toContain('유상증자')
     }
     expect(scrubAnalystDisclosure('Goldman upgrades to buy')).not.toMatch(/Goldman|upgrades to buy/i)

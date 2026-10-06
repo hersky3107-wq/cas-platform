@@ -6,6 +6,7 @@ import { formatWinRatePct } from './win-rate'
 import { isUiHorizon } from './horizon'
 import { formatSignedPercent } from './magnitude'
 import { ensembleConfidenceTier, type ConfidenceTier } from './confidence-tier'
+import { strengthBand } from './confidence-strength'
 
 export { ensembleConfidenceTier, type ConfidenceTier }
 
@@ -70,32 +71,38 @@ export function directionBadgeLabel(direction: ModelSide | null, t: LeagueUiPack
   return slot ? t.direction.badge[slot] : t.direction.noCallBadge
 }
 
+/** Short badge word for the strength headline (상승 / UP), not the answer verb. */
+export function strengthSideWord(slot: 'up' | 'down', t: LeagueUiPack, labels?: SideLabels): string {
+  if (!labels || labels.kind === 'binary_close_higher') return t.direction.badge[slot]
+  return labels.badge(slot === 'up' ? labels.sides[0] : labels.sides[1])
+}
+
 /**
- * Legacy single-line headline (e.g. "6 of 8 AI models lean UP · 58% avg
- * confidence"). Kept for scripts and retrospective tooling — the live card
- * hero uses `buildConsensusHero` instead. When called, confidence still
- * prefers `aggregateProbability` over `avgProbability`.
+ * Primary share sentence: "{side} lean {weighted confidence}% · {strength}".
+ * Head count stays off this line. Abstain and a missing weighted call keep
+ * the older fallback sentences.
  */
-export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack): string {
-  const { tally, majorityDirection, totalModels, respondedModels, avgProbability, aggregateDirection, aggregateProbability } =
-    consensus
+export function consensusHeadline(consensus: ConsensusSummary, t: LeagueUiPack, labels?: SideLabels): string {
+  const { totalModels, respondedModels } = consensus
 
   if (totalModels === 0) return t.headline.none
   if (respondedModels === 0) return t.headline.allAbstain(totalModels)
 
-  // Slot-based so a yes/above majority counts its own side instead of reading
-  // an undefined tally key. The WORD stays the slot's price verb — acceptable
-  // only because this template no longer renders on cards (scripts/tooling,
-  // price rounds); live surfaces use buildConsensusHero with SideLabels.
-  const majoritySlot = tallySlotOfToken(majorityDirection)
-  const slot =
-    tallySlotOfToken(aggregateDirection) ?? (majoritySlot === 'up' || majoritySlot === 'down' ? majoritySlot : null)
-  const probability = aggregateDirection != null ? aggregateProbability : avgProbability
+  const strength = confidenceStrengthHeadline(consensus, t, labels)
+  if (strength) return strength
+  return t.headline.split(respondedModels, totalModels)
+}
 
-  if (!slot || slot === 'flat') return t.headline.split(respondedModels, totalModels)
-
-  const leanCount = tally[slot]
-  return t.headline.majority(leanCount, totalModels, slot, probability)
+/** "{side} 우세 {pct}% · {strength}" from the weighted call. Null when it has no direction. */
+export function confidenceStrengthHeadline(
+  consensus: ConsensusSummary,
+  t: LeagueUiPack,
+  labels?: SideLabels,
+): string | null {
+  const slot = binarySlot(consensus.aggregateDirection)
+  if (!slot || consensus.aggregateProbability == null || !Number.isFinite(consensus.aggregateProbability)) return null
+  const pct = Math.round(consensus.aggregateProbability)
+  return t.hero.strengthHeadline(strengthSideWord(slot, t, labels), pct, t.hero.strength[strengthBand(pct)])
 }
 
 export type ConsensusHeroCounts = {
@@ -120,6 +127,8 @@ export type ConsensusHeroPayload =
       confidencePct: number | null
       confidenceTier: ConfidenceTier | null
       confidenceTierLabel: string | null
+      /** Primary glance. Null only when the weighted probability is missing. */
+      strengthHeadline: string | null
     } & ConsensusHeroCounts)
   | ({ kind: 'fallback'; message: string } & Partial<ConsensusHeroCounts>)
 
@@ -259,6 +268,7 @@ export function buildConsensusHero(
     confidencePct: conf,
     confidenceTier: tier,
     confidenceTierLabel: tierLabel,
+    strengthHeadline: confidenceStrengthHeadline(consensus, t, labels),
     ...counts,
   }
 }

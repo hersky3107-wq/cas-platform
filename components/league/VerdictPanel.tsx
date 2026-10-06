@@ -53,7 +53,14 @@ export function VerdictPanel({
     <div className="mx-2 mb-3 mt-1 rounded-xl border border-league-accent bg-league-accent-soft px-4 py-4 md:mx-3 md:px-5 md:py-5">
       <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-league-accent-strong">{t.verdict.title}</p>
       {consensus.totalModels > 0 ? (
-        <ConsensusHero consensus={consensus} horizon={horizon} t={t} labels={sl} magnitudeCompare={magnitudeCompare} />
+        <ConsensusHero
+          consensus={consensus}
+          horizon={horizon}
+          t={t}
+          labels={sl}
+          magnitudeCompare={magnitudeCompare}
+          seats={models}
+        />
       ) : null}
       <p className="mt-3 text-sm font-semibold leading-snug text-league-fg">
         {t.verdict.heroHits(hitRecord.hits, hitRecord.graded)}

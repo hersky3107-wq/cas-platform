@@ -2,9 +2,12 @@
  * Confidence calibration tiers for ensemble and model confidence.
  *
  * Calibration law:
- *   < 60%  = 'close'    ("접전" / "Close")
- *   60–75% = 'favored'  ("우세" / "Favored")
- *   > 75%  = 'dominant' ("압도" / "Dominant")
+ *   < 60%  = 'close'
+ *   60–79% = 'favored'
+ *   ≥ 80%  = 'dominant'  ("압도" / "Dominant" — never below 80%)
+ *
+ * The card headline uses a finer four-band label (`confidence-strength.ts`).
+ * This tier only gates the "압도" badge.
  *
  * Pure module — supports both 0..100 ledger probability and 0..1 unit scale.
  */
@@ -20,6 +23,6 @@ export function ensembleConfidenceTier(
       ? probabilityOrConfidence * 100
       : probabilityOrConfidence
   if (pct < 60) return 'close'
-  if (pct <= 75) return 'favored'
+  if (pct < 80) return 'favored'
   return 'dominant'
 }
