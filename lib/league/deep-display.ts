@@ -268,10 +268,9 @@ function pushPart(parts: DeepTranslationPart[], key: string, text: string | null
 export function collectDeepTranslatableParts(snap: DeepSnapshot): DeepTranslationPart[] {
   const parts: DeepTranslationPart[] = []
   if (snap.kind === 'report') {
-    pushPart(parts, 'dossier', snap.dossier)
-    snap.openings.forEach((turn, index) => pushPart(parts, `opening:${index}`, turn.text))
-    snap.rebuttals.forEach((turn, index) => pushPart(parts, `rebuttal:${index}`, turn.text))
-    pushPart(parts, 'chair', snap.chairReport)
+    // Structured reports are generated in the viewer's language; only the
+    // free-form text of pre-JSON runs goes through the view-time translator.
+    pushPart(parts, 'chair', snap.legacyText)
     return parts
   }
   pushPart(parts, 'briefing', snap.briefing)
@@ -350,13 +349,7 @@ export function overlayDeepTranslations(
     return overlayOpen(snap, field)
   }
   if (snap.kind === 'report') {
-    return {
-      ...snap,
-      dossier: field('dossier', snap.dossier),
-      openings: snap.openings.map((turn, index) => ({ ...turn, text: field(`opening:${index}`, turn.text) })),
-      rebuttals: snap.rebuttals.map((turn, index) => ({ ...turn, text: field(`rebuttal:${index}`, turn.text) })),
-      chairReport: field('chair', snap.chairReport),
-    }
+    return { ...snap, legacyText: field('chair', snap.legacyText) }
   }
   return overlayDebate(snap, field)
 }
@@ -467,12 +460,11 @@ export function mergeDeepSnapshots(
   if (prev.kind === 'report' && next.kind === 'report') {
     return {
       ...next,
-      instrument: next.instrument ?? prev.instrument,
       proposition: next.proposition ?? prev.proposition,
-      dossier: next.dossier ?? prev.dossier,
-      openings: next.openings.length > 0 ? next.openings : prev.openings,
-      rebuttals: next.rebuttals.length > 0 ? next.rebuttals : prev.rebuttals,
-      chairReport: next.chairReport ?? prev.chairReport,
+      seats: next.seats.length > 0 ? next.seats : prev.seats,
+      dossier: next.dossier.length > 0 ? next.dossier : prev.dossier,
+      verdict: next.verdict ?? prev.verdict,
+      legacyText: next.legacyText ?? prev.legacyText,
     }
   }
   return next

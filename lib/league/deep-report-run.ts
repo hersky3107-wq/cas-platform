@@ -1,44 +1,144 @@
 import 'server-only'
 
-import { PERPLEXITY_SONAR_DEEP_RESEARCH_MODEL } from '@/lib/ai/router'
 import { supabaseAdmin } from '@/lib/supabase/server'
-import { categoryDeepGuards } from './deep-prompts'
-import { callLeagueDeepModel } from './deep-model'
+import { isBrandTableInstrument } from './ai-ranking/brand-table'
+import { computeConsensusSnapshot } from './consensus-snapshot'
 import type { LeagueDeepContext } from './deep-context'
+import { callLeagueDeepModel, type LeagueDeepCallResult } from './deep-model'
 import {
-  admitEvidenceClaim,
-  classifySourceTier,
-  renderEvidenceDossier,
-  type EvidenceFinding,
-} from './deep-report-dossier'
+  DEEP_RESEARCH_PRESET,
+  FALLBACK_RESEARCH_PRESET,
+  cancelAgentResearch,
+  getAgentResearch,
+  isTerminalAgentStatus,
+  submitAgentResearch,
+  type AgentSnapshot,
+} from './deep-perplexity-agent'
+import { categoryDeepGuards } from './deep-prompts'
 import {
+  RESEARCH_FINDINGS_SCHEMA,
+  assignEvidenceRefs,
+  evidenceBlockForPrompt,
+  groundFindingUrls,
+  mergeFindings,
+  parseResearchFindings,
+  type ResearchFinding,
+} from './deep-report-findings'
+import { ledgerEntry, ledgerLogLine, type ReportLedgerEntry, type ReportLedgerStage } from './deep-report-ledger'
+import {
+  DEEP_REPORT_CHAIR,
+  DEEP_RESEARCH_MAX_WAIT_MS,
+  DEEP_RESEARCH_SEATS,
+  FALLBACK_RESEARCH_SEATS,
+  PROJECTED_DEEP_RESEARCH_USD,
+  REPORT_HOP_BUDGET_MS,
+  REPORT_MAX_ATTEMPTS,
+  REPORT_TIMEOUTS_MS,
+  REPORT_TOKENS,
   assignDebateSides,
   bilingualResearchQueries,
-  languageLockLine,
   leagueDeepResearchCapUsd,
   reportStageFor,
   researchPathForCap,
   type DebateSide,
-  type PlannedQuery,
   type ResearchPath,
 } from './deep-report-policy'
-import { chairUserPrompt, openingUserPrompt, rebuttalUserPrompt } from './deep-report-prompts'
+import {
+  CHAIR_SYSTEM_PROMPT,
+  DEBATER_SYSTEM_PROMPT,
+  RESEARCH_SYSTEM_PROMPT,
+  chairUserPrompt,
+  openingUserPrompt,
+  rebuttalUserPrompt,
+  researchSeatPrompt,
+  type SideWords,
+} from './deep-report-prompts'
+import {
+  looksTruncated,
+  relationTo40,
+  retryInstruction,
+  validateChair,
+  validateOpening,
+  validateRebuttal,
+  type ChairReport,
+  type DebaterOpening,
+  type DebaterRebuttal,
+  type EvidencePoint,
+  type ReportRelation,
+  type Validation,
+} from './deep-report-structured'
+import { deepBrandLabel } from './deep-snapshot'
+import { officialRowsForConsensus } from './extra/seats'
+import { getLeagueUiPack } from './i18n/dictionary'
 import type { LeagueLocale } from './i18n/locales'
-import { RESEARCH_ANGLES, type ResearchAngle } from './deep-report-policy'
+import { lookupRosterEntry } from './roster'
+import { sideLabelsFor, sidePairOf, type SideRoundContext } from './side-labels'
 
 export type ReportTurn = {
   provider: string
   model: string
+  /** Side the seat was assigned to argue. */
   side: DebateSide
-  text: string | null
   ok: boolean
+  attempts: number
+  headline: string | null
+  points: EvidencePoint[]
+  rebuttal: EvidencePoint[]
+  finalSide: DebateSide | null
+  finalProbability: number | null
+  whyChanged: string | null
+  error?: string | null
+  /** Free-form text from runs before the JSON contract. */
+  text?: string | null
+}
+
+export type ResearchSeatOutcome = {
+  provider: string
+  model: string
+  ok: boolean
+  kept: number
+  dropped: number
+  error?: string | null
+}
+
+export type DeepResearchJob = {
+  preset: string
+  responseId: string | null
+  requestId: string | null
+  status: string
+  submittedAt: string
+  error: string | null
+  polls: number
 }
 
 export type ReportResearch = {
   path: ResearchPath
-  dossier: string
-  findings: EvidenceFinding[]
+  findings: ResearchFinding[]
+  seats: ResearchSeatOutcome[]
+  deep: (DeepResearchJob & { used: boolean; kept: number; dropped: number }) | null
+  sourcesFound: number
+  /** Text dossier from runs before the JSON contract. */
+  dossier?: string
 }
+
+export type ResearchPending = {
+  path: ResearchPath
+  startedAt: string
+  seatFindings: ResearchFinding[][]
+  seats: ResearchSeatOutcome[]
+  deep: DeepResearchJob | null
+}
+
+export type FortySeatSummary = {
+  side: DebateSide | null
+  confidence: number | null
+  yes: number
+  no: number
+  noAnswer: number
+  total: number
+}
+
+export type ReportChair = ChairReport & { relation: ReportRelation | null; ai40: FortySeatSummary | null }
 
 export type ReportPipelineState = {
   roundId: string
@@ -47,17 +147,37 @@ export type ReportPipelineState = {
   proposition: string
   context: string
   outputLanguage: LeagueLocale
+  sideWords?: SideWords
   research?: ReportResearch
+  researchPending?: ResearchPending
   openings?: ReportTurn[]
+  openingDraft?: ReportTurn[]
   rebuttals?: ReportTurn[]
+  rebuttalDraft?: ReportTurn[]
+  chair?: ReportChair
+  chairAttempts?: number
+  chairError?: string | null
+  fortySeat?: FortySeatSummary | null
+  ledger?: ReportLedgerEntry[]
+  result?: { ok: boolean; report: string | null; error?: string }
+  /** Runs before the JSON contract. */
   chairReport?: string | null
   fortySeatAggregate?: string
-  result?: { ok: boolean; report: string | null; error?: string }
 }
 
-const RESEARCH_TIMEOUT_MS = 150_000
-const DEBATE_TIMEOUT_MS = 90_000
-const CHAIR_TIMEOUT_MS = 120_000
+export type ReportHooks = {
+  runId?: string
+  /** Persist mid-hop progress (live counters). Called serially. */
+  onProgress?: (state: ReportPipelineState) => Promise<void> | void
+  now?: () => number
+}
+
+const POLL_INTERVAL_MS = 10_000
+
+export function reportSideWords(round: SideRoundContext, locale: LeagueLocale): SideWords {
+  const labels = sideLabelsFor(round, getLeagueUiPack(locale), locale)
+  return { yes: labels.badge(labels.sides[0]), no: labels.badge(labels.sides[1]) }
+}
 
 export function seedReportState(ctx: LeagueDeepContext): ReportPipelineState {
   return {
@@ -67,286 +187,597 @@ export function seedReportState(ctx: LeagueDeepContext): ReportPipelineState {
     proposition: ctx.proposition,
     context: ctx.context,
     outputLanguage: ctx.outputLanguage,
+    sideWords: reportSideWords(ctx.sideRound ?? { category: ctx.category, instrument: ctx.instrument }, ctx.outputLanguage),
   }
 }
 
 export function upcomingReportStage(state: ReportPipelineState): string {
   if (state.result?.ok) return 'done'
-  return reportStageFor(state)
+  return reportStageFor({ research: state.research, openings: state.openings, rebuttals: state.rebuttals })
 }
 
-function systemFor(locale: LeagueLocale, role: string): string {
-  return [role, languageLockLine(locale), 'Packet and dossier only. No new web browsing beyond what you were given.'].join('\n')
+// ── Hop context ───────────────────────────────────────────────────────────────
+
+type Hop = {
+  runId: string
+  remaining: () => number
+  log: (entry: ReportLedgerEntry) => void
+  progress: (patch: Partial<ReportPipelineState>) => void
+  flush: () => Promise<void>
+  state: () => ReportPipelineState
 }
 
-async function searchSeat(params: {
-  provider: string
-  model: string
-  searchTool: boolean
-  prompt: string
-  timeoutMs: number
-}): Promise<string | null> {
-  const called = await callLeagueDeepModel({
-    provider: params.provider,
-    systemPrompt: 'Return dated findings with URLs. Say none found when empty. Never invent a date or a number.',
-    userPrompt: params.prompt,
-    maxCompletionTokens: 1800,
-    timeoutMs: params.timeoutMs,
-    modelOverride: params.model,
-    searchTool: params.searchTool,
-  })
-  return called.text
-}
-
-function findingsFromText(provider: string, text: string, category: string): EvidenceFinding[] {
-  const lines = text.split('\n').map((line) => line.trim()).filter((line) => line.length > 12)
-  const out: EvidenceFinding[] = []
-  for (const line of lines.slice(0, 24)) {
-    const claim = admitEvidenceClaim(line.replace(/^[-*]\s*/, ''), category)
-    if (!claim) continue
-    const url = claim.match(/https?:\/\/\S+/)?.[0]?.replace(/[),.;]+$/, '') ?? null
-    const date = claim.match(/\b(20\d{2}-\d{2}-\d{2})\b/)?.[1] ?? null
-    const angle = RESEARCH_ANGLES[out.length % RESEARCH_ANGLES.length]!
-    out.push({
-      angle: angle as ResearchAngle,
-      claim,
-      url,
-      date,
-      tier: classifySourceTier(url, claim),
-      provider,
-    })
-  }
-  return out
-}
-
-function queryBlock(queries: PlannedQuery[]): string {
-  return queries.map((row) => `[${row.lang}/${row.angle}] ${row.text}`).join('\n')
-}
-
-function chunkQueries(queries: PlannedQuery[], size: number): PlannedQuery[][] {
-  const out: PlannedQuery[][] = []
-  for (let i = 0; i < queries.length; i += size) out.push(queries.slice(i, i + size))
-  return out
-}
-
-export async function runReportResearch(state: ReportPipelineState): Promise<ReportResearch> {
-  const cap = leagueDeepResearchCapUsd()
-  const path = researchPathForCap(cap)
-  const queries = bilingualResearchQueries(state.proposition, state.outputLanguage)
-  const instructions = [
-    languageLockLine(state.outputLanguage),
-    `Proposition: ${state.proposition}`,
-    'Run every query below. One finding per line, in the viewer language, with a date and a source URL when you have them.',
-    'Say none found when a query is empty. Never invent a date or a number.',
-    queryBlock(queries),
-  ].join('\n')
-
-  const seats =
-    path === 'deep'
-      ? [
-          searchSeat({
-            provider: 'perplexity',
-            model: PERPLEXITY_SONAR_DEEP_RESEARCH_MODEL,
-            searchTool: false,
-            prompt: instructions,
-            timeoutMs: RESEARCH_TIMEOUT_MS,
-          }),
-          searchSeat({
-            provider: 'google',
-            model: 'gemini-3.6-flash',
-            searchTool: true,
-            prompt: instructions,
-            timeoutMs: RESEARCH_TIMEOUT_MS,
-          }),
-          searchSeat({
-            provider: 'xai',
-            model: 'grok-4.3',
-            searchTool: true,
-            prompt: instructions,
-            timeoutMs: RESEARCH_TIMEOUT_MS,
-          }),
-          searchSeat({
-            provider: 'anthropic',
-            model: 'claude-sonnet-5',
-            searchTool: true,
-            prompt: instructions,
-            timeoutMs: RESEARCH_TIMEOUT_MS,
-          }),
-        ]
-      : chunkQueries(queries, Math.ceil(queries.length / 4) || 1).map((group) =>
-          searchSeat({
-            provider: 'perplexity',
-            model: 'sonar',
-            searchTool: false,
-            prompt: [
-              languageLockLine(state.outputLanguage),
-              `Proposition: ${state.proposition}`,
-              'Standard search only. One finding per line with date and URL. Say none found when empty.',
-              queryBlock(group),
-            ].join('\n'),
-            timeoutMs: RESEARCH_TIMEOUT_MS,
-          }),
-        )
-
-  const settled = await Promise.all(seats)
-  const findings: EvidenceFinding[] = []
-  settled.forEach((text, i) => {
-    const label = path === 'deep' ? (['perplexity', 'google', 'xai', 'anthropic'][i] ?? 'search') : 'perplexity'
-    if (text) findings.push(...findingsFromText(label, text, state.category))
-  })
+function openHop(initial: ReportPipelineState, hooks: ReportHooks): Hop {
+  const now = hooks.now ?? (() => Date.now())
+  const started = now()
+  let working: ReportPipelineState = { ...initial, ledger: [...(initial.ledger ?? [])] }
+  let chain: Promise<void> = Promise.resolve()
+  const runId = hooks.runId ?? initial.roundId
   return {
-    path,
+    runId,
+    remaining: () => REPORT_HOP_BUDGET_MS - (now() - started),
+    log: (entry) => {
+      working = { ...working, ledger: [...(working.ledger ?? []), entry] }
+      console.log(ledgerLogLine(runId, entry))
+    },
+    progress: (patch) => {
+      working = { ...working, ...patch }
+      if (!hooks.onProgress) return
+      const snapshot = working
+      chain = chain.then(() => Promise.resolve(hooks.onProgress!(snapshot))).catch(() => undefined)
+    },
+    flush: () => chain,
+    state: () => working,
+  }
+}
+
+function rosterCallOptions(model: string): {
+  extraPayload?: Record<string, unknown>
+  allowGeminiThinking?: boolean
+  anthropicThinking?: 'disabled' | 'enabled' | 'adaptive'
+  maxCompletionTokens?: number
+} {
+  const entry = lookupRosterEntry(model)
+  if (!entry || entry.caller.kind !== 'core') return {}
+  return {
+    extraPayload: entry.caller.extraPayload,
+    allowGeminiThinking: entry.caller.allowGeminiThinking,
+    anthropicThinking: entry.caller.anthropicThinking,
+    maxCompletionTokens: entry.maxCompletionTokens,
+  }
+}
+
+async function callAndValidate<T>(
+  hop: Hop,
+  args: {
+    stage: ReportLedgerStage
+    provider: string
+    model: string
+    systemPrompt: string
+    userPrompt: string
+    maxTokens: number
+    timeoutMs: number
+    searchTool?: boolean
+    attempt: number
+  },
+  validate: (called: LeagueDeepCallResult) => Validation<T>,
+): Promise<Validation<T>> {
+  const opts = rosterCallOptions(args.model)
+  const called = await callLeagueDeepModel({
+    provider: args.provider,
+    systemPrompt: args.systemPrompt,
+    userPrompt: args.userPrompt,
+    maxCompletionTokens: Math.max(args.maxTokens, opts.maxCompletionTokens ?? 0),
+    timeoutMs: args.timeoutMs,
+    modelOverride: args.model,
+    searchTool: args.searchTool,
+    extraPayload: opts.extraPayload,
+    allowGeminiThinking: opts.allowGeminiThinking,
+    anthropicThinking: opts.anthropicThinking,
+  })
+  const checked: Validation<T> = called.error ? { ok: false, reason: called.error } : validate(called)
+  hop.log(
+    ledgerEntry({
+      stage: args.stage,
+      provider: args.provider,
+      model: args.model,
+      ok: checked.ok,
+      attempt: args.attempt,
+      ms: called.ms,
+      promptTokens: called.usage?.promptTokens,
+      completionTokens: called.usage?.completionTokens,
+      billedUsd: called.usage?.billedUsd,
+      toolFeeUsd: called.usage?.toolFeeUsd,
+      finishReason: called.finishReason,
+      error: checked.ok ? null : checked.reason,
+    }),
+  )
+  return checked
+}
+
+function withRetry(prompt: string, reason: string | null): string {
+  return reason ? `${prompt}\n\n${retryInstruction(reason)}` : prompt
+}
+
+// ── Research ──────────────────────────────────────────────────────────────────
+
+async function runResearchSeat(
+  hop: Hop,
+  seat: { provider: string; model: string },
+  prompt: string,
+  category: string,
+): Promise<{ findings: ResearchFinding[]; outcome: ResearchSeatOutcome }> {
+  let reason: string | null = null
+  for (let attempt = 1; attempt <= REPORT_MAX_ATTEMPTS; attempt += 1) {
+    const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.researchSeat, hop.remaining() - 20_000)
+    if (timeoutMs < 45_000) break
+    let kept: ResearchFinding[] = []
+    let dropped = 0
+    const checked: Validation<true> = await callAndValidate(
+      hop,
+      {
+        stage: 'research',
+        provider: seat.provider,
+        model: seat.model,
+        systemPrompt: RESEARCH_SYSTEM_PROMPT,
+        userPrompt: withRetry(prompt, attempt > 1 ? reason : null),
+        maxTokens: REPORT_TOKENS.researchSeat,
+        timeoutMs,
+        searchTool: true,
+        attempt,
+      },
+      (called): Validation<true> => {
+        const parsed = parseResearchFindings(called.text, seat.provider, category)
+        if (!parsed.parsed) {
+          return { ok: false, reason: looksTruncated(called.text, called.finishReason) ? 'truncated' : 'not_json' }
+        }
+        kept = parsed.findings
+        dropped = parsed.dropped
+        return { ok: true, value: true }
+      },
+    )
+    if (checked.ok) {
+      return { findings: kept, outcome: { ...seat, ok: true, kept: kept.length, dropped } }
+    }
+    reason = checked.reason
+  }
+  return { findings: [], outcome: { ...seat, ok: false, kept: 0, dropped: 0, error: reason ?? 'no time left' } }
+}
+
+function deepResearchInput(prompt: string): string {
+  return `${RESEARCH_SYSTEM_PROMPT}\n\n${prompt}`
+}
+
+async function pollDeepJob(
+  hop: Hop,
+  job: DeepResearchJob,
+  nowMs: () => number,
+): Promise<{ job: DeepResearchJob; final: AgentSnapshot | null }> {
+  let current = job
+  while (current.responseId && !isTerminalAgentStatus(current.status)) {
+    const responseId = current.responseId
+    const snap = await getAgentResearch(responseId)
+    current = { ...current, status: snap.status, polls: current.polls + 1, error: snap.error ?? current.error }
+    if (isTerminalAgentStatus(snap.status)) return { job: current, final: snap }
+    const waited = nowMs() - Date.parse(current.submittedAt)
+    if (waited > DEEP_RESEARCH_MAX_WAIT_MS) {
+      await cancelAgentResearch(responseId)
+      const minutes = Math.round(waited / 60_000)
+      console.log(`[league-deep] report run=${hop.runId} perplexity response=${responseId} overdue after ${minutes} min — cancelled`)
+      return { job: { ...current, status: 'overdue', error: `no result after ${minutes} min` }, final: null }
+    }
+    if (hop.remaining() < POLL_INTERVAL_MS + 20_000) break
+    await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
+  }
+  return { job: current, final: null }
+}
+
+function deepJobDone(job: DeepResearchJob | null): boolean {
+  return !job || !job.responseId || isTerminalAgentStatus(job.status) || job.status === 'overdue'
+}
+
+async function stepResearch(hop: Hop, state: ReportPipelineState, nowMs: () => number): Promise<boolean> {
+  const sideWords = state.sideWords ?? reportSideWords({ category: state.category, instrument: state.instrument }, state.outputLanguage)
+  const prompt = researchSeatPrompt({
+    locale: state.outputLanguage,
+    proposition: state.proposition,
+    sideWords,
+    queries: bilingualResearchQueries(state.proposition, state.outputLanguage),
+  })
+
+  let pending = state.researchPending
+  let final: AgentSnapshot | null = null
+  if (!pending) {
+    const cap = leagueDeepResearchCapUsd()
+    const path = researchPathForCap(cap)
+    const preset = path === 'deep' ? DEEP_RESEARCH_PRESET : FALLBACK_RESEARCH_PRESET
+    console.log(
+      `[league-deep] report run=${hop.runId} research path=${path} preset=${preset} cap=$${cap} projected=$${PROJECTED_DEEP_RESEARCH_USD.toFixed(2)}`,
+    )
+    const seatDefs = path === 'deep' ? DEEP_RESEARCH_SEATS : FALLBACK_RESEARCH_SEATS
+    const seatRuns = seatDefs.map((seat) => runResearchSeat(hop, seat, prompt, state.category))
+    const submitStarted = nowMs()
+    const submitted = await submitAgentResearch({
+      preset,
+      input: deepResearchInput(prompt),
+      schemaName: 'deepreportfindings',
+      schema: RESEARCH_FINDINGS_SCHEMA as unknown as Record<string, unknown>,
+      maxOutputTokens: REPORT_TOKENS.perplexity,
+    })
+    console.log(
+      `[league-deep] report run=${hop.runId} perplexity submit preset=${preset} response=${submitted.id ?? '-'} request=${submitted.requestId ?? '-'} status=${submitted.status}${submitted.error ? ` error=${submitted.error.slice(0, 200)}` : ''}`,
+    )
+    const job: DeepResearchJob = {
+      preset,
+      responseId: submitted.id,
+      requestId: submitted.requestId,
+      status: submitted.id ? submitted.status : 'failed',
+      submittedAt: new Date(submitStarted).toISOString(),
+      error: submitted.error,
+      polls: 0,
+    }
+    if (isTerminalAgentStatus(submitted.status) && submitted.id) final = submitted
+    pending = { path, startedAt: new Date(submitStarted).toISOString(), seatFindings: [], seats: [], deep: job }
+    hop.progress({ researchPending: pending })
+    const seats = await Promise.all(seatRuns)
+    pending = { ...pending, seatFindings: seats.map((row) => row.findings), seats: seats.map((row) => row.outcome) }
+    hop.progress({ researchPending: pending })
+  }
+
+  let job = pending.deep
+  if (job && !final && !deepJobDone(job)) {
+    const polled = await pollDeepJob(hop, job, nowMs)
+    job = polled.job
+    final = polled.final
+  }
+  if (!deepJobDone(job)) {
+    hop.progress({ researchPending: { ...pending, deep: job } })
+    return false
+  }
+
+  let deepFindings: ResearchFinding[] = []
+  let deepDropped = 0
+  if (job) {
+    const parsed = final?.status === 'completed' ? parseResearchFindings(final.text, 'perplexity', state.category) : null
+    if (parsed) {
+      deepFindings = groundFindingUrls(parsed.findings, final?.searchResults ?? [])
+      deepDropped = parsed.dropped
+    }
+    const ok = Boolean(parsed?.parsed)
+    const error = ok ? null : job.error ?? (final?.status === 'completed' ? 'deep research reply was not valid JSON' : `deep research ${job.status}`)
+    hop.log(
+      ledgerEntry({
+        stage: 'research',
+        provider: 'perplexity',
+        model: final?.model ?? `agent:${job.preset}`,
+        ok,
+        attempt: 1,
+        ms: Math.max(0, nowMs() - Date.parse(job.submittedAt)),
+        promptTokens: final?.inputTokens,
+        completionTokens: final?.outputTokens,
+        billedUsd: final?.costUsd,
+        error,
+        requestId: job.requestId,
+        responseId: job.responseId,
+      }),
+    )
+    job = { ...job, error }
+  }
+
+  const findings = assignEvidenceRefs(mergeFindings([deepFindings, ...pending.seatFindings]))
+  const research: ReportResearch = {
+    path: pending.path,
     findings,
-    dossier: renderEvidenceDossier({
-      locale: state.outputLanguage,
-      category: state.category,
-      findings,
-      fallback: path === 'standard_fallback',
-    }),
+    seats: pending.seats,
+    deep: job ? { ...job, used: deepFindings.length > 0, kept: deepFindings.length, dropped: deepDropped } : null,
+    sourcesFound: findings.length,
+  }
+  console.log(
+    `[league-deep] report run=${hop.runId} research done sources=${findings.length} deep_used=${research.deep?.used ?? false} deep_status=${job?.status ?? 'none'}${job?.error ? ` deep_reason=${job.error.slice(0, 160)}` : ''}`,
+  )
+  hop.progress({ research, researchPending: undefined })
+  return true
+}
+
+// ── Debate ────────────────────────────────────────────────────────────────────
+
+function emptyTurn(seat: { provider: string; model: string; side: DebateSide }): ReportTurn {
+  return {
+    provider: seat.provider,
+    model: seat.model,
+    side: seat.side,
+    ok: false,
+    attempts: 0,
+    headline: null,
+    points: [],
+    rebuttal: [],
+    finalSide: null,
+    finalProbability: null,
+    whyChanged: null,
   }
 }
 
-async function speak(params: {
-  provider: string
-  model: string
-  systemPrompt: string
-  userPrompt: string
-}): Promise<string | null> {
-  const called = await callLeagueDeepModel({
-    provider: params.provider,
-    systemPrompt: params.systemPrompt,
-    userPrompt: params.userPrompt,
-    maxCompletionTokens: 1400,
-    timeoutMs: DEBATE_TIMEOUT_MS,
-    modelOverride: params.model,
-  })
-  return called.text
+function pointLines(points: EvidencePoint[] | undefined): string {
+  return (points ?? []).map((point, i) => `${i + 1}) ${point.text}${point.ref ? ` [${point.ref}]` : ''}`).join('\n')
 }
 
-export async function runReportOpenings(state: ReportPipelineState): Promise<ReportTurn[]> {
-  const seats = assignDebateSides(state.roundId)
-  const dossier = state.research?.dossier ?? ''
-  const settled = await Promise.all(
-    seats.map(async (seat) => {
-      const text = await speak({
-        provider: seat.provider,
-        model: seat.model,
-        systemPrompt: systemFor(state.outputLanguage, `Opening argument for ${seat.side}.`),
-        userPrompt: openingUserPrompt({
-          locale: state.outputLanguage,
-          proposition: state.proposition,
-          packet: state.context,
-          dossier,
-          side: seat.side,
-          model: seat.model,
-        }),
-      })
-      return { provider: seat.provider, model: seat.model, side: seat.side, text, ok: Boolean(text && text.length > 40) }
-    }),
-  )
-  return settled
+function openingSummary(turn: ReportTurn, sideWords: SideWords): string {
+  const word = turn.side === 'yes' ? sideWords.yes : sideWords.no
+  return [`${deepBrandLabel(turn.provider)} (argued ${turn.side.toUpperCase()} "${word}"): ${turn.headline ?? ''}`, pointLines(turn.points)].join('\n')
 }
 
-export async function runReportRebuttals(state: ReportPipelineState): Promise<ReportTurn[]> {
+async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise<boolean> {
+  const state = hop.state()
+  const sideWords = state.sideWords ?? reportSideWords({ category: state.category, instrument: state.instrument }, state.outputLanguage)
+  const evidence = evidenceBlockForPrompt(state.research?.findings ?? [])
   const openings = state.openings ?? []
-  const dossier = state.research?.dossier ?? ''
-  const settled = await Promise.all(
-    openings.map(async (seat) => {
-      const opposite = openings
-        .filter((row) => row.side !== seat.side && row.text)
-        .map((row) => `${row.model}: ${row.text}`)
-        .join('\n\n')
-      const text = await speak({
-        provider: seat.provider,
-        model: seat.model,
-        systemPrompt: systemFor(state.outputLanguage, `Rebuttal and final probability for ${seat.side}.`),
-        userPrompt: rebuttalUserPrompt({
-          locale: state.outputLanguage,
-          proposition: state.proposition,
-          packet: state.context,
-          dossier,
-          side: seat.side,
-          ownOpening: seat.text ?? '',
-          oppositeOpenings: opposite || '(none)',
-        }),
-      })
-      return { provider: seat.provider, model: seat.model, side: seat.side, text, ok: Boolean(text && text.length > 40) }
+  const draftKey = round === 'opening' ? 'openingDraft' : 'rebuttalDraft'
+  const draft: ReportTurn[] = [...(state[draftKey] ?? assignDebateSides(state.roundId).map(emptyTurn))]
+  const openingOk = (turn: ReportTurn) => openings.some((row) => row.provider === turn.provider && row.ok)
+  const eligible = (turn: ReportTurn) => round === 'opening' || openingOk(turn)
+  const saveDraft = (turns: ReportTurn[]) =>
+    hop.progress(round === 'opening' ? { openingDraft: [...turns] } : { rebuttalDraft: [...turns] })
+
+  await Promise.all(
+    draft.map(async (turn, index) => {
+      if (turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !eligible(turn)) return
+      const own = openings.find((row) => row.provider === turn.provider)
+      const prompt =
+        round === 'opening'
+          ? openingUserPrompt({
+              locale: state.outputLanguage,
+              proposition: state.proposition,
+              packet: state.context,
+              evidence,
+              side: turn.side,
+              sideWords,
+              model: turn.model,
+            })
+          : rebuttalUserPrompt({
+              locale: state.outputLanguage,
+              proposition: state.proposition,
+              packet: state.context,
+              evidence,
+              side: turn.side,
+              sideWords,
+              ownOpening: own ? openingSummary(own, sideWords) : '(none)',
+              oppositeOpenings:
+                openings
+                  .filter((row) => row.ok && row.side !== turn.side)
+                  .map((row) => openingSummary(row, sideWords))
+                  .join('\n\n') || '(none)',
+            })
+      let current = draft[index]!
+      while (current.attempts < REPORT_MAX_ATTEMPTS) {
+        const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.debater, hop.remaining() - 10_000)
+        if (timeoutMs < 30_000) break
+        const attempt = current.attempts + 1
+        const checked = await callAndValidate(
+          hop,
+          {
+            stage: round,
+            provider: current.provider,
+            model: current.model,
+            systemPrompt: DEBATER_SYSTEM_PROMPT,
+            userPrompt: withRetry(prompt, attempt > 1 ? current.error ?? null : null),
+            maxTokens: REPORT_TOKENS.debater,
+            timeoutMs,
+            attempt,
+          },
+          (called): Validation<DebaterOpening | DebaterRebuttal> =>
+            round === 'opening'
+              ? validateOpening(called.text, called.finishReason)
+              : validateRebuttal(called.text, called.finishReason),
+        )
+        if (checked.ok) {
+          const v = checked.value
+          current = {
+            ...current,
+            ok: true,
+            attempts: attempt,
+            error: null,
+            headline: v.headline,
+            points: v.points,
+            rebuttal: 'rebuttal' in v ? v.rebuttal : [],
+            finalSide: v.finalSide,
+            finalProbability: v.finalProbability,
+            whyChanged: 'whyChanged' in v ? v.whyChanged : null,
+          }
+        } else {
+          current = { ...current, attempts: attempt, error: checked.reason }
+        }
+        draft[index] = current
+        saveDraft(draft)
+        if (current.ok) break
+      }
     }),
   )
-  return settled
-}
 
-export async function loadFortySeatAggregate(roundId: string): Promise<string> {
-  const { data, error } = await supabaseAdmin
-    .from('model_predictions')
-    .select('predicted_direction, league_tier')
-    .eq('round_id', roundId)
-  if (error || !data) return '40-seat aggregate unavailable.'
-  const counts = new Map<string, number>()
-  for (const row of data as { predicted_direction?: string | null }[]) {
-    const key = (row.predicted_direction ?? 'unknown').trim() || 'unknown'
-    counts.set(key, (counts.get(key) ?? 0) + 1)
+  const complete = draft.every((turn) => turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !eligible(turn))
+  if (!complete) {
+    saveDraft(draft)
+    return false
   }
-  const parts = [...counts.entries()].map(([key, n]) => `${key}: ${n}`)
-  return `n=${data.length}. Distribution: ${parts.join(', ') || 'none'}.`
+  hop.progress(round === 'opening' ? { openings: draft, openingDraft: undefined } : { rebuttals: draft, rebuttalDraft: undefined })
+  return true
 }
 
-export async function runReportChair(state: ReportPipelineState): Promise<{ report: string | null; aggregate: string }> {
-  const aggregate = await loadFortySeatAggregate(state.roundId)
-  const openings = (state.openings ?? []).map((row) => `${row.model} (${row.side}): ${row.text ?? ''}`).join('\n\n')
-  const rebuttals = (state.rebuttals ?? []).map((row) => `${row.model} (${row.side}): ${row.text ?? ''}`).join('\n\n')
-  const called = await callLeagueDeepModel({
-    provider: 'anthropic',
-    systemPrompt: systemFor(state.outputLanguage, 'Chair of the deep report.'),
-    userPrompt: chairUserPrompt({
-      locale: state.outputLanguage,
-      proposition: state.proposition,
-      packet: state.context,
-      dossier: state.research?.dossier ?? '',
-      openings,
-      rebuttals,
-      fortySeatAggregate: aggregate,
-      categoryNote: categoryDeepGuards(state.category).join('\n'),
-    }),
-    maxCompletionTokens: 4000,
-    timeoutMs: CHAIR_TIMEOUT_MS,
-    modelOverride: 'claude-opus-5-5',
-  })
-  return { report: called.text, aggregate }
+// ── Chair ─────────────────────────────────────────────────────────────────────
+
+/** Same official-seat log-odds aggregate the card headline shows. */
+export async function loadFortySeatSummary(roundId: string): Promise<FortySeatSummary | null> {
+  const [roundQuery, rowsQuery] = await Promise.all([
+    supabaseAdmin.from('prediction_rounds').select('proposition_kind, instrument, category, subject_label').eq('id', roundId).maybeSingle(),
+    supabaseAdmin.from('model_predictions').select('model_id, league_tier, predicted_direction, predicted_value').eq('round_id', roundId),
+  ])
+  if (rowsQuery.error || !rowsQuery.data) return null
+  const round = (roundQuery.data ?? {}) as SideRoundContext
+  if (isBrandTableInstrument(round.instrument)) return null
+  return fortySeatFromRows(round, rowsQuery.data as FortySeatRow[])
 }
+
+type FortySeatRow = {
+  model_id: string | null
+  league_tier: string | null
+  predicted_direction: string | null
+  predicted_value: number | null
+}
+
+export function fortySeatFromRows(round: SideRoundContext, rows: readonly FortySeatRow[]): FortySeatSummary {
+  const pair = sidePairOf(round)
+  const official = officialRowsForConsensus(rows)
+  const snap = computeConsensusSnapshot({
+    rows: official.map((row) => ({
+      model_id: row.model_id,
+      league_tier: row.league_tier,
+      direction: row.predicted_direction,
+      probability: row.predicted_value,
+    })),
+    sides: pair,
+    mode: 'binary',
+  })
+  const sideOf = (token: string | null): DebateSide | null => (token === pair[0] ? 'yes' : token === pair[1] ? 'no' : null)
+  const yes = official.filter((row) => row.predicted_direction === pair[0]).length
+  const no = official.filter((row) => row.predicted_direction === pair[1]).length
+  return {
+    side: sideOf(snap.aggregateDirection),
+    confidence: snap.aggregateProbability == null ? null : Math.round(snap.aggregateProbability),
+    yes,
+    no,
+    noAnswer: official.length - yes - no,
+    total: official.length,
+  }
+}
+
+function fortySeatLine(summary: FortySeatSummary | null, sideWords: SideWords): string {
+  if (!summary || !summary.side || summary.confidence == null) return '40-seat aggregate unavailable.'
+  const word = summary.side === 'yes' ? sideWords.yes : sideWords.no
+  return [
+    `40-AI result: ${summary.side.toUpperCase()} ("${word}") at ${summary.confidence}% weighted confidence.`,
+    `Seats: yes ${summary.yes}, no ${summary.no}, no answer ${summary.noAnswer} (of ${summary.total}).`,
+  ].join(' ')
+}
+
+function debateBlock(state: ReportPipelineState, sideWords: SideWords): string {
+  const openings = state.openings ?? []
+  const rebuttals = state.rebuttals ?? []
+  return openings
+    .map((open) => {
+      const reb = rebuttals.find((row) => row.provider === open.provider)
+      const brand = deepBrandLabel(open.provider)
+      const finalTurn = reb?.ok ? reb : open.ok ? open : null
+      const final =
+        finalTurn?.finalSide && finalTurn.finalProbability != null
+          ? `${finalTurn.finalSide.toUpperCase()} ${finalTurn.finalProbability}%${finalTurn.finalSide !== open.side ? ' (changed side)' : ''}`
+          : 'no final call'
+      const word = open.side === 'yes' ? sideWords.yes : sideWords.no
+      return [
+        `## ${brand} — assigned ${open.side.toUpperCase()} ("${word}") — final ${final}`,
+        open.ok ? `Opening: ${open.headline}\n${pointLines(open.points)}` : 'Opening: (no reply)',
+        reb?.ok ? `Rebuttal: ${reb.headline}\n${pointLines(reb.rebuttal)}${reb.whyChanged ? `\nWhy changed: ${reb.whyChanged}` : ''}` : 'Rebuttal: (no reply)',
+      ].join('\n')
+    })
+    .join('\n\n')
+}
+
+async function stepChair(hop: Hop): Promise<'done' | 'pending' | 'failed'> {
+  const state = hop.state()
+  const sideWords = state.sideWords ?? reportSideWords({ category: state.category, instrument: state.instrument }, state.outputLanguage)
+  const fortySeat = state.fortySeat !== undefined ? state.fortySeat : await loadFortySeatSummary(state.roundId)
+  hop.progress({ fortySeat })
+  const prompt = chairUserPrompt({
+    locale: state.outputLanguage,
+    proposition: state.proposition,
+    packet: state.context,
+    evidence: evidenceBlockForPrompt(state.research?.findings ?? []),
+    debate: debateBlock(state, sideWords),
+    fortySeatAggregate: fortySeatLine(fortySeat, sideWords),
+    categoryNote: categoryDeepGuards(state.category).join('\n'),
+    sideWords,
+  })
+  let attempts = state.chairAttempts ?? 0
+  let reason = state.chairError ?? null
+  while (attempts < REPORT_MAX_ATTEMPTS) {
+    const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.chair, hop.remaining() - 10_000)
+    if (timeoutMs < 90_000) break
+    attempts += 1
+    const checked = await callAndValidate(
+      hop,
+      {
+        stage: 'chair',
+        provider: DEEP_REPORT_CHAIR.provider,
+        model: DEEP_REPORT_CHAIR.model,
+        systemPrompt: CHAIR_SYSTEM_PROMPT,
+        userPrompt: withRetry(prompt, attempts > 1 ? reason : null),
+        maxTokens: REPORT_TOKENS.chair,
+        timeoutMs,
+        attempt: attempts,
+      },
+      (called) => validateChair(called.text, called.finishReason),
+    )
+    if (checked.ok) {
+      const v = checked.value
+      const relation = relationTo40({ side: v.verdictSide, probability: v.verdictProbability }, fortySeat)
+      const chair: ReportChair = {
+        ...v,
+        vs40Why: relation && v.vs40RelationClaimed === relation ? v.vs40Why : null,
+        relation,
+        ai40: fortySeat,
+      }
+      hop.progress({ chair, chairAttempts: attempts, chairError: null })
+      return 'done'
+    }
+    reason = checked.reason
+    hop.progress({ chairAttempts: attempts, chairError: reason })
+  }
+  return attempts >= REPORT_MAX_ATTEMPTS ? 'failed' : 'pending'
+}
+
+function reportSummaryLine(chair: ReportChair, sideWords: SideWords): string {
+  const word = chair.verdictSide === 'yes' ? sideWords.yes : sideWords.no
+  return `${word} · ${chair.verdictProbability}% — ${chair.oneLine}`
+}
+
+// ── Advance ───────────────────────────────────────────────────────────────────
 
 export type ReportAdvance =
   | { done: false; stage: string; state: ReportPipelineState }
   | { done: true; result: { ok: boolean; report: string | null; error?: string }; state: ReportPipelineState }
 
-export async function advanceReportState(state: ReportPipelineState): Promise<ReportAdvance> {
+export async function advanceReportState(state: ReportPipelineState, hooks: ReportHooks = {}): Promise<ReportAdvance> {
   if (state.result?.ok) return { done: true, result: state.result, state }
+  const nowMs = hooks.now ?? (() => Date.now())
+  const hop = openHop(state, hooks)
+  const finish = async (out: ReportAdvance): Promise<ReportAdvance> => {
+    await hop.flush()
+    return out
+  }
 
-  if (!state.research) {
-    const research = await runReportResearch(state)
-    return { done: false, stage: 'research', state: { ...state, research } }
+  if (!hop.state().research) {
+    const done = await stepResearch(hop, hop.state(), nowMs)
+    return finish({ done: false, stage: done ? 'opening' : 'research', state: hop.state() })
   }
-  if (!state.openings) {
-    const openings = await runReportOpenings(state)
-    if (!openings.some((row) => row.ok)) {
+  if (!hop.state().openings) {
+    const done = await stepDebateRound(hop, 'opening')
+    const next = hop.state()
+    if (done && !(next.openings ?? []).some((row) => row.ok)) {
       const result = { ok: false, report: null, error: 'all openings failed' }
-      return { done: true, result, state: { ...state, openings, result } }
+      return finish({ done: true, result, state: { ...next, result } })
     }
-    return { done: false, stage: 'opening', state: { ...state, openings } }
+    return finish({ done: false, stage: done ? 'rebuttal' : 'opening', state: next })
   }
-  if (!state.rebuttals) {
-    const rebuttals = await runReportRebuttals(state)
-    return { done: false, stage: 'rebuttal', state: { ...state, rebuttals } }
+  if (!hop.state().rebuttals) {
+    const done = await stepDebateRound(hop, 'rebuttal')
+    return finish({ done: false, stage: done ? 'chair' : 'rebuttal', state: hop.state() })
   }
-  const chair = await runReportChair(state)
-  if (!chair.report?.trim()) {
-    const result = { ok: false, report: null, error: 'chair failed' }
-    return { done: true, result, state: { ...state, fortySeatAggregate: chair.aggregate, chairReport: null, result } }
+  const chairOutcome = await stepChair(hop)
+  const next = hop.state()
+  if (chairOutcome === 'pending') return finish({ done: false, stage: 'chair', state: next })
+  if (chairOutcome === 'failed' || !next.chair) {
+    const result = { ok: false, report: null, error: `chair failed: ${next.chairError ?? 'invalid reply'}` }
+    return finish({ done: true, result, state: { ...next, result } })
   }
-  const result = { ok: true, report: chair.report }
-  return {
-    done: true,
-    result,
-    state: { ...state, fortySeatAggregate: chair.aggregate, chairReport: chair.report, result },
-  }
+  const sideWords = next.sideWords ?? reportSideWords({ category: next.category, instrument: next.instrument }, next.outputLanguage)
+  const result = { ok: true, report: reportSummaryLine(next.chair, sideWords) }
+  return finish({ done: true, result, state: { ...next, result } })
 }

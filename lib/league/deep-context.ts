@@ -7,6 +7,7 @@ import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { OUTPUT_LANGUAGE_NAME } from './deep-output-language'
 import { categoryDeepGuards } from './deep-prompts'
 import type { LeagueDeepSnapshot } from './deep-types'
+import type { SideRoundContext } from './side-labels'
 
 /**
  * Server-side context for a league deep-analysis run. Built ONLY from the
@@ -26,9 +27,11 @@ export type LeagueDeepContext = {
   availableDataSummary: string
   snapshot: LeagueDeepSnapshot
   outputLanguage: LeagueLocale
+  /** The round's side contract, for side words ("출시함 / 출시 안 함"). */
+  sideRound?: SideRoundContext
 }
 
-export async function loadRoundRow(roundId: string): Promise<{
+type DeepRoundRow = {
   id: string
   instrument: string
   category: string
@@ -36,22 +39,18 @@ export async function loadRoundRow(roundId: string): Promise<{
   proposition_text: string
   resolution_rule: string
   resolves_at: string
-} | null> {
+  proposition_kind?: string | null
+  subject_label?: string | null
+}
+
+export async function loadRoundRow(roundId: string): Promise<DeepRoundRow | null> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, instrument, category, horizon, proposition_text, resolution_rule, resolves_at')
+    .select('id, instrument, category, horizon, proposition_text, resolution_rule, resolves_at, proposition_kind, subject_label')
     .eq('id', roundId)
     .maybeSingle()
   if (error || !data) return null
-  return data as {
-    id: string
-    instrument: string
-    category: string
-    horizon: string
-    proposition_text: string
-    resolution_rule: string
-    resolves_at: string
-  }
+  return data as DeepRoundRow
 }
 
 export async function buildLeagueDeepContext(
@@ -131,6 +130,12 @@ export async function buildLeagueDeepContext(
     ].join(' '),
     snapshot,
     outputLanguage,
+    sideRound: {
+      proposition_kind: round.proposition_kind ?? null,
+      subject_label: round.subject_label ?? null,
+      category: round.category,
+      instrument: round.instrument,
+    },
   }
 }
 

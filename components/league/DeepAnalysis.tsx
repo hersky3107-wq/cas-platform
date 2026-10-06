@@ -8,12 +8,14 @@ import { creditsForLeagueDeepReport } from '@/lib/credits'
 import { DEEP_POLL_MS } from '@/lib/league/generation/policy'
 import {
   deepBrandLabel,
+  emptyReportSnapshot,
   type DeepDebateSnapshot,
   type DeepOpenSnapshot,
-  type DeepReportSnapshot,
   type DeepSnapshot,
   type DeepVoteSnapshot,
 } from '@/lib/league/deep-snapshot'
+import { deepReportCopy } from '@/lib/league/i18n/deep-report-copy'
+import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import {
   DEEP_OPEN_SEAT_SHELLS,
   emptyDebateSnapshot,
@@ -25,6 +27,7 @@ import {
 } from '@/lib/league/deep-display'
 import { useDeepTranslations } from '@/lib/league/use-deep-translations'
 import { CardCompliance, type ComplianceReceipt } from './CardCompliance'
+import { DeepReportProgress, DeepReportView, reportStepLabel } from './DeepReportView'
 
 const REPORT_COST = creditsForLeagueDeepReport()
 
@@ -72,9 +75,22 @@ type PollBody = DeepPayload & {
   queuePosition?: number
   etaMinutes?: number
   margin?: { revenueUsd: number; costUsd: number; marginUsd: number; marginPct: number }
-  stageCosts?: { research?: { billedUsd: number }; debate?: { billedUsd: number }; chair?: { billedUsd: number } }
+  stageCosts?: Partial<Record<'research' | 'debate' | 'chair', StageCostBody>>
   code?: string
   snapshot?: DeepSnapshot | null
+}
+
+type StageCostBody = { billedUsd?: number; estimatedUsd?: number; calls?: number }
+
+/** Admin-only: billed + estimated per stage (Anthropic reports no billed USD). */
+function stageCostLine(costs: PollBody['stageCosts']): string {
+  if (!costs) return ''
+  const part = (label: string, row: StageCostBody | undefined) => {
+    const billed = row?.billedUsd ?? 0
+    const estimated = row?.estimatedUsd ?? 0
+    return `${label} $${(billed + estimated).toFixed(4)}${estimated > 0 ? ` (est $${estimated.toFixed(4)})` : ''}`
+  }
+  return ` · ${part('research', costs.research)} · ${part('debate', costs.debate)} · ${part('chair', costs.chair)}`
 }
 
 function pathFor(kind: DeepKind): string {
@@ -253,9 +269,11 @@ export function DeepAnalysis({
   const progressLine = running
     ? waiting
       ? t.hub.deepQueued
-      : stage
-        ? t.hub.deepStage(stage)
-        : t.hub.deepRunning
+      : running === 'report'
+        ? reportStepLabel(stage, deepReportCopy(locale))
+        : stage
+          ? t.hub.deepStage(stage)
+          : t.hub.deepRunning
     : null
 
   const showProcess = running !== null || snapshot !== null || result !== null
@@ -291,9 +309,7 @@ export function DeepAnalysis({
       {showAdminCost && adminCost?.margin ? (
         <p className="text-[11px] text-slate-500" data-testid="deep-admin-margin">
           cost ${adminCost.margin.costUsd.toFixed(4)} · margin ${adminCost.margin.marginUsd.toFixed(2)} ({adminCost.margin.marginPct}%)
-          {adminCost.stageCosts
-            ? ` · research $${(adminCost.stageCosts.research?.billedUsd ?? 0).toFixed(4)} debate $${(adminCost.stageCosts.debate?.billedUsd ?? 0).toFixed(4)} chair $${(adminCost.stageCosts.chair?.billedUsd ?? 0).toFixed(4)}`
-            : ''}
+          {stageCostLine(adminCost.stageCosts)}
         </p>
       ) : null}
       {running ? (
@@ -327,6 +343,7 @@ export function DeepAnalysis({
               running={running !== null}
               kind={running ?? lastKind}
               t={t}
+              locale={locale}
               hasTranslation={hasTranslation}
               showOriginal={showOriginal}
               onToggleOriginal={onToggleOriginal}
@@ -349,6 +366,7 @@ function DeepProcessBody({
   running,
   kind,
   t,
+  locale,
   hasTranslation,
   showOriginal,
   onToggleOriginal,
@@ -361,6 +379,7 @@ function DeepProcessBody({
   running: boolean
   kind: DeepKind
   t: LeagueUiPack
+  locale: LeagueLocale
   hasTranslation: boolean
   showOriginal: boolean
   onToggleOriginal: () => void
@@ -374,16 +393,7 @@ function DeepProcessBody({
       : kind === 'open'
         ? emptyOpenSnapshot()
         : kind === 'report'
-          ? {
-              kind: 'report' as const,
-              instrument: null,
-              proposition: null,
-              dossier: null,
-              researchPath: null,
-              openings: [],
-              rebuttals: [],
-              chairReport: null,
-            }
+          ? emptyReportSnapshot()
           : emptyDebateSnapshot())
   if (!running && !snapshot && !result) return null
   const done = !running && result !== null
@@ -393,7 +403,6 @@ function DeepProcessBody({
   return (
     <div className="px-4 py-4" data-testid="deep-process">
       <p className="text-[10px] font-bold uppercase tracking-wide text-league-fg-muted">{title}</p>
-      {snap.instrument ? <p className="mt-1 text-sm font-semibold text-league-fg">{snap.instrument}</p> : null}
       {snap.proposition ? (
         <p className="mt-1 text-xs leading-relaxed text-league-fg-muted">{snap.proposition}</p>
       ) : null}
@@ -415,14 +424,19 @@ function DeepProcessBody({
           {t.modelTile.translating}
         </p>
       ) : null}
-      <StageStrip kind={snap.kind} stage={done ? 'done' : stage} running={running} t={t} />
+      {snap.kind === 'report' ? (
+        <>
+          <DeepReportProgress snap={snap} stage={done ? 'done' : stage} running={running} locale={locale} />
+          <DeepReportView snap={snap} locale={locale} running={running} />
+        </>
+      ) : (
+        <StageStrip kind={snap.kind} stage={done ? 'done' : stage} running={running} t={t} />
+      )}
       {snap.kind === 'open' ? (
         <OpenProcess snap={snap} running={running} t={t} />
-      ) : snap.kind === 'report' ? (
-        <ReportProcess snap={snap} />
-      ) : (
+      ) : snap.kind === 'debate' ? (
         <DebateProcess snap={snap} running={running} t={t} />
-      )}
+      ) : null}
     </div>
   )
 }
@@ -430,16 +444,7 @@ function DeepProcessBody({
 /** Old cached poll bodies carry only the terminal result — project it. */
 function snapshotFromResult(result: DeepPayload): DeepSnapshot {
   if (result.kind === 'report') {
-    return {
-      kind: 'report',
-      instrument: result.instrument ?? null,
-      proposition: result.proposition ?? null,
-      dossier: null,
-      researchPath: null,
-      openings: [],
-      rebuttals: [],
-      chairReport: result.report ?? null,
-    }
+    return { ...emptyReportSnapshot(), stage: 'done', legacyText: result.report ?? null }
   }
   if (result.kind === 'open') {
     return {
@@ -485,7 +490,6 @@ function snapshotFromResult(result: DeepPayload): DeepSnapshot {
 // ── Stage strip ───────────────────────────────────────────────────────────────
 
 const OPEN_STAGE_ORDER = ['plan', 'report', 'analyses', 'synthesis'] as const
-const REPORT_STAGE_ORDER = ['research', 'opening', 'rebuttal', 'chair'] as const
 const DEBATE_STAGE_ORDER = ['plan', 'report', 'deliberate', 'vote', 'verdict'] as const
 
 function stepLabel(key: string, t: LeagueUiPack): string {
@@ -523,13 +527,12 @@ function StageStrip({
   running,
   t,
 }: {
-  kind: DeepKind
+  kind: 'open' | 'debate'
   stage: string | null
   running: boolean
   t: LeagueUiPack
 }) {
-  const order: readonly string[] =
-    kind === 'open' ? OPEN_STAGE_ORDER : kind === 'report' ? REPORT_STAGE_ORDER : DEBATE_STAGE_ORDER
+  const order: readonly string[] = kind === 'open' ? OPEN_STAGE_ORDER : DEBATE_STAGE_ORDER
   const activeIdx = stageIndex(stage, order)
   return (
     <ol className="mt-3 flex flex-wrap gap-1.5" data-testid="deep-stage-strip">
@@ -705,33 +708,6 @@ function OpenProcess({ snap, running, t }: { snap: DeepOpenSnapshot; running: bo
 }
 
 // ── Debate process: plan → rounds → ballot → chair verdict ────────────────────
-
-function ReportProcess({ snap }: { snap: DeepReportSnapshot }) {
-  return (
-    <div className="mt-4 flex flex-col gap-3 text-sm leading-relaxed text-league-fg" data-testid="deep-report-process">
-      {snap.dossier ? (
-        <pre className="whitespace-pre-wrap rounded-xl bg-slate-50 p-3 text-xs" data-testid="deep-report-dossier">
-          {snap.dossier}
-        </pre>
-      ) : null}
-      {snap.openings.map((turn) => (
-        <p key={`o-${turn.model}`} data-testid="deep-report-opening">
-          <span className="font-semibold">{turn.model}</span> ({turn.side}) {turn.text}
-        </p>
-      ))}
-      {snap.rebuttals.map((turn) => (
-        <p key={`r-${turn.model}`} data-testid="deep-report-rebuttal">
-          <span className="font-semibold">{turn.model}</span> ({turn.side}) {turn.text}
-        </p>
-      ))}
-      {snap.chairReport ? (
-        <pre className="whitespace-pre-wrap rounded-xl bg-white p-3 text-xs" data-testid="deep-report-chair">
-          {snap.chairReport}
-        </pre>
-      ) : null}
-    </div>
-  )
-}
 
 function DebateProcess({ snap, running, t }: { snap: DeepDebateSnapshot; running: boolean; t: LeagueUiPack }) {
   const pendingSeats = pendingDebateSeats(snap)

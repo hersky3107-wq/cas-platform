@@ -14,6 +14,16 @@
  * never enter a client bundle.
  */
 
+import type { SourceTier } from './deep-report-dossier'
+import {
+  agreementOf,
+  dossierSections,
+  findingByRef,
+  mergeFindings,
+  type ResearchFinding,
+} from './deep-report-findings'
+import type { ResearchAngle } from './deep-report-policy'
+import { plainText, readerText, tallyVotes, type EvidencePoint } from './deep-report-structured'
 import { visibleLeagueText } from './visible-disclosure'
 
 export type DeepSeatSnapshot = {
@@ -91,23 +101,67 @@ export type DeepDebateSnapshot = {
   verdict: DeepVerdictSnapshot | null
 }
 
-export type DeepReportTurnSnapshot = {
+export type DeepReportSide = 'yes' | 'no'
+export type DeepReportStage = 'research' | 'opening' | 'rebuttal' | 'chair' | 'done'
+
+export type DeepReportEvidence = {
+  ref: string | null
+  claim: string
+  date: string | null
+  source: string | null
+  url: string | null
+  tier: SourceTier
+  agreement: number
+}
+
+export type DeepReportPoint = { text: string; source: string | null }
+
+export type DeepReportSeat = {
   provider: string
-  model: string
-  side: string
-  text: string | null
-  ok: boolean
+  brand: string
+  assignedSide: DeepReportSide
+  finalSide: DeepReportSide | null
+  finalProbability: number | null
+  changedMind: boolean
+  whyChanged: string | null
+  headline: string | null
+  strongestPoint: DeepReportPoint | null
+  rebuttalLine: DeepReportPoint | null
+  opening: { headline: string | null; points: DeepReportPoint[] } | null
+  rebuttal: { headline: string | null; rebuttal: DeepReportPoint[]; points: DeepReportPoint[] } | null
+  openingDone: boolean
+  rebuttalDone: boolean
+}
+
+export type DeepReportVerdict = {
+  side: DeepReportSide
+  probability: number
+  oneLine: string
+  relation: 'stronger' | 'weaker' | 'opposite' | null
+  ai40: { side: DeepReportSide; confidence: number } | null
+  why: string | null
 }
 
 export type DeepReportSnapshot = {
   kind: 'report'
-  instrument: string | null
+  /** Always null: the instrument code is internal. Kept for the shared snapshot shape. */
+  instrument: null
   proposition: string | null
-  dossier: string | null
+  sideWords: { yes: string; no: string }
+  stage: DeepReportStage
+  progress: { sourcesFound: number; openingsDone: number; rebuttalsDone: number; debaters: number }
   researchPath: string | null
-  openings: DeepReportTurnSnapshot[]
-  rebuttals: DeepReportTurnSnapshot[]
-  chairReport: string | null
+  verdict: DeepReportVerdict | null
+  vote: { yes: number; no: number; counted: number; total: number; majority: DeepReportSide | null; majorityCount: number } | null
+  seats: DeepReportSeat[]
+  keyEvidence: DeepReportEvidence[]
+  judgment: string[]
+  minorityView: string | null
+  flipTriggers: { event: string; byDate: string | null }[]
+  scenarios: { name: string; weight: number }[]
+  dossier: { key: ResearchAngle; items: DeepReportEvidence[] }[]
+  /** Plain text of a report generated before the structured contract. */
+  legacyText: string | null
 }
 
 export type DeepSnapshot = DeepOpenSnapshot | DeepDebateSnapshot | DeepReportSnapshot
@@ -206,32 +260,285 @@ export function buildDeepSnapshot(
   return buildReportSnapshot(state)
 }
 
-function turnsOf(raw: unknown, category?: string): DeepReportTurnSnapshot[] {
+const REPORT_TIERS: readonly SourceTier[] = ['official', 'regulator', 'major_outlet', 'rumor', 'other']
+
+function asReportSide(v: unknown): DeepReportSide | null {
+  return v === 'yes' || v === 'no' ? v : null
+}
+
+function asTier(v: unknown): SourceTier {
+  return REPORT_TIERS.includes(v as SourceTier) ? (v as SourceTier) : 'other'
+}
+
+function num(v: unknown): number | null {
+  return typeof v === 'number' && Number.isFinite(v) ? v : null
+}
+
+function hostOf(url: string | null): string | null {
+  if (!url) return null
+  try {
+    return new URL(url).hostname.replace(/^www\./, '')
+  } catch {
+    return null
+  }
+}
+
+function safeUrl(v: unknown): string | null {
+  const url = str(v)
+  return url && /^https?:\/\//i.test(url) ? url : null
+}
+
+/** User-visible prose: display scrub, then no markdown residue. */
+function prose(category: string | undefined, v: unknown): string | null {
+  const text = vis(category, v)
+  if (!text) return null
+  const plain = plainText(text)
+  return plain || null
+}
+
+function findingsOf(raw: unknown): ResearchFinding[] {
   if (!Array.isArray(raw)) return []
   return raw
-    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object' && typeof row.claim === 'string')
     .map((row) => ({
-      provider: str(row.provider) ?? 'unknown',
-      model: str(row.model) ?? '',
-      side: str(row.side) ?? '',
-      text: vis(category, row.text),
-      ok: row.ok === true,
+      claim: String(row.claim),
+      date: str(row.date),
+      sourceTitle: str(row.sourceTitle),
+      sourceUrl: safeUrl(row.sourceUrl),
+      tier: asTier(row.tier),
+      side: row.side === 'yes' || row.side === 'no' ? row.side : 'context',
+      queryKey: (str(row.queryKey) ?? 'changed_30d') as ResearchAngle,
+      providers: Array.isArray(row.providers) ? row.providers.filter((p): p is string => typeof p === 'string') : [],
+      ...(str(row.ref) ? { ref: str(row.ref)! } : {}),
     }))
+}
+
+function evidenceOf(category: string | undefined, finding: ResearchFinding): DeepReportEvidence | null {
+  const claim = prose(category, finding.claim)
+  if (!claim) return null
+  return {
+    ref: finding.ref ?? null,
+    claim,
+    date: finding.date,
+    source: prose(category, finding.sourceTitle) ?? hostOf(finding.sourceUrl),
+    url: finding.sourceUrl,
+    tier: finding.tier,
+    agreement: Math.max(1, agreementOf(finding)),
+  }
+}
+
+type Say = (v: unknown) => string | null
+
+function pointsOf(category: string | undefined, raw: unknown, findings: ResearchFinding[], say: Say): DeepReportPoint[] {
+  if (!Array.isArray(raw)) return []
+  const out: DeepReportPoint[] = []
+  for (const item of raw as EvidencePoint[]) {
+    if (!item || typeof item !== 'object') continue
+    const text = say(item.text)
+    if (!text) continue
+    const finding = findingByRef(findings, item.ref)
+    const source = finding ? prose(category, finding.sourceTitle) ?? hostOf(finding.sourceUrl) : null
+    out.push({ text, source })
+  }
+  return out
+}
+
+type RawTurn = Record<string, unknown>
+
+function turnRows(raw: unknown): RawTurn[] {
+  return Array.isArray(raw) ? raw.filter((row): row is RawTurn => !!row && typeof row === 'object') : []
+}
+
+function reportStage(state: Record<string, unknown>): DeepReportStage {
+  const result = state.result as { ok?: unknown } | null | undefined
+  if (result?.ok === true) return 'done'
+  if (!state.research) return 'research'
+  if (!state.openings) return 'opening'
+  if (!state.rebuttals) return 'rebuttal'
+  return 'chair'
 }
 
 function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot {
   const category = str(state.category) ?? undefined
-  const research = (state.research ?? null) as { dossier?: unknown; path?: unknown } | null
-  const result = (state.result ?? null) as { report?: unknown } | null
+  const sideWordsRaw = (state.sideWords ?? {}) as { yes?: unknown; no?: unknown }
+  const sideWords = { yes: str(sideWordsRaw.yes) ?? 'YES', no: str(sideWordsRaw.no) ?? 'NO' }
+  const research = (state.research ?? null) as { findings?: unknown; path?: unknown; sourcesFound?: unknown; dossier?: unknown } | null
+  const pending = (state.researchPending ?? null) as { seatFindings?: unknown; path?: unknown } | null
+  const findings = findingsOf(research?.findings)
+  const pendingFindings = Array.isArray(pending?.seatFindings)
+    ? mergeFindings((pending!.seatFindings as unknown[]).map(findingsOf))
+    : []
+
+  const refLabel = (ref: string) => {
+    const finding = findingByRef(findings, ref)
+    return finding ? (prose(category, finding.sourceTitle) ?? hostOf(finding.sourceUrl)) : null
+  }
+  const say: Say = (v) => {
+    const text = prose(category, v)
+    return text ? readerText(text, { refLabel, sideWords }) || null : null
+  }
+
+  const openings = turnRows(state.openings ?? state.openingDraft)
+  const rebuttals = turnRows(state.rebuttals ?? state.rebuttalDraft)
+  const structured = openings.some((row) => Array.isArray(row.points))
+
+  const seats: DeepReportSeat[] = structured
+    ? openings
+        .map((open): DeepReportSeat | null => {
+          const provider = str(open.provider) ?? 'unknown'
+          const assignedSide = asReportSide(open.side)
+          if (!assignedSide) return null
+          const reb = rebuttals.find((row) => row.provider === provider) ?? null
+          const openOk = open.ok === true
+          const rebOk = reb?.ok === true
+          const finalTurn = rebOk ? reb! : openOk ? open : null
+          const openingPoints = pointsOf(category, open.points, findings, say)
+          const rebuttalItems = rebOk ? pointsOf(category, reb!.rebuttal, findings, say) : []
+          const rebuttalPoints = rebOk ? pointsOf(category, reb!.points, findings, say) : []
+          return {
+            provider,
+            brand: deepBrandLabel(provider),
+            assignedSide,
+            finalSide: finalTurn ? asReportSide(finalTurn.finalSide) : null,
+            finalProbability: finalTurn ? num(finalTurn.finalProbability) : null,
+            changedMind: false,
+            whyChanged: rebOk ? say(reb!.whyChanged) : null,
+            headline: say(rebOk ? reb!.headline : open.headline) ?? say(open.headline),
+            strongestPoint: rebuttalPoints[0] ?? openingPoints[0] ?? null,
+            rebuttalLine: rebuttalItems[0] ?? null,
+            opening: openOk ? { headline: say(open.headline), points: openingPoints } : null,
+            rebuttal: rebOk ? { headline: say(reb!.headline), rebuttal: rebuttalItems, points: rebuttalPoints } : null,
+            openingDone: openOk,
+            rebuttalDone: rebOk,
+          }
+        })
+        .filter((seat): seat is DeepReportSeat => seat !== null)
+    : []
+
+  const tally = tallyVotes(
+    seats.map((seat) => ({
+      provider: seat.provider,
+      model: seat.provider,
+      assignedSide: seat.assignedSide,
+      finalSide: seat.finalSide,
+      finalProbability: seat.finalProbability,
+    })),
+  )
+  tally.seats.forEach((vote, i) => {
+    const seat = seats[i]!
+    seat.finalSide = vote.finalSide
+    seat.finalProbability = vote.finalProbability
+    seat.changedMind = vote.changedMind
+    if (!vote.changedMind) seat.whyChanged = null
+  })
+
+  const chair = (state.chair ?? null) as Record<string, unknown> | null
+  const verdictSide = asReportSide(chair?.verdictSide)
+  const verdictProbability = num(chair?.verdictProbability)
+  const ai40Raw = (chair?.ai40 ?? null) as { side?: unknown; confidence?: unknown } | null
+  const ai40Side = asReportSide(ai40Raw?.side)
+  const ai40Confidence = num(ai40Raw?.confidence)
+  const relation = chair?.relation === 'stronger' || chair?.relation === 'weaker' || chair?.relation === 'opposite' ? chair.relation : null
+  const verdict: DeepReportVerdict | null =
+    chair && verdictSide && verdictProbability != null
+      ? {
+          side: verdictSide,
+          probability: verdictProbability,
+          oneLine: say(chair.oneLine) ?? '',
+          relation,
+          ai40: ai40Side && ai40Confidence != null ? { side: ai40Side, confidence: ai40Confidence } : null,
+          why: say(chair.vs40Why),
+        }
+      : null
+
+  const keyEvidence: DeepReportEvidence[] = (Array.isArray(chair?.keyEvidence) ? (chair!.keyEvidence as unknown[]) : [])
+    .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+    .map((row): DeepReportEvidence | null => {
+      const finding = findingByRef(findings, str(row.ref))
+      const claim = say(row.claim)
+      if (!claim) return null
+      return {
+        ref: finding?.ref ?? null,
+        claim,
+        date: str(row.date) ?? finding?.date ?? null,
+        source: prose(category, row.source) ?? (finding ? prose(category, finding.sourceTitle) ?? hostOf(finding.sourceUrl) : null),
+        url: finding?.sourceUrl ?? null,
+        tier: finding ? finding.tier : asTier(row.tier),
+        agreement: finding ? Math.max(1, agreementOf(finding)) : 1,
+      }
+    })
+    .filter((row): row is DeepReportEvidence => row !== null)
+    .slice(0, 5)
+
+  const proseList = (raw: unknown): string[] =>
+    Array.isArray(raw) ? raw.map((line) => say(line)).filter((line): line is string => Boolean(line)) : []
+
+  const legacyRaw = !structured ? (str(state.chairReport) ?? str((state.result as { report?: unknown } | null)?.report)) : null
+  const legacyVisible = legacyRaw && !verdict ? vis(category, legacyRaw) : null
+  const legacyText = legacyVisible
+    ? legacyVisible
+        .split('\n')
+        .map((line) => plainText(line))
+        .filter(Boolean)
+        .join('\n') || null
+    : null
+
   return {
     kind: 'report',
-    instrument: str(state.instrument),
-    proposition: str(state.proposition),
-    dossier: vis(category, research?.dossier),
-    researchPath: str(research?.path),
-    openings: turnsOf(state.openings, category),
-    rebuttals: turnsOf(state.rebuttals, category),
-    chairReport: vis(category, state.chairReport) ?? vis(category, result?.report),
+    instrument: null,
+    proposition: prose(category, state.proposition),
+    sideWords,
+    stage: reportStage(state),
+    progress: {
+      sourcesFound: num(research?.sourcesFound) ?? (findings.length || pendingFindings.length),
+      openingsDone: seats.filter((seat) => seat.openingDone).length,
+      rebuttalsDone: seats.filter((seat) => seat.rebuttalDone).length,
+      debaters: Math.max(seats.length, 6),
+    },
+    researchPath: str(research?.path) ?? str(pending?.path),
+    verdict,
+    vote: tally.counted > 0 ? { yes: tally.yes, no: tally.no, counted: tally.counted, total: tally.total, majority: tally.majority, majorityCount: tally.majorityCount } : null,
+    seats,
+    keyEvidence,
+    judgment: proseList(chair?.debateJudgment).slice(0, 3),
+    minorityView: say(chair?.minorityView),
+    flipTriggers: (Array.isArray(chair?.flipTriggers) ? (chair!.flipTriggers as unknown[]) : [])
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+      .map((row) => ({ event: say(row.event) ?? '', byDate: str(row.byDate) }))
+      .filter((row) => row.event.length > 0)
+      .slice(0, 3),
+    scenarios: (Array.isArray(chair?.scenarios) ? (chair!.scenarios as unknown[]) : [])
+      .filter((row): row is Record<string, unknown> => !!row && typeof row === 'object')
+      .map((row) => ({ name: say(row.name) ?? '', weight: num(row.weight) ?? 0 }))
+      .filter((row) => row.name.length > 0)
+      .slice(0, 3),
+    dossier: dossierSections(findings).map((section) => ({
+      key: section.key,
+      items: section.items.map((finding) => evidenceOf(category, finding)).filter((row): row is DeepReportEvidence => row !== null),
+    })),
+    legacyText,
+  }
+}
+
+export function emptyReportSnapshot(): DeepReportSnapshot {
+  return {
+    kind: 'report',
+    instrument: null,
+    proposition: null,
+    sideWords: { yes: 'YES', no: 'NO' },
+    stage: 'research',
+    progress: { sourcesFound: 0, openingsDone: 0, rebuttalsDone: 0, debaters: 6 },
+    researchPath: null,
+    verdict: null,
+    vote: null,
+    seats: [],
+    keyEvidence: [],
+    judgment: [],
+    minorityView: null,
+    flipTriggers: [],
+    scenarios: [],
+    dossier: [],
+    legacyText: null,
   }
 }
 

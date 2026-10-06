@@ -3,14 +3,16 @@
  * No I/O. The hop runner and the tests both call these.
  */
 import type { LeagueLocale } from './i18n/locales'
-import { OUTPUT_LANGUAGE_NAME } from './deep-output-language'
+import { OUTPUT_LANGUAGE_NAME } from './output-language-name'
 
 /** Owner pack rate used only to show margin. Not a charge. */
 export const LEAGUE_CREDIT_USD = 0.0475
 
 /**
- * Official Perplexity sample for one `sonar-deep-research` call (~$0.82)
- * plus three grounded-search seats budgeted at $0.05 each.
+ * Official Perplexity sample for one `sonar-deep-research` call (~$0.82) —
+ * kept as the budget for its Agent API successor (preset `high`), which
+ * Perplexity prices at or below Sonar Deep Research — plus three
+ * grounded-search seats budgeted at $0.05 each.
  * https://docs.perplexity.ai/docs/getting-started/pricing
  */
 export const PROJECTED_SONAR_DEEP_RESEARCH_USD = 0.82
@@ -29,6 +31,40 @@ export const DEEP_REPORT_DEBATER_MODELS = [
 ] as const
 
 export const DEEP_REPORT_CHAIR = { provider: 'anthropic', model: 'claude-opus-5-5' } as const
+
+/** Grounded-search seats that run beside Perplexity deep research. */
+export const DEEP_RESEARCH_SEATS = [
+  { provider: 'google', model: 'gemini-3.6-flash' },
+  { provider: 'xai', model: 'grok-4.3' },
+  { provider: 'anthropic', model: 'claude-sonnet-5' },
+] as const
+
+/** Over the research cap: Perplexity `low` preset plus one grounded seat. */
+export const FALLBACK_RESEARCH_SEATS = [{ provider: 'google', model: 'gemini-3.6-flash' }] as const
+
+/**
+ * Token caps. Reasoning models spend hidden tokens from the same budget
+ * (Opus 5.5 thinking cannot be turned off), so JSON-sized replies still need
+ * large caps: the first live run truncated at 1400 (debaters) and 4000 (chair).
+ */
+export const REPORT_TOKENS = {
+  researchSeat: 8000,
+  perplexity: 20000,
+  debater: 8000,
+  chair: 16000,
+} as const
+
+/** Wall-clock budget for model work inside one hop (tick budget is 300s). */
+export const REPORT_HOP_BUDGET_MS = 250_000
+export const REPORT_TIMEOUTS_MS = {
+  researchSeat: 150_000,
+  debater: 120_000,
+  chair: 200_000,
+} as const
+/** Stop waiting for the background deep-research job after this long. */
+export const DEEP_RESEARCH_MAX_WAIT_MS = 15 * 60_000
+/** Each call gets one retry after an invalid or truncated reply. */
+export const REPORT_MAX_ATTEMPTS = 2
 
 /** Models the report path must not call. */
 export const REMOVED_DEEP_REPORT_MODELS = [

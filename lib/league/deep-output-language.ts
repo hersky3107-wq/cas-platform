@@ -4,17 +4,9 @@
  */
 import { AsyncLocalStorage } from 'node:async_hooks'
 import { LEAGUE_LOCALES, type LeagueLocale } from './i18n/locales'
+import { OUTPUT_LANGUAGE_NAME } from './output-language-name'
 
-export const OUTPUT_LANGUAGE_NAME: Record<LeagueLocale, string> = {
-  en: 'English',
-  ko: 'Korean',
-  ja: 'Japanese',
-  'zh-TW': 'Traditional Chinese',
-  fr: 'French',
-  ar: 'Arabic',
-  es: 'Spanish',
-  pt: 'Portuguese',
-}
+export { OUTPUT_LANGUAGE_NAME }
 
 const NAME_TO_LOCALE: Record<string, LeagueLocale> = Object.fromEntries(
   (Object.entries(OUTPUT_LANGUAGE_NAME) as [LeagueLocale, string][]).map(([locale, name]) => [name, locale]),

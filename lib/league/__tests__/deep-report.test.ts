@@ -6,8 +6,12 @@ import { renderEvidenceDossier, admitEvidenceClaim } from '../deep-report-dossie
 import {
   DEEP_REPORT_CHAIR,
   DEEP_REPORT_DEBATER_MODELS,
+  DEEP_RESEARCH_SEATS,
   PROJECTED_DEEP_RESEARCH_USD,
   REMOVED_DEEP_REPORT_MODELS,
+  REPORT_HOP_BUDGET_MS,
+  REPORT_TIMEOUTS_MS,
+  REPORT_TOKENS,
   assignDebateSides,
   bilingualResearchQueries,
   deepReportMargin,
@@ -15,6 +19,7 @@ import {
   reportStageFor,
   researchPathForCap,
 } from '../deep-report-policy'
+import { DEEP_RESEARCH_PRESET, FALLBACK_RESEARCH_PRESET } from '../deep-perplexity-agent'
 import { chairUserPrompt, openingUserPrompt, rebuttalUserPrompt } from '../deep-report-prompts'
 import { deepReportQueueEstimate } from '../generation/policy'
 import { krDeepPolicyForInstrument } from '../korea-lane-features'
@@ -36,14 +41,22 @@ describe('AI deep report pipeline', () => {
     expect(DEEP_REPORT_DEBATER_MODELS).toHaveLength(6)
     expect(DEEP_REPORT_CHAIR.model).toBe('claude-opus-5-5')
     expect(REPORT_RUN).toContain('bilingualResearchQueries')
-    expect(REPORT_RUN).toContain('PERPLEXITY_SONAR_DEEP_RESEARCH_MODEL')
-    expect(REPORT_RUN).toContain("model: 'gemini-3.6-flash'")
-    expect(REPORT_RUN).toContain("model: 'grok-4.3'")
-    expect(REPORT_RUN).toContain("model: 'claude-sonnet-5'")
-    expect(REPORT_RUN).toContain("modelOverride: 'claude-opus-5-5'")
+    expect(REPORT_RUN).toContain('submitAgentResearch')
+    expect(REPORT_RUN).toContain('DEEP_RESEARCH_SEATS')
+    expect(REPORT_RUN).toContain('DEEP_REPORT_CHAIR.model')
+    expect(DEEP_RESEARCH_SEATS.map((seat) => seat.model)).toEqual(['gemini-3.6-flash', 'grok-4.3', 'claude-sonnet-5'])
+    expect(DEEP_RESEARCH_PRESET).toBe('high')
+    expect(FALLBACK_RESEARCH_PRESET).toBe('low')
     for (const banned of REMOVED_DEEP_REPORT_MODELS) {
       expect(REPORT_RUN).not.toContain(banned)
+      expect(DEEP_RESEARCH_SEATS.some((seat) => seat.model === banned)).toBe(false)
     }
+  })
+
+  it('gives debaters and the chair enough output tokens not to truncate', () => {
+    expect(REPORT_TOKENS.debater).toBeGreaterThanOrEqual(8000)
+    expect(REPORT_TOKENS.chair).toBeGreaterThanOrEqual(16000)
+    expect(REPORT_TIMEOUTS_MS.chair).toBeLessThan(REPORT_HOP_BUDGET_MS)
   })
 
   it('falls back to standard search when the projected deep bundle exceeds the cap', () => {
@@ -61,20 +74,23 @@ describe('AI deep report pipeline', () => {
   })
 
   it('keeps 40-seat votes out of debater prompts and gives them to the chair', () => {
+    const sideWords = { yes: '상승', no: '하락' }
     const opening = openingUserPrompt({
       locale: 'ko',
       proposition: 'BTC finishes higher',
       packet: 'packet',
-      dossier: 'dossier',
+      evidence: 'E1 | claim',
       side: 'yes',
+      sideWords,
       model: 'claude-sonnet-5',
     })
     const rebuttal = rebuttalUserPrompt({
       locale: 'ko',
       proposition: 'BTC finishes higher',
       packet: 'packet',
-      dossier: 'dossier',
+      evidence: 'E1 | claim',
       side: 'no',
+      sideWords,
       ownOpening: 'open',
       oppositeOpenings: 'opp',
     })
@@ -82,17 +98,21 @@ describe('AI deep report pipeline', () => {
       locale: 'ko',
       proposition: 'BTC finishes higher',
       packet: 'packet',
-      dossier: 'dossier',
-      openings: 'o',
-      rebuttals: 'r',
+      evidence: 'E1 | claim',
+      debate: 'debate',
       fortySeatAggregate: 'n=40. Distribution: up: 25, down: 15.',
       categoryNote: '',
+      sideWords,
     })
     expect(opening).not.toContain('40-seat')
     expect(opening).not.toContain('predicted_direction')
     expect(rebuttal).not.toContain('40-seat')
     expect(chair).toContain('40-seat aggregate')
     expect(chair).toContain('up: 25')
+    expect(opening).toContain('"final_probability"')
+    expect(rebuttal).toContain('"changed_mind"')
+    expect(chair).toContain('"vs_40ai"')
+    expect(chair).toContain('"flip_triggers"')
     expect(opening).toContain(languageLockLine('ko'))
     expect(rebuttal).toContain(languageLockLine('ko'))
     expect(chair).toContain(languageLockLine('ko'))

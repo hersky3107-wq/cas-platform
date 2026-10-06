@@ -75,7 +75,28 @@ export function visibleLeagueText(
   return out
 }
 
-const DEEP_SKIP_KEYS = new Set(['instrument', 'category', 'horizon', 'outputLanguage', 'roleId', 'provider'])
+/**
+ * Keys whose values are identifiers, links, or model input — never display
+ * prose. Scrubbing them erased every evidence URL (empty "(출처: )") and the
+ * packet the later hops read.
+ */
+const DEEP_SKIP_KEYS = new Set([
+  'instrument',
+  'category',
+  'horizon',
+  'outputLanguage',
+  'roleId',
+  'provider',
+  'model',
+  'context',
+  'sourceUrl',
+  'url',
+  'ref',
+  'requestId',
+  'responseId',
+  'error',
+  'chairError',
+])
 
 function scrubDeepValue(category: string, key: string, value: unknown): unknown {
   if (DEEP_SKIP_KEYS.has(key)) return value

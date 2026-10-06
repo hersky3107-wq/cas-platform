@@ -88,10 +88,13 @@ describe('DeepAnalysis click path', () => {
     })
 
     expect(posts).toEqual([{ roundId: ROUND_ID, locale: 'ko' }])
-    const first = host.querySelector('[data-testid="deep-stage-strip"] li')
-    expect(first?.getAttribute('data-active')).toBe('true')
-    expect(first?.textContent).toContain('research')
-    expect(host.textContent).toContain('조사 중')
+    const steps = [...host.querySelectorAll('[data-testid="deep-stage-strip"] li')]
+    expect(steps.map((li) => li.textContent)).toEqual(['자료 찾는 중', '찬반 주장', '서로 반박', '의장 정리'])
+    expect(steps[0]?.getAttribute('data-active')).toBe('true')
+    const text = host.textContent ?? ''
+    for (const internal of ['research', 'opening', 'rebuttal', 'chair', 'TECH:', 'STOCK:']) {
+      expect(text).not.toContain(internal)
+    }
   })
 
   it('shows the refunded failure and a retry', async () => {

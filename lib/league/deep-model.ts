@@ -20,6 +20,24 @@ function noDbSupabase(): SupabaseClient {
   return createClient('http://localhost', 'league-deep-no-db') as unknown as SupabaseClient
 }
 
+export type LeagueDeepUsage = {
+  promptTokens: number | null
+  completionTokens: number | null
+  /** Provider-reported USD (Perplexity total_cost, xAI ticks). Null when the provider reports none. */
+  billedUsd: number | null
+  /** Tool fee not folded into billedUsd (Anthropic web_search). */
+  toolFeeUsd: number | null
+}
+
+export type LeagueDeepCallResult = {
+  text: string | null
+  error?: string
+  model: string | null
+  finishReason?: string | null
+  usage?: LeagueDeepUsage
+  ms: number
+}
+
 /**
  * One deep-analysis model call. EVERY seat is bounded:
  *   - platform seats (glm/solar): 120s wall; callPlatformModel's own
@@ -38,7 +56,12 @@ export async function callLeagueDeepModel(params: {
   modelOverride?: string
   /** Gemini grounding, xAI web_search, Claude web_search. Ignored by other providers. */
   searchTool?: boolean
-}): Promise<{ text: string | null; error?: string }> {
+  /** Extra body fields (e.g. xAI reasoning_effort). DeepSeek uses its own league options. */
+  extraPayload?: Record<string, unknown>
+  allowGeminiThinking?: boolean
+  anthropicThinking?: 'disabled' | 'enabled' | 'adaptive'
+}): Promise<LeagueDeepCallResult> {
+  const started = Date.now()
   const platformId = PLATFORM_BY_PROVIDER[params.provider]
   if (platformId) {
     const called = await callPlatformModel({
@@ -49,13 +72,13 @@ export async function callLeagueDeepModel(params: {
       timeoutMs: params.timeoutMs ?? LEAGUE_DEEP_DEFAULT_TIMEOUT_MS,
     })
     if (called.error || !called.text?.trim()) {
-      return { text: null, error: called.error ?? 'empty model response' }
+      return { text: null, error: called.error ?? 'empty model response', model: platformId, ms: Date.now() - started }
     }
-    return { text: called.text.trim() }
+    return { text: called.text.trim(), model: platformId, ms: Date.now() - started }
   }
 
   if (!ROUTER_PROVIDERS.has(params.provider)) {
-    return { text: null, error: `unknown league deep provider: ${params.provider}` }
+    return { text: null, error: `unknown league deep provider: ${params.provider}`, model: null, ms: 0 }
   }
 
   try {
@@ -70,7 +93,9 @@ export async function callLeagueDeepModel(params: {
         systemPrompt: params.systemPrompt,
         maxCompletionTokens: params.maxCompletionTokens,
         modelOverride: deepseekOpts?.modelOverride ?? params.modelOverride,
-        extraPayload: deepseekOpts?.extraPayload,
+        extraPayload: deepseekOpts?.extraPayload ?? params.extraPayload,
+        allowGeminiThinking: params.allowGeminiThinking,
+        anthropicThinking: params.anthropicThinking,
         searchTool: params.searchTool,
         timeoutMs,
       })
@@ -83,32 +108,25 @@ export async function callLeagueDeepModel(params: {
       await new Promise((resolve) => setTimeout(resolve, emptyContentRetryBackoffMs(attempt - 2)))
       r = await callOnce(EMPTY_CONTENT_RETRY_TIMEOUT_MS)
     }
-    if (r.error || !r.text?.trim()) {
-      return { text: null, error: r.error ?? 'empty model response' }
+    const usage: LeagueDeepUsage = {
+      promptTokens: r.promptTokens ?? null,
+      completionTokens: r.completionTokens ?? null,
+      billedUsd: typeof r.costUsd === 'number' && r.costUsd > 0 ? r.costUsd : null,
+      toolFeeUsd: typeof r.toolFeeUsd === 'number' ? r.toolFeeUsd : null,
     }
-    return { text: r.text.trim() }
+    const base = { model: r.model ?? params.modelOverride ?? null, finishReason: r.finishReason ?? null, usage, ms: Date.now() - started }
+    if (r.error || !r.text?.trim()) {
+      return { text: null, error: r.error ?? 'empty model response', ...base }
+    }
+    return { text: r.text.trim(), ...base }
   } catch (e: unknown) {
-    return { text: null, error: e instanceof Error ? e.message : 'model call threw' }
+    return {
+      text: null,
+      error: e instanceof Error ? e.message : 'model call threw',
+      model: params.modelOverride ?? null,
+      ms: Date.now() - started,
+    }
   }
 }
 
-export function stripFences(raw: string): string {
-  let text = raw.trim()
-  const fence = text.match(/```(?:json)?\s*([\s\S]*?)(?:```|$)/i)
-  if (fence && fence[1]) text = fence[1].trim()
-  if (!text.startsWith('{')) {
-    const start = text.indexOf('{')
-    const end = text.lastIndexOf('}')
-    if (start !== -1 && end > start) text = text.slice(start, end + 1)
-  }
-  return text
-}
-
-export function parseJsonObject(raw: string): Record<string, unknown> | null {
-  try {
-    const parsed = JSON.parse(stripFences(raw))
-    return parsed && typeof parsed === 'object' ? (parsed as Record<string, unknown>) : null
-  } catch {
-    return null
-  }
-}
+export { parseJsonObject, stripFences } from './json-object'
