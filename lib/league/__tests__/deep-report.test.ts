@@ -92,7 +92,9 @@ describe('AI deep report pipeline', () => {
       side: 'no',
       sideWords,
       ownOpening: 'open',
-      oppositeOpenings: 'opp',
+      opponentName: 'Claude',
+      opponentModel: 'claude-sonnet-5',
+      opponentOpening: 'opp',
     })
     const chair = chairUserPrompt({
       locale: 'ko',
@@ -110,7 +112,8 @@ describe('AI deep report pipeline', () => {
     expect(chair).toContain('40-seat aggregate')
     expect(chair).toContain('up: 25')
     expect(opening).toContain('"final_probability"')
-    expect(rebuttal).toContain('"changed_mind"')
+    expect(rebuttal).toContain('"quoted_claim"')
+    expect(rebuttal).toContain('"evidence_refs"')
     expect(chair).toContain('"vs_40ai"')
     expect(chair).toContain('"flip_triggers"')
     expect(opening).toContain(languageLockLine('ko'))

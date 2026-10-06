@@ -22,8 +22,9 @@ import {
   mergeFindings,
   type ResearchFinding,
 } from './deep-report-findings'
+import { pairDebaters, rebuttalsAwaitCounter } from './deep-debate-pairs'
 import type { ResearchAngle } from './deep-report-policy'
-import { plainText, readerText, tallyVotes, type EvidencePoint } from './deep-report-structured'
+import { plainText, readerText, tallyVotes, type EvidencePoint, type ReplyStance } from './deep-report-structured'
 import { visibleLeagueText } from './visible-disclosure'
 
 export type DeepSeatSnapshot = {
@@ -102,7 +103,26 @@ export type DeepDebateSnapshot = {
 }
 
 export type DeepReportSide = 'yes' | 'no'
-export type DeepReportStage = 'research' | 'opening' | 'rebuttal' | 'chair' | 'done'
+export type DeepReportStage = 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair' | 'done'
+
+export type DeepReportExchange = {
+  claimBrand: string
+  claimText: string
+  rebuttalBrand: string
+  rebuttalText: string
+  quote: string
+  replyBrand: string | null
+  replyText: string | null
+  stance: ReplyStance | null
+}
+
+export type DeepReportThread = {
+  id: string
+  exchanges: DeepReportExchange[]
+  openings: { brand: string; headline: string | null; points: DeepReportPoint[] }[]
+}
+
+export type DeepReportConcession = { brand: string; text: string }
 
 export type DeepReportEvidence = {
   ref: string | null
@@ -149,7 +169,9 @@ export type DeepReportSnapshot = {
   proposition: string | null
   sideWords: { yes: string; no: string }
   stage: DeepReportStage
-  progress: { sourcesFound: number; openingsDone: number; rebuttalsDone: number; debaters: number }
+  progress: { sourcesFound: number; openingsDone: number; rebuttalsDone: number; countersDone: number; debaters: number }
+  threads: DeepReportThread[]
+  concessions: DeepReportConcession[]
   researchPath: string | null
   verdict: DeepReportVerdict | null
   vote: { yes: number; no: number; counted: number; total: number; majority: DeepReportSide | null; majorityCount: number } | null
@@ -349,12 +371,84 @@ function turnRows(raw: unknown): RawTurn[] {
   return Array.isArray(raw) ? raw.filter((row): row is RawTurn => !!row && typeof row === 'object') : []
 }
 
+function asReplyStance(raw: unknown): ReplyStance | null {
+  return raw === 'concede' || raw === 'partial' || raw === 'defend' ? raw : null
+}
+
+function reportConcessions(counters: readonly RawTurn[], say: Say): DeepReportConcession[] {
+  return counters
+    .filter((row) => row.ok === true && (row.stance === 'concede' || row.stance === 'partial'))
+    .map((row) => ({ brand: deepBrandLabel(str(row.provider) ?? ''), text: say(row.reply) ?? '' }))
+    .filter((row) => row.brand.length > 0 && row.text.length > 0)
+}
+
+function reportThreads(
+  roundId: string,
+  openings: readonly RawTurn[],
+  rebuttals: readonly RawTurn[],
+  counters: readonly RawTurn[],
+  say: Say,
+): DeepReportThread[] {
+  if (!rebuttals.some((row) => row.ok === true && typeof row.quotedClaim === 'string' && row.quotedClaim)) return []
+  const seats = openings
+    .filter((row) => row.ok === true && (row.side === 'yes' || row.side === 'no'))
+    .map((row) => ({
+      provider: str(row.provider) ?? '',
+      model: str(row.model) ?? '',
+      assignedSide: row.side as 'yes' | 'no',
+      finalSide: row.finalSide === 'yes' || row.finalSide === 'no' ? row.finalSide : null,
+    }))
+    .filter((row) => row.provider && row.model)
+  return pairDebaters(roundId, seats)
+    .map((pair): DeepReportThread | null => {
+      const exchanges = [pair.yes, pair.no]
+        .map((seat) => {
+          const foe = seat.provider === pair.yes.provider ? pair.no : pair.yes
+          const attack = rebuttals.find((row) => row.provider === foe.provider && row.ok === true)
+          const quote = say(attack?.quotedClaim)
+          const rebuttal = say(attack?.rebuttalText) ?? ''
+          if (!quote || !rebuttal) return null
+          const reply = counters.find((row) => row.provider === seat.provider && row.ok === true)
+          const stance = asReplyStance(reply?.stance)
+          const replyText = stance ? say(reply?.reply) : null
+          return {
+            claimBrand: deepBrandLabel(seat.provider),
+            claimText: quote,
+            rebuttalBrand: deepBrandLabel(foe.provider),
+            rebuttalText: rebuttal,
+            quote,
+            replyBrand: replyText ? deepBrandLabel(seat.provider) : null,
+            replyText,
+            stance: replyText ? stance : null,
+          }
+        })
+        .filter((row): row is DeepReportExchange => row !== null)
+      if (exchanges.length === 0) return null
+      const openingsOf = [pair.yes, pair.no].map((seat) => {
+        const open = openings.find((row) => row.provider === seat.provider)
+        return {
+          brand: deepBrandLabel(seat.provider),
+          headline: say(open?.headline),
+          points: Array.isArray(open?.points)
+            ? (open!.points as { text?: unknown }[])
+                .map((point) => say(point?.text))
+                .filter((text): text is string => Boolean(text))
+                .map((text) => ({ text, source: null }))
+            : [],
+        }
+      })
+      return { id: `${pair.yes.provider}:${pair.no.provider}`, exchanges, openings: openingsOf }
+    })
+    .filter((row): row is DeepReportThread => row !== null)
+}
+
 function reportStage(state: Record<string, unknown>): DeepReportStage {
   const result = state.result as { ok?: unknown } | null | undefined
   if (result?.ok === true) return 'done'
   if (!state.research) return 'research'
   if (!state.openings) return 'opening'
   if (!state.rebuttals) return 'rebuttal'
+  if (!state.counters && rebuttalsAwaitCounter(state.rebuttals)) return 'counter'
   return 'chair'
 }
 
@@ -380,6 +474,7 @@ function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot
 
   const openings = turnRows(state.openings ?? state.openingDraft)
   const rebuttals = turnRows(state.rebuttals ?? state.rebuttalDraft)
+  const counters = turnRows(state.counters ?? state.counterDraft)
   const structured = openings.some((row) => Array.isArray(row.points))
 
   const seats: DeepReportSeat[] = structured
@@ -389,9 +484,11 @@ function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot
           const assignedSide = asReportSide(open.side)
           if (!assignedSide) return null
           const reb = rebuttals.find((row) => row.provider === provider) ?? null
+          const counter = counters.find((row) => row.provider === provider) ?? null
           const openOk = open.ok === true
           const rebOk = reb?.ok === true
-          const finalTurn = rebOk ? reb! : openOk ? open : null
+          const counterOk = counter?.ok === true && asReportSide(counter?.finalSide) != null
+          const finalTurn = counterOk ? counter! : rebOk && asReportSide(reb?.finalSide) ? reb! : openOk ? open : null
           const openingPoints = pointsOf(category, open.points, findings, say)
           const rebuttalItems = rebOk ? pointsOf(category, reb!.rebuttal, findings, say) : []
           const rebuttalPoints = rebOk ? pointsOf(category, reb!.points, findings, say) : []
@@ -402,7 +499,7 @@ function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot
             finalSide: finalTurn ? asReportSide(finalTurn.finalSide) : null,
             finalProbability: finalTurn ? num(finalTurn.finalProbability) : null,
             changedMind: false,
-            whyChanged: rebOk ? say(reb!.whyChanged) : null,
+            whyChanged: counterOk ? say(counter!.whyChanged) : rebOk ? say(reb!.whyChanged) : null,
             headline: say(rebOk ? reb!.headline : open.headline) ?? say(open.headline),
             strongestPoint: rebuttalPoints[0] ?? openingPoints[0] ?? null,
             rebuttalLine: rebuttalItems[0] ?? null,
@@ -493,8 +590,11 @@ function buildReportSnapshot(state: Record<string, unknown>): DeepReportSnapshot
       sourcesFound: num(research?.sourcesFound) ?? (findings.length || pendingFindings.length),
       openingsDone: seats.filter((seat) => seat.openingDone).length,
       rebuttalsDone: seats.filter((seat) => seat.rebuttalDone).length,
+      countersDone: counters.filter((row) => row.ok === true && typeof row.reply === 'string').length,
       debaters: Math.max(seats.length, 6),
     },
+    threads: reportThreads(str(state.roundId) ?? '', openings, rebuttals, counters, say),
+    concessions: reportConcessions(counters, say),
     researchPath: str(research?.path) ?? str(pending?.path),
     verdict,
     vote: tally.counted > 0 ? { yes: tally.yes, no: tally.no, counted: tally.counted, total: tally.total, majority: tally.majority, majorityCount: tally.majorityCount } : null,
@@ -527,7 +627,9 @@ export function emptyReportSnapshot(): DeepReportSnapshot {
     proposition: null,
     sideWords: { yes: 'YES', no: 'NO' },
     stage: 'research',
-    progress: { sourcesFound: 0, openingsDone: 0, rebuttalsDone: 0, debaters: 6 },
+    progress: { sourcesFound: 0, openingsDone: 0, rebuttalsDone: 0, countersDone: 0, debaters: 6 },
+    threads: [],
+    concessions: [],
     researchPath: null,
     verdict: null,
     vote: null,

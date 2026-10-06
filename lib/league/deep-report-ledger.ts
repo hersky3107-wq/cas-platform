@@ -14,7 +14,7 @@ import {
   type ReportStageCosts,
 } from './deep-report-policy'
 
-export type ReportLedgerStage = 'research' | 'opening' | 'rebuttal' | 'chair'
+export type ReportLedgerStage = 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair'
 
 export type ReportLedgerEntry = {
   stage: ReportLedgerStage

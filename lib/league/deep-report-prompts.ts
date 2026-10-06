@@ -102,21 +102,23 @@ export function rebuttalUserPrompt(input: {
   side: DebateSide
   sideWords: SideWords
   ownOpening: string
-  oppositeOpenings: string
+  opponentName: string
+  opponentModel: string
+  opponentOpening: string
 }): string {
   const word = input.side === 'yes' ? input.sideWords.yes : input.sideWords.no
   return [
     languageLockLine(input.locale),
-    `Round 2. You argued the ${input.side.toUpperCase()} side ("${word}"). Rebut the two strongest opposing points below, then give your honest final view.`,
+    `Round 2. You argued the ${input.side.toUpperCase()} side ("${word}"). You are paired with ${input.opponentName} (${input.opponentModel}).`,
+    `Quote ONE specific claim from that opponent's opening, at most ${L.quotedClaim} characters, copied from their words. Then rebut that claim.`,
+    `target_model must be "${input.opponentModel}" or "${input.opponentName}".`,
     sideLine(input.sideWords),
-    probabilityRule(),
-    `If the debate moved you to the other side, set changed_mind true and say why in why_changed (at most ${L.whyChanged} characters); otherwise changed_mind false and why_changed null.`,
-    'Cite evidence ids (E1, E2, …) in "ref". Do not invent facts, dates, or numbers.',
+    'Put evidence ids (E1, E2, …) only in evidence_refs. Do not invent facts, dates, or numbers.',
     readerRule(input.sideWords),
-    'Do not mention league ballots or other seats outside this debate.',
+    'Do not mention league ballots or other seats outside this pair.',
     'Return ONLY this JSON:',
-    `{"headline":"<at most ${L.headline} characters>","rebuttal":[{"text":"<at most ${L.point} characters>","ref":"E1"|null},{"text":"…","ref":…}],"points":[{"text":"<your strongest remaining point, at most ${L.point} characters>","ref":…}],"final_side":"yes|no","final_probability":50-100,"changed_mind":true|false,"why_changed":"…"|null}`,
-    'Exactly 2 rebuttal items, 1 point. Plain sentences, no markdown.',
+    `{"target_model":"${input.opponentModel}","quoted_claim":"<at most ${L.quotedClaim} characters, copied from their opening>","rebuttal":"<at most ${L.rebuttalBody} characters>","evidence_refs":["E1"]}`,
+    'evidence_refs has at least one id from the evidence list. Plain sentences, no markdown.',
     '',
     '[Proposition]',
     input.proposition,
@@ -130,8 +132,51 @@ export function rebuttalUserPrompt(input: {
     '[Your opening]',
     input.ownOpening,
     '',
-    '[Opposing openings]',
-    input.oppositeOpenings,
+    `[${input.opponentName} opening]`,
+    input.opponentOpening,
+  ].join('\n')
+}
+
+export function counterUserPrompt(input: {
+  locale: LeagueLocale
+  proposition: string
+  packet: string
+  evidence: string
+  side: DebateSide
+  sideWords: SideWords
+  opponentName: string
+  opponentModel: string
+  quotedClaim: string
+  rebuttal: string
+}): string {
+  const word = input.side === 'yes' ? input.sideWords.yes : input.sideWords.no
+  return [
+    languageLockLine(input.locale),
+    `Round 3. You argued the ${input.side.toUpperCase()} side ("${word}"). ${input.opponentName} (${input.opponentModel}) rebutted one claim of yours.`,
+    'Answer that rebuttal in at most two sentences. stance is "concede" when you accept the point, "partial" when you accept part of it, or "defend" when you hold your claim.',
+    'A concede or partial reply should say so in the reply itself. A defend or partial reply must cite evidence ids in evidence_refs.',
+    sideLine(input.sideWords),
+    probabilityRule(),
+    `If the debate moved you to the other side, set changed_mind true and say why in why_changed (at most ${L.whyChanged} characters); otherwise changed_mind false and why_changed null.`,
+    readerRule(input.sideWords),
+    `replies_to_model must be "${input.opponentModel}" or "${input.opponentName}".`,
+    'Return ONLY this JSON:',
+    `{"replies_to_model":"${input.opponentModel}","stance":"concede|partial|defend","reply":"<at most ${L.reply} characters>","evidence_refs":["E1"],"final_side":"yes|no","final_probability":50-100,"changed_mind":true|false,"why_changed":"…"|null}`,
+    '',
+    '[Proposition]',
+    input.proposition,
+    '',
+    '[Closed-book packet]',
+    input.packet,
+    '',
+    '[Evidence list]',
+    input.evidence,
+    '',
+    '[The claim they quoted]',
+    input.quotedClaim,
+    '',
+    '[Their rebuttal]',
+    input.rebuttal,
   ].join('\n')
 }
 
@@ -163,7 +208,7 @@ export function chairUserPrompt(input: {
       `"one_line":"<the verdict in one plain sentence, at most ${L.oneLine} characters>",`,
       `"vs_40ai":{"ai40_side":"yes|no","ai40_confidence":0-100,"relation":"stronger|weaker|opposite","why":"<only the reason for the difference — do not restate the direction — at most ${L.vsWhy} characters>"},`,
       `"key_evidence":[{"claim":"<at most ${L.evidenceClaim} characters>","source":"<publisher>","date":"YYYY-MM-DD"|null,"tier":"official|regulator|major_outlet|rumor|other","ref":"E1"} — exactly 5],`,
-      `"debate_judgment":["<at most ${L.judgment} characters: which AI over- or under-claimed, and why>" — exactly 3],`,
+      `"debate_judgment":["<at most ${L.judgment} characters. At least one line must name both debaters in one exchange: who quoted whom, and whether the reply conceded, partly conceded, or held>" — exactly 3],`,
       `"minority_view":"<the best case for the losing side, at most ${L.minority} characters>",`,
       `"flip_triggers":[{"event":"<a concrete event that would flip the verdict, at most ${L.trigger} characters>","by_date":"YYYY-MM-DD"} — exactly 3],`,
       `"scenarios":[{"name":"<at most ${L.scenario} characters>","weight":0-100} — at most 3, weights sum to 100]`,

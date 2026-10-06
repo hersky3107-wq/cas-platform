@@ -48,6 +48,7 @@ import {
   DEBATER_SYSTEM_PROMPT,
   RESEARCH_SYSTEM_PROMPT,
   chairUserPrompt,
+  counterUserPrompt,
   openingUserPrompt,
   rebuttalUserPrompt,
   researchSeatPrompt,
@@ -58,15 +59,19 @@ import {
   relationTo40,
   retryInstruction,
   validateChair,
+  validateCounterReply,
   validateOpening,
-  validateRebuttal,
+  validateTargetedRebuttal,
   type ChairReport,
+  type CounterReply,
   type DebaterOpening,
-  type DebaterRebuttal,
   type EvidencePoint,
+  type ReplyStance,
+  type TargetedRebuttal,
   type ReportRelation,
   type Validation,
 } from './deep-report-structured'
+import { opponentOf, pairDebaters, rebuttalsAwaitCounter, type DebatePair, type PairSeat } from './deep-debate-pairs'
 import { deepBrandLabel } from './deep-snapshot'
 import { officialRowsForConsensus } from './extra/seats'
 import { getLeagueUiPack } from './i18n/dictionary'
@@ -87,6 +92,15 @@ export type ReportTurn = {
   finalSide: DebateSide | null
   finalProbability: number | null
   whyChanged: string | null
+  /** Round 2: the paired opponent and the claim quoted from their opening. */
+  targetModel?: string | null
+  quotedClaim?: string | null
+  rebuttalText?: string | null
+  evidenceRefs?: string[]
+  /** Round 3: the answer to the rebuttal that targeted this seat. */
+  repliesToModel?: string | null
+  stance?: ReplyStance | null
+  reply?: string | null
   error?: string | null
   /** Free-form text from runs before the JSON contract. */
   text?: string | null
@@ -154,6 +168,8 @@ export type ReportPipelineState = {
   openingDraft?: ReportTurn[]
   rebuttals?: ReportTurn[]
   rebuttalDraft?: ReportTurn[]
+  counters?: ReportTurn[]
+  counterDraft?: ReportTurn[]
   chair?: ReportChair
   chairAttempts?: number
   chairError?: string | null
@@ -193,7 +209,12 @@ export function seedReportState(ctx: LeagueDeepContext): ReportPipelineState {
 
 export function upcomingReportStage(state: ReportPipelineState): string {
   if (state.result?.ok) return 'done'
-  return reportStageFor({ research: state.research, openings: state.openings, rebuttals: state.rebuttals })
+  return reportStageFor({
+    research: state.research,
+    openings: state.openings,
+    rebuttals: state.rebuttals,
+    counters: state.counters,
+  })
 }
 
 // ── Hop context ───────────────────────────────────────────────────────────────
@@ -506,15 +527,32 @@ function openingSummary(turn: ReportTurn, sideWords: SideWords): string {
   return [`${deepBrandLabel(turn.provider)} (argued ${turn.side.toUpperCase()} "${word}"): ${turn.headline ?? ''}`, pointLines(turn.points)].join('\n')
 }
 
+function pairSeats(roundId: string, openings: readonly ReportTurn[]): DebatePair[] {
+  const seats: PairSeat[] = openings
+    .filter((turn) => turn.ok)
+    .map((turn) => ({
+      provider: turn.provider,
+      model: turn.model,
+      assignedSide: turn.side,
+      finalSide: turn.finalSide,
+    }))
+  return pairDebaters(roundId, seats)
+}
+
+function acceptedNames(seat: { provider: string; model: string }): string[] {
+  return [seat.model, deepBrandLabel(seat.provider)]
+}
+
 async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise<boolean> {
   const state = hop.state()
   const sideWords = state.sideWords ?? reportSideWords({ category: state.category, instrument: state.instrument }, state.outputLanguage)
   const evidence = evidenceBlockForPrompt(state.research?.findings ?? [])
   const openings = state.openings ?? []
+  const pairs = round === 'rebuttal' ? pairSeats(state.roundId, openings) : []
   const draftKey = round === 'opening' ? 'openingDraft' : 'rebuttalDraft'
   const draft: ReportTurn[] = [...(state[draftKey] ?? assignDebateSides(state.roundId).map(emptyTurn))]
   const openingOk = (turn: ReportTurn) => openings.some((row) => row.provider === turn.provider && row.ok)
-  const eligible = (turn: ReportTurn) => round === 'opening' || openingOk(turn)
+  const eligible = (turn: ReportTurn) => round === 'opening' || (openingOk(turn) && opponentOf(pairs, turn.provider) != null)
   const saveDraft = (turns: ReportTurn[]) =>
     hop.progress(round === 'opening' ? { openingDraft: [...turns] } : { rebuttalDraft: [...turns] })
 
@@ -522,6 +560,8 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
     draft.map(async (turn, index) => {
       if (turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !eligible(turn)) return
       const own = openings.find((row) => row.provider === turn.provider)
+      const opponent = opponentOf(pairs, turn.provider)
+      const opponentOpening = opponent ? openings.find((row) => row.provider === opponent.provider) : null
       const prompt =
         round === 'opening'
           ? openingUserPrompt({
@@ -541,11 +581,9 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
               side: turn.side,
               sideWords,
               ownOpening: own ? openingSummary(own, sideWords) : '(none)',
-              oppositeOpenings:
-                openings
-                  .filter((row) => row.ok && row.side !== turn.side)
-                  .map((row) => openingSummary(row, sideWords))
-                  .join('\n\n') || '(none)',
+              opponentName: opponent ? deepBrandLabel(opponent.provider) : '',
+              opponentModel: opponent?.model ?? '',
+              opponentOpening: opponentOpening ? openingSummary(opponentOpening, sideWords) : '(none)',
             })
       let current = draft[index]!
       while (current.attempts < REPORT_MAX_ATTEMPTS) {
@@ -564,25 +602,46 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
             timeoutMs,
             attempt,
           },
-          (called): Validation<DebaterOpening | DebaterRebuttal> =>
+          (called): Validation<DebaterOpening | TargetedRebuttal> =>
             round === 'opening'
               ? validateOpening(called.text, called.finishReason)
-              : validateRebuttal(called.text, called.finishReason),
+              : validateTargetedRebuttal(called.text, called.finishReason, {
+                  opening: opponentOpening ?? { headline: null, points: [] },
+                  acceptedTargets: opponent ? acceptedNames(opponent) : [],
+                }),
         )
         if (checked.ok) {
           const v = checked.value
-          current = {
-            ...current,
-            ok: true,
-            attempts: attempt,
-            error: null,
-            headline: v.headline,
-            points: v.points,
-            rebuttal: 'rebuttal' in v ? v.rebuttal : [],
-            finalSide: v.finalSide,
-            finalProbability: v.finalProbability,
-            whyChanged: 'whyChanged' in v ? v.whyChanged : null,
-          }
+          current =
+            'quotedClaim' in v
+              ? {
+                  ...current,
+                  ok: true,
+                  attempts: attempt,
+                  error: null,
+                  headline: null,
+                  points: [],
+                  rebuttal: [{ text: v.rebuttal, ref: v.evidenceRefs[0] ?? null }],
+                  rebuttalText: v.rebuttal,
+                  targetModel: v.targetModel,
+                  quotedClaim: v.quotedClaim,
+                  evidenceRefs: v.evidenceRefs,
+                  finalSide: null,
+                  finalProbability: null,
+                  whyChanged: null,
+                }
+              : {
+                  ...current,
+                  ok: true,
+                  attempts: attempt,
+                  error: null,
+                  headline: v.headline,
+                  points: v.points,
+                  rebuttal: [],
+                  finalSide: v.finalSide,
+                  finalProbability: v.finalProbability,
+                  whyChanged: null,
+                }
         } else {
           current = { ...current, attempts: attempt, error: checked.reason }
         }
@@ -599,6 +658,96 @@ async function stepDebateRound(hop: Hop, round: 'opening' | 'rebuttal'): Promise
     return false
   }
   hop.progress(round === 'opening' ? { openings: draft, openingDraft: undefined } : { rebuttals: draft, rebuttalDraft: undefined })
+  if (round === 'rebuttal') {
+    const ok = draft.filter((turn) => turn.ok).length
+    console.log(`[league-deep] report run=${hop.runId} rebuttal done ok=${ok} calls=${draft.reduce((sum, turn) => sum + turn.attempts, 0)}`)
+  }
+  return true
+}
+
+async function stepCounterRound(hop: Hop): Promise<boolean> {
+  const state = hop.state()
+  const sideWords = state.sideWords ?? reportSideWords({ category: state.category, instrument: state.instrument }, state.outputLanguage)
+  const evidence = evidenceBlockForPrompt(state.research?.findings ?? [])
+  const openings = state.openings ?? []
+  const rebuttals = state.rebuttals ?? []
+  const pairs = pairSeats(state.roundId, openings)
+  const draft: ReportTurn[] = [...(state.counterDraft ?? assignDebateSides(state.roundId).map(emptyTurn))]
+  const incomingFor = (turn: ReportTurn) =>
+    rebuttals.find((row) => row.ok && row.quotedClaim && opponentOf(pairs, turn.provider)?.provider === row.provider)
+  const saveDraft = (turns: ReportTurn[]) => hop.progress({ counterDraft: [...turns] })
+
+  await Promise.all(
+    draft.map(async (turn, index) => {
+      const incoming = incomingFor(turn)
+      if (turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !incoming) return
+      const opponent = opponentOf(pairs, turn.provider)
+      if (!opponent) return
+      const prompt = counterUserPrompt({
+        locale: state.outputLanguage,
+        proposition: state.proposition,
+        packet: state.context,
+        evidence,
+        side: turn.side,
+        sideWords,
+        opponentName: deepBrandLabel(opponent.provider),
+        opponentModel: opponent.model,
+        quotedClaim: incoming.quotedClaim ?? '',
+        rebuttal: incoming.rebuttalText ?? incoming.rebuttal[0]?.text ?? '',
+      })
+      let current = draft[index]!
+      while (current.attempts < REPORT_MAX_ATTEMPTS) {
+        const timeoutMs = Math.min(REPORT_TIMEOUTS_MS.debater, hop.remaining() - 10_000)
+        if (timeoutMs < 30_000) break
+        const attempt = current.attempts + 1
+        const checked = await callAndValidate(
+          hop,
+          {
+            stage: 'counter',
+            provider: current.provider,
+            model: current.model,
+            systemPrompt: DEBATER_SYSTEM_PROMPT,
+            userPrompt: withRetry(prompt, attempt > 1 ? current.error ?? null : null),
+            maxTokens: REPORT_TOKENS.debater,
+            timeoutMs,
+            attempt,
+          },
+          (called): Validation<CounterReply> =>
+            validateCounterReply(called.text, called.finishReason, { acceptedTargets: acceptedNames(opponent) }),
+        )
+        if (checked.ok) {
+          const v = checked.value
+          current = {
+            ...current,
+            ok: true,
+            attempts: attempt,
+            error: null,
+            repliesToModel: v.repliesToModel,
+            stance: v.stance,
+            reply: v.reply,
+            evidenceRefs: v.evidenceRefs,
+            finalSide: v.finalSide,
+            finalProbability: v.finalProbability,
+            whyChanged: v.whyChanged,
+          }
+        } else {
+          current = { ...current, attempts: attempt, error: checked.reason }
+        }
+        draft[index] = current
+        saveDraft(draft)
+        if (current.ok) break
+      }
+    }),
+  )
+
+  const complete = draft.every((turn) => turn.ok || turn.attempts >= REPORT_MAX_ATTEMPTS || !incomingFor(turn))
+  if (!complete) {
+    saveDraft(draft)
+    return false
+  }
+  hop.progress({ counters: draft, counterDraft: undefined })
+  const ok = draft.filter((turn) => turn.ok).length
+  console.log(`[league-deep] report run=${hop.runId} counter done ok=${ok} calls=${draft.reduce((sum, turn) => sum + turn.attempts, 0)}`)
   return true
 }
 
@@ -658,26 +807,64 @@ function fortySeatLine(summary: FortySeatSummary | null, sideWords: SideWords): 
   ].join(' ')
 }
 
+function finalCallLine(open: ReportTurn, counters: readonly ReportTurn[], rebuttals: readonly ReportTurn[]): string {
+  const counter = counters.find((row) => row.provider === open.provider && row.ok && row.finalSide)
+  const reb = rebuttals.find((row) => row.provider === open.provider)
+  const finalTurn = counter ?? (reb?.ok && reb.finalSide ? reb : open.ok ? open : null)
+  if (!finalTurn?.finalSide || finalTurn.finalProbability == null) return 'no final call'
+  return `${finalTurn.finalSide.toUpperCase()} ${finalTurn.finalProbability}%${finalTurn.finalSide !== open.side ? ' (changed side)' : ''}`
+}
+
 function debateBlock(state: ReportPipelineState, sideWords: SideWords): string {
   const openings = state.openings ?? []
   const rebuttals = state.rebuttals ?? []
-  return openings
-    .map((open) => {
-      const reb = rebuttals.find((row) => row.provider === open.provider)
-      const brand = deepBrandLabel(open.provider)
-      const finalTurn = reb?.ok ? reb : open.ok ? open : null
-      const final =
-        finalTurn?.finalSide && finalTurn.finalProbability != null
-          ? `${finalTurn.finalSide.toUpperCase()} ${finalTurn.finalProbability}%${finalTurn.finalSide !== open.side ? ' (changed side)' : ''}`
-          : 'no final call'
-      const word = open.side === 'yes' ? sideWords.yes : sideWords.no
-      return [
-        `## ${brand} — assigned ${open.side.toUpperCase()} ("${word}") — final ${final}`,
-        open.ok ? `Opening: ${open.headline}\n${pointLines(open.points)}` : 'Opening: (no reply)',
-        reb?.ok ? `Rebuttal: ${reb.headline}\n${pointLines(reb.rebuttal)}${reb.whyChanged ? `\nWhy changed: ${reb.whyChanged}` : ''}` : 'Rebuttal: (no reply)',
-      ].join('\n')
+  const counters = state.counters ?? []
+  const threaded = rebuttals.some((row) => row.ok && row.quotedClaim)
+  if (!threaded) {
+    return openings
+      .map((open) => {
+        const reb = rebuttals.find((row) => row.provider === open.provider)
+        const brand = deepBrandLabel(open.provider)
+        const word = open.side === 'yes' ? sideWords.yes : sideWords.no
+        return [
+          `## ${brand} — assigned ${open.side.toUpperCase()} ("${word}") — final ${finalCallLine(open, counters, rebuttals)}`,
+          open.ok ? `Opening: ${open.headline}\n${pointLines(open.points)}` : 'Opening: (no reply)',
+          reb?.ok ? `Rebuttal: ${reb.headline ?? ''}\n${pointLines(reb.rebuttal)}${reb.whyChanged ? `\nWhy changed: ${reb.whyChanged}` : ''}` : 'Rebuttal: (no reply)',
+        ].join('\n')
+      })
+      .join('\n\n')
+  }
+  return pairSeats(state.roundId, openings)
+    .map((pair) => {
+      const lines = [pair.yes, pair.no].map((seat) => {
+        const open = openings.find((row) => row.provider === seat.provider)
+        const foe = seat.provider === pair.yes.provider ? pair.no : pair.yes
+        const reb = rebuttals.find((row) => row.provider === foe.provider && row.ok)
+        const reply = counters.find((row) => row.provider === seat.provider && row.ok)
+        const brand = deepBrandLabel(seat.provider)
+        const foeBrand = deepBrandLabel(foe.provider)
+        return [
+          `## ${brand} — final ${open ? finalCallLine(open, counters, rebuttals) : 'no final call'}`,
+          open?.ok ? `Opening: ${open.headline}\n${pointLines(open.points)}` : 'Opening: (no reply)',
+          reb?.quotedClaim ? `${foeBrand} quoted ${brand}: "${reb.quotedClaim}"` : '',
+          reb?.rebuttalText ? `${foeBrand} rebuttal: ${reb.rebuttalText}` : '',
+          reply?.reply ? `${brand} reply (${reply.stance ?? 'defend'}): ${reply.reply}` : '',
+        ]
+          .filter(Boolean)
+          .join('\n')
+      })
+      return lines.join('\n\n')
     })
     .join('\n\n')
+}
+
+function chairExchanges(state: ReportPipelineState): { left: string; right: string }[] {
+  const rebuttals = state.rebuttals ?? []
+  if (!rebuttals.some((row) => row.ok && row.quotedClaim)) return []
+  return pairSeats(state.roundId, state.openings ?? []).map((pair) => ({
+    left: deepBrandLabel(pair.yes.provider),
+    right: deepBrandLabel(pair.no.provider),
+  }))
 }
 
 async function stepChair(hop: Hop): Promise<'done' | 'pending' | 'failed'> {
@@ -713,7 +900,7 @@ async function stepChair(hop: Hop): Promise<'done' | 'pending' | 'failed'> {
         timeoutMs,
         attempt: attempts,
       },
-      (called) => validateChair(called.text, called.finishReason),
+      (called) => validateChair(called.text, called.finishReason, { exchanges: chairExchanges(hop.state()) }),
     )
     if (checked.ok) {
       const v = checked.value
@@ -768,7 +955,13 @@ export async function advanceReportState(state: ReportPipelineState, hooks: Repo
   }
   if (!hop.state().rebuttals) {
     const done = await stepDebateRound(hop, 'rebuttal')
-    return finish({ done: false, stage: done ? 'chair' : 'rebuttal', state: hop.state() })
+    const next = hop.state()
+    const stage = !done ? 'rebuttal' : rebuttalsAwaitCounter(next.rebuttals) ? 'counter' : 'chair'
+    return finish({ done: false, stage, state: next })
+  }
+  if (!hop.state().counters && rebuttalsAwaitCounter(hop.state().rebuttals)) {
+    const done = await stepCounterRound(hop)
+    return finish({ done: false, stage: done ? 'chair' : 'counter', state: hop.state() })
   }
   const chairOutcome = await stepChair(hop)
   const next = hop.state()

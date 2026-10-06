@@ -6,7 +6,7 @@ import type { SourceTier } from '../deep-report-dossier'
 import type { ResearchAngle } from '../deep-report-policy'
 import type { LeagueLocale } from './locales'
 
-export type DeepReportStep = 'research' | 'opening' | 'rebuttal' | 'chair'
+export type DeepReportStep = 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair'
 
 export type DeepReportCopy = {
   steps: Record<DeepReportStep, string>
@@ -35,6 +35,11 @@ export type DeepReportCopy = {
   fullTurns: string
   openingRound: string
   rebuttalRound: string
+  counterRound: string
+  debateHeading: string
+  rebuttalAbout: (name: string, quote: string) => string
+  stanceBadge: { concede: string; partial: string; defend: string }
+  concededHeading: string
   judgmentHeading: string
   minorityHeading: string
   flipHeading: string
@@ -49,7 +54,7 @@ export type DeepReportCopy = {
 
 const COPY: Record<LeagueLocale, DeepReportCopy> = {
   en: {
-    steps: { research: 'Finding sources', opening: 'Making the case', rebuttal: 'Rebutting each other', chair: 'Chair’s summary' },
+    steps: { research: 'Finding sources', opening: 'Making the case', rebuttal: '1:1 rebuttals', counter: 'Counter-replies', chair: 'Chair’s summary' },
     sourcesFound: (n) => `${n} sources found`,
     debatersDone: (n, total) => `${n} of ${total} debaters done`,
     verdictHeading: 'Verdict',
@@ -75,6 +80,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: 'Show full turns',
     openingRound: 'Opening',
     rebuttalRound: 'Rebuttal',
+    counterRound: 'Counter-reply',
+    debateHeading: 'Debate',
+    rebuttalAbout: (name, quote) => `On ${name}'s “${quote}”`,
+    stanceBadge: { concede: 'Conceded', partial: 'Partly conceded', defend: 'Held' },
+    concededHeading: 'Points conceded in the debate',
     judgmentHeading: 'Chair’s judgment of the debate',
     minorityHeading: 'Minority view',
     flipHeading: 'What would flip this',
@@ -94,7 +104,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'waiting',
   },
   ko: {
-    steps: { research: '자료 찾는 중', opening: '찬반 주장', rebuttal: '서로 반박', chair: '의장 정리' },
+    steps: { research: '자료 찾는 중', opening: '찬반 주장', rebuttal: '1:1 반박', counter: '재반박', chair: '의장 정리' },
     sourcesFound: (n) => `출처 ${n}건 확보`,
     debatersDone: (n, total) => `토론자 ${total}명 중 ${n}명 완료`,
     verdictHeading: '결론',
@@ -120,6 +130,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: '전체 발언 보기',
     openingRound: '첫 주장',
     rebuttalRound: '반박',
+    counterRound: '재반박',
+    debateHeading: '토론',
+    rebuttalAbout: (name, quote) => `${name}의 '${quote}'에 대해`,
+    stanceBadge: { concede: '인정', partial: '일부 인정', defend: '반박 유지' },
+    concededHeading: '토론 중 인정한 대목',
     judgmentHeading: '의장의 토론 평가',
     minorityHeading: '소수 의견',
     flipHeading: '판단이 뒤집힐 조건',
@@ -139,7 +154,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: '대기 중',
   },
   ja: {
-    steps: { research: '資料を探しています', opening: '賛否の主張', rebuttal: '互いに反論', chair: '議長のまとめ' },
+    steps: { research: '資料を探しています', opening: '賛否の主張', rebuttal: '1対1の反論', counter: '再反論', chair: '議長のまとめ' },
     sourcesFound: (n) => `出典 ${n}件`,
     debatersDone: (n, total) => `討論者 ${total}人中 ${n}人 完了`,
     verdictHeading: '結論',
@@ -165,6 +180,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: '発言をすべて表示',
     openingRound: '最初の主張',
     rebuttalRound: '反論',
+    counterRound: '再反論',
+    debateHeading: '討論',
+    rebuttalAbout: (name, quote) => `${name}の「${quote}」について`,
+    stanceBadge: { concede: '認める', partial: '一部認める', defend: '反論を維持' },
+    concededHeading: '討論中に認めた点',
     judgmentHeading: '議長による討論の評価',
     minorityHeading: '少数意見',
     flipHeading: '判断が覆る条件',
@@ -184,7 +204,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: '待機中',
   },
   'zh-TW': {
-    steps: { research: '正在找資料', opening: '正反主張', rebuttal: '互相反駁', chair: '主席總結' },
+    steps: { research: '正在找資料', opening: '正反主張', rebuttal: '一對一反駁', counter: '再反駁', chair: '主席總結' },
     sourcesFound: (n) => `已找到 ${n} 個來源`,
     debatersDone: (n, total) => `${total} 位辯手中 ${n} 位完成`,
     verdictHeading: '結論',
@@ -210,6 +230,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: '查看完整發言',
     openingRound: '首輪主張',
     rebuttalRound: '反駁',
+    counterRound: '再反駁',
+    debateHeading: '辯論',
+    rebuttalAbout: (name, quote) => `針對${name}的「${quote}」`,
+    stanceBadge: { concede: '承認', partial: '部分承認', defend: '維持反駁' },
+    concededHeading: '辯論中承認的部分',
     judgmentHeading: '主席對辯論的評價',
     minorityHeading: '少數意見',
     flipHeading: '可能翻轉判斷的條件',
@@ -229,7 +254,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: '等待中',
   },
   fr: {
-    steps: { research: 'Recherche de sources', opening: 'Arguments pour et contre', rebuttal: 'Réfutations', chair: 'Synthèse du président' },
+    steps: { research: 'Recherche de sources', opening: 'Arguments pour et contre', rebuttal: 'Réfutations en duel', counter: 'Contre-répliques', chair: 'Synthèse du président' },
     sourcesFound: (n) => `${n} sources trouvées`,
     debatersDone: (n, total) => `${n} débatteurs sur ${total} ont terminé`,
     verdictHeading: 'Verdict',
@@ -255,6 +280,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: 'Voir toutes les interventions',
     openingRound: 'Ouverture',
     rebuttalRound: 'Réfutation',
+    counterRound: 'Contre-réplique',
+    debateHeading: 'Débat',
+    rebuttalAbout: (name, quote) => `Sur « ${quote} » de ${name}`,
+    stanceBadge: { concede: 'Concédé', partial: 'En partie', defend: 'Maintenu' },
+    concededHeading: 'Points concédés pendant le débat',
     judgmentHeading: 'Jugement du président sur le débat',
     minorityHeading: 'Avis minoritaire',
     flipHeading: 'Ce qui renverserait ce verdict',
@@ -274,7 +304,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'en attente',
   },
   es: {
-    steps: { research: 'Buscando fuentes', opening: 'Argumentos a favor y en contra', rebuttal: 'Réplicas', chair: 'Resumen del presidente' },
+    steps: { research: 'Buscando fuentes', opening: 'Argumentos a favor y en contra', rebuttal: 'Réplicas 1 a 1', counter: 'Contrarréplicas', chair: 'Resumen del presidente' },
     sourcesFound: (n) => `${n} fuentes encontradas`,
     debatersDone: (n, total) => `${n} de ${total} debatientes listos`,
     verdictHeading: 'Veredicto',
@@ -300,6 +330,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: 'Ver todas las intervenciones',
     openingRound: 'Apertura',
     rebuttalRound: 'Réplica',
+    counterRound: 'Contrarréplica',
+    debateHeading: 'Debate',
+    rebuttalAbout: (name, quote) => `Sobre «${quote}» de ${name}`,
+    stanceBadge: { concede: 'Concedido', partial: 'En parte', defend: 'Mantenido' },
+    concededHeading: 'Puntos concedidos en el debate',
     judgmentHeading: 'Valoración del debate por el presidente',
     minorityHeading: 'Opinión minoritaria',
     flipHeading: 'Qué cambiaría este veredicto',
@@ -319,7 +354,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'en espera',
   },
   ar: {
-    steps: { research: 'جارٍ البحث عن المصادر', opening: 'حجج مع وضد', rebuttal: 'الردود المتبادلة', chair: 'خلاصة الرئيس' },
+    steps: { research: 'جارٍ البحث عن المصادر', opening: 'حجج مع وضد', rebuttal: 'رد 1:1', counter: 'رد على الرد', chair: 'خلاصة الرئيس' },
     sourcesFound: (n) => `تم العثور على ${n} مصدر`,
     debatersDone: (n, total) => `أنهى ${n} من ${total} متحاورين`,
     verdictHeading: 'الحكم',
@@ -345,6 +380,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: 'عرض المداخلات كاملة',
     openingRound: 'الافتتاح',
     rebuttalRound: 'الرد',
+    counterRound: 'الرد على الرد',
+    debateHeading: 'النقاش',
+    rebuttalAbout: (name, quote) => `عن «${quote}» لـ${name}`,
+    stanceBadge: { concede: 'أقرّ', partial: 'أقرّ جزئيًا', defend: 'أبقى الرد' },
+    concededHeading: 'نقاط أُقرّ بها أثناء النقاش',
     judgmentHeading: 'تقييم الرئيس للنقاش',
     minorityHeading: 'رأي الأقلية',
     flipHeading: 'ما الذي قد يقلب الحكم',
@@ -364,7 +404,7 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     waiting: 'في الانتظار',
   },
   pt: {
-    steps: { research: 'Buscando fontes', opening: 'Argumentos a favor e contra', rebuttal: 'Réplicas', chair: 'Resumo do presidente' },
+    steps: { research: 'Buscando fontes', opening: 'Argumentos a favor e contra', rebuttal: 'Réplicas 1 a 1', counter: 'Contrarréplicas', chair: 'Resumo do presidente' },
     sourcesFound: (n) => `${n} fontes encontradas`,
     debatersDone: (n, total) => `${n} de ${total} debatedores concluídos`,
     verdictHeading: 'Veredito',
@@ -390,6 +430,11 @@ const COPY: Record<LeagueLocale, DeepReportCopy> = {
     fullTurns: 'Ver todas as falas',
     openingRound: 'Abertura',
     rebuttalRound: 'Réplica',
+    counterRound: 'Contrarréplica',
+    debateHeading: 'Debate',
+    rebuttalAbout: (name, quote) => `Sobre “${quote}” de ${name}`,
+    stanceBadge: { concede: 'Concedido', partial: 'Em parte', defend: 'Mantido' },
+    concededHeading: 'Pontos concedidos no debate',
     judgmentHeading: 'Avaliação do debate pelo presidente',
     minorityHeading: 'Visão minoritária',
     flipHeading: 'O que mudaria este veredito',

@@ -6,6 +6,7 @@
  * is the other side — "yes 24" is counted as "no 76". The final side is
  * independent of the side a debater was assigned to argue.
  */
+import { chairCitesExchange, quoteMatchesOpening } from './deep-debate-pairs'
 import type { SourceTier } from './deep-report-dossier'
 import type { DebateSide } from './deep-report-policy'
 import { parseJsonObject } from './json-object'
@@ -13,6 +14,9 @@ import { parseJsonObject } from './json-object'
 export const REPORT_TEXT_LIMITS = {
   headline: 60,
   point: 140,
+  quotedClaim: 80,
+  rebuttalBody: 200,
+  reply: 160,
   whyChanged: 100,
   oneLine: 160,
   judgment: 200,
@@ -36,6 +40,27 @@ export type DebaterRebuttal = {
   headline: string
   points: EvidencePoint[]
   rebuttal: EvidencePoint[]
+  finalSide: DebateSide
+  finalProbability: number
+  whyChanged: string | null
+}
+
+export type ReplyStance = 'concede' | 'partial' | 'defend'
+
+/** Round 2: one quoted claim from the paired opponent, then the rebuttal. */
+export type TargetedRebuttal = {
+  targetModel: string
+  quotedClaim: string
+  rebuttal: string
+  evidenceRefs: string[]
+}
+
+/** Round 3: the targeted debater answers, then states a final call. */
+export type CounterReply = {
+  repliesToModel: string
+  stance: ReplyStance
+  reply: string
+  evidenceRefs: string[]
   finalSide: DebateSide
   finalProbability: number
   whyChanged: string | null
@@ -234,6 +259,84 @@ export function validateOpening(text: string | null | undefined, finishReason?: 
   return { ok: true, value: { headline, points: list, finalSide: call.side, finalProbability: call.probability } }
 }
 
+function evidenceRefs(raw: unknown, text: string): string[] {
+  const fromField = Array.isArray(raw) ? raw : typeof raw === 'string' ? raw.split(/[, ]+/) : []
+  const out: string[] = []
+  const push = (value: unknown) => {
+    const ref = normalizeRef(typeof value === 'string' ? value : null)
+    if (ref && !out.includes(ref)) out.push(ref)
+  }
+  for (const item of fromField) push(item)
+  for (const match of text.match(/\bE\d{1,2}\b/g) ?? []) push(match)
+  return out.slice(0, 4)
+}
+
+function namesModel(raw: string, accepted: readonly string[]): boolean {
+  const v = raw.trim().toLowerCase()
+  return accepted.some((name) => name.trim().toLowerCase() === v)
+}
+
+export function validateTargetedRebuttal(
+  text: string | null | undefined,
+  finishReason: string | null | undefined,
+  ctx: {
+    opening: { headline?: string | null; points?: readonly { text?: string | null }[] | null }
+    acceptedTargets: readonly string[]
+  },
+): Validation<TargetedRebuttal> {
+  const obj = parseOrReason(text, finishReason)
+  if (typeof obj === 'string') return { ok: false, reason: obj }
+  const target = typeof obj.target_model === 'string' ? obj.target_model.trim() : ''
+  const quoted = short(obj.quoted_claim, REPORT_TEXT_LIMITS.quotedClaim)
+  const rebuttal = short(obj.rebuttal, REPORT_TEXT_LIMITS.rebuttalBody)
+  const refs = evidenceRefs(obj.evidence_refs ?? obj.evidenceRefs, typeof obj.rebuttal === 'string' ? obj.rebuttal : '')
+  if (!target || !namesModel(target, ctx.acceptedTargets)) return { ok: false, reason: 'target is not the paired opponent' }
+  if (!quoted || !quoteMatchesOpening(quoted, ctx.opening)) return { ok: false, reason: 'quoted claim is not in the opponent opening' }
+  if (!rebuttal) return { ok: false, reason: 'missing rebuttal' }
+  if (refs.length < 1) return { ok: false, reason: 'missing evidence refs' }
+  return { ok: true, value: { targetModel: target, quotedClaim: quoted, rebuttal, evidenceRefs: refs } }
+}
+
+function asStance(raw: unknown): ReplyStance | null {
+  if (typeof raw !== 'string') return null
+  const v = raw.trim().toLowerCase()
+  if (v === 'concede' || v === 'conceded' || v === '인정') return 'concede'
+  if (v === 'partial' || v === 'partly' || v === '일부') return 'partial'
+  if (v === 'defend' || v === 'defense' || v === 'hold' || v === '반박') return 'defend'
+  return null
+}
+
+export function validateCounterReply(
+  text: string | null | undefined,
+  finishReason: string | null | undefined,
+  ctx: { acceptedTargets: readonly string[] },
+): Validation<CounterReply> {
+  const obj = parseOrReason(text, finishReason)
+  if (typeof obj === 'string') return { ok: false, reason: obj }
+  const target = typeof obj.replies_to_model === 'string' ? obj.replies_to_model.trim() : ''
+  const stance = asStance(obj.stance)
+  const reply = short(obj.reply, REPORT_TEXT_LIMITS.reply)
+  const call = normalizeFinalCall(obj.final_side, obj.final_probability)
+  const refs = evidenceRefs(obj.evidence_refs ?? obj.evidenceRefs, typeof obj.reply === 'string' ? obj.reply : '')
+  if (!target || !namesModel(target, ctx.acceptedTargets)) return { ok: false, reason: 'reply target is not the paired opponent' }
+  if (!stance) return { ok: false, reason: 'missing stance' }
+  if (!reply) return { ok: false, reason: 'missing reply' }
+  if (stance !== 'concede' && refs.length < 1) return { ok: false, reason: 'defense has no evidence ref' }
+  if (!call) return { ok: false, reason: 'missing final side/probability' }
+  return {
+    ok: true,
+    value: {
+      repliesToModel: target,
+      stance,
+      reply,
+      evidenceRefs: refs,
+      finalSide: call.side,
+      finalProbability: call.probability,
+      whyChanged: short(obj.why_changed, REPORT_TEXT_LIMITS.whyChanged),
+    },
+  }
+}
+
 export function validateRebuttal(text: string | null | undefined, finishReason?: string | null): Validation<DebaterRebuttal> {
   const obj = parseOrReason(text, finishReason)
   if (typeof obj === 'string') return { ok: false, reason: obj }
@@ -288,7 +391,11 @@ function stringList(raw: unknown, max: number, limit: number): string[] {
     .slice(0, limit)
 }
 
-export function validateChair(text: string | null | undefined, finishReason?: string | null): Validation<ChairReport> {
+export function validateChair(
+  text: string | null | undefined,
+  finishReason?: string | null,
+  ctx?: { exchanges?: readonly { left: string; right: string }[] },
+): Validation<ChairReport> {
   const obj = parseOrReason(text, finishReason)
   if (typeof obj === 'string') return { ok: false, reason: obj }
   const call = normalizeFinalCall(obj.verdict_side, obj.verdict_probability)
@@ -325,6 +432,9 @@ export function validateChair(text: string | null | undefined, finishReason?: st
   if (!oneLine) return { ok: false, reason: 'missing one_line' }
   if (keyEvidence.length < 3) return { ok: false, reason: 'fewer than 3 key evidence rows' }
   if (debateJudgment.length < 2) return { ok: false, reason: 'fewer than 2 debate judgments' }
+  if (ctx?.exchanges?.length && !chairCitesExchange(debateJudgment, ctx.exchanges)) {
+    return { ok: false, reason: 'debate judgment cites no exchange' }
+  }
   if (flipTriggers.length < 1) return { ok: false, reason: 'missing flip triggers' }
   return {
     ok: true,

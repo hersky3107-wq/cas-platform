@@ -2,6 +2,7 @@
  * Pure rules for the single premium product "AI 심층 리포트".
  * No I/O. The hop runner and the tests both call these.
  */
+import { rebuttalsAwaitCounter } from './deep-debate-pairs'
 import type { LeagueLocale } from './i18n/locales'
 import { OUTPUT_LANGUAGE_NAME } from './output-language-name'
 
@@ -183,7 +184,7 @@ export function emptyReportStageCosts(): ReportStageCosts {
 
 export function reportCostBucket(stage: string): keyof ReportStageCosts | null {
   if (stage === 'research') return 'research'
-  if (stage === 'opening' || stage === 'rebuttal') return 'debate'
+  if (stage === 'opening' || stage === 'rebuttal' || stage === 'counter') return 'debate'
   if (stage === 'chair') return 'chair'
   return null
 }
@@ -221,10 +222,12 @@ export function reportStageFor(state: {
   research?: unknown
   openings?: unknown
   rebuttals?: unknown
+  counters?: unknown
   chairReport?: unknown
-}): 'research' | 'opening' | 'rebuttal' | 'chair' {
+}): 'research' | 'opening' | 'rebuttal' | 'counter' | 'chair' {
   if (!state.research) return 'research'
   if (!state.openings) return 'opening'
   if (!state.rebuttals) return 'rebuttal'
+  if (!state.counters && rebuttalsAwaitCounter(state.rebuttals)) return 'counter'
   return 'chair'
 }

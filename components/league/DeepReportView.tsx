@@ -10,7 +10,7 @@ import type {
 import { deepReportCopy, type DeepReportCopy, type DeepReportStep } from '@/lib/league/i18n/deep-report-copy'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 
-export const DEEP_REPORT_STEPS: readonly DeepReportStep[] = ['research', 'opening', 'rebuttal', 'chair']
+export const DEEP_REPORT_STEPS: readonly DeepReportStep[] = ['research', 'opening', 'rebuttal', 'counter', 'chair']
 
 /** Server stage ids → the 4 plain-language steps. */
 export function reportStepIndex(stage: string | null): number {
@@ -48,6 +48,7 @@ export function DeepReportProgress({
     if (step === 'research') return snap.progress.sourcesFound > 0 ? copy.sourcesFound(snap.progress.sourcesFound) : null
     if (step === 'opening') return copy.debatersDone(snap.progress.openingsDone, snap.progress.debaters)
     if (step === 'rebuttal') return copy.debatersDone(snap.progress.rebuttalsDone, snap.progress.debaters)
+    if (step === 'counter') return copy.debatersDone(snap.progress.countersDone, snap.progress.debaters)
     return null
   }
   return (
@@ -104,7 +105,11 @@ export function DeepReportView({
           </ul>
         </Block>
       ) : null}
-      {snap.seats.some((seat) => seat.headline) ? <Highlights snap={snap} copy={copy} running={running} /> : null}
+      {snap.threads.length > 0 ? (
+        <DebateThreads snap={snap} copy={copy} />
+      ) : snap.seats.some((seat) => seat.headline) ? (
+        <Highlights snap={snap} copy={copy} running={running} />
+      ) : null}
       {snap.judgment.length > 0 ? (
         <Block heading={copy.judgmentHeading} testId="deep-report-judgment">
           <ul className="space-y-1.5">
@@ -290,6 +295,110 @@ function PointLine({ label, point }: { label: string; point: DeepReportPoint }) 
       <span className="font-semibold text-league-fg-muted">{label}</span> · {point.text}
       {point.source ? <span className="text-league-fg-muted"> ({point.source})</span> : null}
     </p>
+  )
+}
+
+function Avatar({ brand }: { brand: string }) {
+  return (
+    <span
+      className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-800 text-[10px] font-bold text-white"
+      aria-hidden
+    >
+      {brand.slice(0, 1)}
+    </span>
+  )
+}
+
+function Bubble({
+  brand,
+  label,
+  text,
+  badge,
+}: {
+  brand: string
+  label: string
+  text: string
+  badge?: string | null
+}) {
+  return (
+    <div className="flex items-start gap-2" data-testid="deep-report-bubble">
+      <Avatar brand={brand} />
+      <div className="min-w-0 rounded-2xl bg-league-bg-elevated px-3 py-2">
+        <p className="text-[11px] font-semibold text-league-fg">
+          {brand}
+          <span className="ms-1 font-normal text-league-fg-muted">{label}</span>
+          {badge ? (
+            <span className="ms-1.5 rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-bold text-amber-900" data-testid="deep-report-stance">
+              {badge}
+            </span>
+          ) : null}
+        </p>
+        <p className="mt-0.5 text-[13px] leading-relaxed">{text}</p>
+      </div>
+    </div>
+  )
+}
+
+function DebateThreads({ snap, copy }: { snap: DeepReportSnapshot; copy: DeepReportCopy }) {
+  return (
+    <Block heading={copy.debateHeading} testId="deep-report-threads">
+      {snap.concessions.length > 0 ? (
+        <div className="mb-3 rounded-lg bg-amber-50 px-3 py-2" data-testid="deep-report-conceded">
+          <p className="text-[12px] font-bold text-amber-950">{copy.concededHeading}</p>
+          <ul className="mt-1 space-y-1">
+            {snap.concessions.map((row, i) => (
+              <li key={`${row.brand}-${i}`} className="text-[13px] leading-relaxed text-amber-950">
+                <span className="font-semibold">{row.brand}</span> · {row.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
+      <div className="space-y-4">
+        {snap.threads.map((thread) => (
+          <article key={thread.id} className="space-y-2 rounded-lg border border-league-border/50 bg-league-bg-elevated/40 px-3 py-2.5" data-testid="deep-report-thread">
+            {thread.exchanges.map((exchange, i) => (
+              <div key={`${exchange.claimBrand}-${i}`} className="space-y-1.5" data-testid="deep-report-exchange">
+                <Bubble brand={exchange.claimBrand} label={copy.openingRound} text={exchange.claimText} />
+                <Bubble
+                  brand={exchange.rebuttalBrand}
+                  label={copy.rebuttalRound}
+                  text={`${copy.rebuttalAbout(exchange.claimBrand, exchange.quote)} ${exchange.rebuttalText}`}
+                />
+                {exchange.replyText && exchange.replyBrand && exchange.stance ? (
+                  <Bubble
+                    brand={exchange.replyBrand}
+                    label={copy.counterRound}
+                    text={exchange.replyText}
+                    badge={copy.stanceBadge[exchange.stance]}
+                  />
+                ) : null}
+              </div>
+            ))}
+            {thread.openings.some((row) => row.headline || row.points.length > 0) ? (
+              <details className="mt-1">
+                <summary className="cursor-pointer text-[11px] font-semibold text-league-fg-muted">{copy.fullTurns}</summary>
+                <div className="mt-1.5 space-y-2 border-s-2 border-league-border/60 ps-3">
+                  {thread.openings.map((opening) => (
+                    <div key={opening.brand}>
+                      <p className="text-[11px] font-bold text-league-fg-muted">
+                        {opening.brand} · {copy.openingRound}
+                      </p>
+                      {opening.headline ? <p className="text-[12px] font-semibold">{opening.headline}</p> : null}
+                      <ul className="mt-0.5 list-disc space-y-0.5 ps-4 text-[12px] leading-relaxed">
+                        {opening.points.map((point, i) => (
+                          <li key={i}>{point.text}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  ))}
+                </div>
+              </details>
+            ) : null}
+          </article>
+        ))}
+      </div>
+    </Block>
   )
 }
 
