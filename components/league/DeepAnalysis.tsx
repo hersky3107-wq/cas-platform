@@ -109,6 +109,7 @@ export function DeepAnalysis({
   const [stage, setStage] = useState<string | null>(null)
   const [waiting, setWaiting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [refunded, setRefunded] = useState(false)
   const [queuePosition, setQueuePosition] = useState<number | null>(null)
   const [etaMinutes, setEtaMinutes] = useState<number | null>(null)
   const [adminCost, setAdminCost] = useState<PollBody | null>(null)

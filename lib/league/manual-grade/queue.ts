@@ -46,7 +46,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
       .lt('resolves_at', new Date().toISOString())
       .order('resolves_at', { ascending: true })
       .limit(200)
-    data = retry.data
+    data = retry.data?.map((row) => ({ ...row, anchor_correction_note: null })) ?? null
     error = retry.error
   }
   if (error) throw new Error(error.message)
