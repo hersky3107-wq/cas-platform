@@ -15,6 +15,7 @@ import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { krStockPropositionDisplay, parseKrStockProposition } from './korea-stock-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
 import { publicFacingLabel } from './public-label'
+import { restoreTechOpenCasing } from './acronym-casing'
 import {
   decodeAirankInstrument,
   isAirankInstrument,
@@ -238,9 +239,8 @@ export function rankedPropositionDisplay(
     if (parts) return airankDisplayProposition(parts, locale, horizon)
   }
   if (propositions && typeof propositions === 'object') {
-    if (propositions[locale]?.trim()) return publicFacingLabel(propositions[locale].trim(), stored)
-    if (propositions.en?.trim()) return publicFacingLabel(propositions.en.trim(), stored)
-    if (propositions.ko?.trim()) return publicFacingLabel(propositions.ko.trim(), stored)
+    const own = propositions[locale]?.trim() || propositions.en?.trim() || propositions.ko?.trim()
+    if (own) return restoreTechOpenCasing(instrument, publicFacingLabel(own, stored))
   }
   if (decodeSportsInstrument(instrument)) {
     return publicFacingLabel(sportsPropositionDisplay(instrument, stored, locale), stored)
@@ -257,7 +257,7 @@ export function rankedPropositionDisplay(
   if (decodeKrStockInstrument(instrument)) {
     return publicFacingLabel(krStockPropositionDisplay(instrument, stored, locale), stored)
   }
-  return publicFacingLabel(stored, '')
+  return restoreTechOpenCasing(instrument, publicFacingLabel(stored, ''))
 }
 
 export function headerHeadline(args: {

@@ -230,6 +230,8 @@ export type LeagueUiPack = {
     seat: Record<'divination' | 'sentiment' | 'history' | 'consensus' | 'crow' | 'replay', string>
     /** Crow identity: a lower hit rate is expected. Not a defect. */
     crowNote: string
+    /** Market seat sat out because nothing is priced with money (the tile shows its no-market line). */
+    noMarket: string
   }
   /**
    * Sports dual display — AI ensemble vs market baseline. Never uses
@@ -981,6 +983,7 @@ const en: LeagueUiPack = {
     recordPending: 'Record after grading',
     seat: { divination: 'Fortune', sentiment: 'Sentiment', history: 'History', consensus: 'Market baseline', crow: 'Crow', replay: 'Review · Claude Opus 5.5' },
     crowNote: 'The crow watches the risk the crowd skips. A lower hit rate is its identity.',
+    noMarket: 'No market',
   },
   sportsMarket: {
     ensembleLabel: 'AI ensemble win probability',
@@ -1639,6 +1642,7 @@ const ko: LeagueUiPack = {
     recordPending: '채점 후 성적 집계',
     seat: { divination: '점술', sentiment: '심리', history: '역사', consensus: '시장 기준선', crow: '까마귀', replay: '복기 · Claude Opus 5.5' },
     crowNote: '까마귀는 군중이 놓친 위험을 본다. 승률이 낮은 편이 이 자리의 정체다.',
+    noMarket: '시장 없음',
   },
   sportsMarket: {
     ensembleLabel: 'AI 앙상블 승리 확률',
@@ -2286,6 +2290,7 @@ const ja: LeagueUiPack = {
     recordPending: '採点後に成績を集計',
     seat: { divination: '占い', sentiment: '心理', history: '歴史', consensus: '市場基準線', crow: 'カラス', replay: '復習 · Claude Opus 5.5' },
     crowNote: 'カラスは群衆が見落とすリスクを見る。的中率が低めなのがこの席の性質。',
+    noMarket: '市場なし',
   },
   sportsMarket: {
     ensembleLabel: 'AIアンサンブル勝率',
@@ -2930,6 +2935,7 @@ const zhTW: LeagueUiPack = {
     recordPending: '評分後再彙整成績',
     seat: { divination: '占卜', sentiment: '心理', history: '歷史', consensus: '市場基準線', crow: '烏鴉', replay: '覆盤 · Claude Opus 5.5' },
     crowNote: '烏鴉看的是群眾忽略的風險。勝率偏低是這個席位的本色。',
+    noMarket: '無市場',
   },
   sportsMarket: {
     ensembleLabel: 'AI 集成勝率',
@@ -3572,6 +3578,7 @@ const fr: LeagueUiPack = {
     recordPending: 'Bilan après notation',
     seat: { divination: 'Divination', sentiment: 'Sentiment', history: 'Histoire', consensus: 'Référence de marché', crow: 'Corbeau', replay: 'Revue · Claude Opus 5.5' },
     crowNote: 'Le corbeau voit le risque que la foule oublie. Un taux plus bas est son identité.',
+    noMarket: 'Pas de marché',
   },
   sportsMarket: {
     ensembleLabel: 'Probabilité de victoire de l’ensemble IA',
@@ -4243,6 +4250,7 @@ const es: LeagueUiPack = {
     recordPending: 'Historial tras la calificación',
     seat: { divination: 'Adivinación', sentiment: 'Sentimiento', history: 'Historia', consensus: 'Línea de mercado', crow: 'Cuervo', replay: 'Repaso · Claude Opus 5.5' },
     crowNote: 'El cuervo ve el riesgo que la multitud pasa por alto. Una tasa más baja es su identidad.',
+    noMarket: 'Sin mercado',
   },
   sportsMarket: {
     ensembleLabel: 'Probabilidad de victoria del ensamble de IA',
@@ -4905,6 +4913,7 @@ const ar: LeagueUiPack = {
     recordPending: 'يُجمع السجل بعد التقييم',
     seat: { divination: 'عرافة', sentiment: 'مشاعر', history: 'تاريخ', consensus: 'خط السوق المرجعي', crow: 'غراب', replay: 'مراجعة · Claude Opus 5.5' },
     crowNote: 'الغراب يرى الخطر الذي يغفل عنه الجمهور. معدل إصابة أدنى هو هويته.',
+    noMarket: 'لا سوق',
   },
   sportsMarket: {
     ensembleLabel: 'احتمال فوز مجموعة الذكاء الاصطناعي',
@@ -5560,6 +5569,7 @@ const pt: LeagueUiPack = {
     recordPending: 'Histórico após a pontuação',
     seat: { divination: 'Adivinhação', sentiment: 'Sentimento', history: 'História', consensus: 'Linha de mercado', crow: 'Corvo', replay: 'Revisão · Claude Opus 5.5' },
     crowNote: 'O corvo vê o risco que a multidão ignora. Uma taxa mais baixa é a identidade dele.',
+    noMarket: 'Sem mercado',
   },
   sportsMarket: {
     ensembleLabel: 'Probabilidade de vitória do conjunto de IA',

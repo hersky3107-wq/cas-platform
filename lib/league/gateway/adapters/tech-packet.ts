@@ -27,6 +27,7 @@ import {
   decodeTechInstrument,
   objectById,
 } from './tech-catalog'
+import { restoreAcronymCasing } from '../../acronym-casing'
 import { catalogCompanyForText, decodeOpenTechInstrument } from './tech-resolve'
 
 /**
@@ -298,7 +299,7 @@ export function assembleTechInjection(args: {
   const base = company ? TECH_BASE_RATES[company.id] : undefined
   const related = company ? TECH_RELATED[company.id] ?? [] : []
   const subject = company?.label_en ?? open?.subjectSlug ?? 'UNAVAILABLE'
-  const objectLabel = object?.label_en ?? (open ? open.objectSlug.replace(/_/g, ' ') : 'UNAVAILABLE')
+  const objectLabel = object?.label_en ?? (open ? restoreAcronymCasing(open.objectSlug.replace(/_/g, ' ')) : 'UNAVAILABLE')
 
   const sourced = args.research.findings.map((f) => sourceFinding(f))
   const usable = sourced.filter((f) => f.usable)

@@ -327,3 +327,8 @@ export function extraSeatDescription(
 export function extraNoMarketLine(locale: LeagueLocale): string {
   return extraDescriptionPack(locale).noMarket
 }
+
+/** The market baseline seat with no side shows the no-market line, on the tile and the extras strip alike. */
+export function showsConsensusNoMarket(modelId: string, direction: string | null | undefined): boolean {
+  return modelId === 'consensus' && !direction
+}

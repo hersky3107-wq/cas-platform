@@ -21,6 +21,8 @@ export type ExtraCompareVsCrowd = 'agree' | 'diverge' | 'pending' | 'no-crowd'
 export type ExtraCompareSeatView = {
   id: ExtraSeatId
   badge: (typeof LEAGUE_EXTRA_ROSTER)[number]['badge']
+  /** The seat has a row on this card (a tile exists). */
+  present: boolean
   direction: ModelSide | null
   vsCrowd: ExtraCompareVsCrowd
   record: ExtraSeatRecord | null
@@ -70,6 +72,7 @@ export function buildExtraCompareView(
     return {
       id: seat.model_id,
       badge: seat.badge,
+      present: row != null,
       direction,
       vsCrowd,
       record: record && record.graded > 0 ? record : null,

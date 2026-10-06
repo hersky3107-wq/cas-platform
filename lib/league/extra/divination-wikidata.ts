@@ -46,7 +46,9 @@ export type SubjectCacheStore = {
 }
 
 const API = 'https://www.wikidata.org/w/api.php'
-const USER_AGENT = 'cas-platform-league/1.0 (divination subject lookup)'
+/** Wikimedia rate-limits clients whose User-Agent carries no contact (URL or e-mail) far harder. */
+const CONTACT = process.env.LEAGUE_WIKIDATA_CONTACT?.trim() || 'https://github.com/hersky3107-wq/cas-platform'
+const USER_AGENT = `CasPlatformLeague/1.0 (${CONTACT}) divination-subject-lookup`
 const GREGORIAN = 'http://www.wikidata.org/entity/Q1985727'
 const HUMAN = 'Q5'
 const PARTY_CLASSES = new Set(['Q7278'])
@@ -86,8 +88,12 @@ const MAX_CANDIDATES = 6
 const DOMINANT_SITELINK_RATIO = 3
 const POSITIVE_TTL_MS = 30 * 24 * 3_600_000
 const NEGATIVE_TTL_MS = 7 * 24 * 3_600_000
-export const WIKIDATA_BUDGET_MS = 5_000
-const FETCH_TIMEOUT_MS = 3_500
+/** Inside the divination seat's 30 s timeout, leaving the reader most of it. */
+export const WIKIDATA_BUDGET_MS = 8_000
+const FETCH_TIMEOUT_MS = 4_000
+const MIN_REQUEST_GAP_MS = 350
+const RETRY_WAIT_DEFAULT_MS = 1_000
+const RETRY_WAIT_MAX_MS = 2_500
 
 type Snak = { snaktype?: string; datavalue?: { value?: unknown } }
 type Statement = { mainsnak?: Snak; rank?: string; qualifiers?: Record<string, Snak[] | undefined> }
@@ -346,19 +352,77 @@ export function parseSubjectBirth(value: unknown): SubjectBirth | null {
   }
 }
 
+export class WikidataHttpError extends Error {
+  constructor(
+    readonly status: number,
+    readonly retryAfterMs: number | null,
+  ) {
+    super(`wikidata ${status}`)
+    this.name = 'WikidataHttpError'
+  }
+}
+
+/** `Retry-After` in seconds or as an HTTP date. */
+export function parseRetryAfterMs(value: string | null, now: number = Date.now()): number | null {
+  if (!value) return null
+  const seconds = Number(value)
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000
+  const at = Date.parse(value)
+  return Number.isFinite(at) ? Math.max(0, at - now) : null
+}
+
+const sleepMs = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms))
+
+let nextRequestAt = 0
+
+/** Spaces requests process-wide so a batch of rounds does not burst the API. */
+async function takeRequestSlot(): Promise<void> {
+  const now = Date.now()
+  const at = Math.max(now, nextRequestAt)
+  nextRequestAt = at + MIN_REQUEST_GAP_MS
+  if (at > now) await sleepMs(at - now)
+}
+
 export const defaultWikidataFetch: WikidataFetchJson = async (url) => {
+  await takeRequestSlot()
   const res = await fetch(url, {
     headers: { 'User-Agent': USER_AGENT, 'Api-User-Agent': USER_AGENT, Accept: 'application/json' },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   })
-  if (!res.ok) throw new Error(`wikidata ${res.status}`)
+  if (!res.ok) throw new WikidataHttpError(res.status, parseRetryAfterMs(res.headers.get('retry-after')))
   return res.json()
 }
 
+function isRetryable(error: unknown): error is WikidataHttpError {
+  return error instanceof WikidataHttpError && (error.status === 429 || error.status >= 500)
+}
+
+/** One retry per request on 429 / 5xx, only when the wait still fits before `deadline`. */
+function retryingFetch(
+  fetchJson: WikidataFetchJson,
+  deadline: number,
+  sleep: (ms: number) => Promise<void>,
+  now: () => number,
+): WikidataFetchJson {
+  return async (url) => {
+    try {
+      return await fetchJson(url)
+    } catch (error) {
+      if (!isRetryable(error)) throw error
+      const wait = Math.min(error.retryAfterMs ?? RETRY_WAIT_DEFAULT_MS, RETRY_WAIT_MAX_MS)
+      if (now() + wait >= deadline - 500) throw error
+      await sleep(wait)
+      return fetchJson(url)
+    }
+  }
+}
+
 const memory = new Map<string, { value: SubjectBirth | null; at: number }>()
+const inflight = new Map<string, Promise<SubjectBirth | null>>()
 
 export function clearSubjectBirthMemory(): void {
   memory.clear()
+  inflight.clear()
 }
 
 export function subjectCacheKey(category: SajuCategory, name: string): string {
@@ -382,19 +446,40 @@ export type ResolveSubjectDeps = {
   store?: SubjectCacheStore | null
   now?: () => number
   budgetMs?: number
+  sleep?: (ms: number) => Promise<void>
 }
 
-/** Cached per subject. Network failures and timeouts return null and are not cached. */
-export async function resolveSubjectBirth(
+/**
+ * Cached per subject; concurrent callers for one subject share a lookup.
+ * Network failures, 429s and timeouts are not cached: they fall back to a
+ * stale stored hit when there is one, else null.
+ */
+export function resolveSubjectBirth(
   name: string,
   category: SajuCategory,
   deps: ResolveSubjectDeps = {},
 ): Promise<SubjectBirth | null> {
-  const now = deps.now?.() ?? Date.now()
+  const clock = deps.now ?? Date.now
   const key = subjectCacheKey(category, name)
-  if (key.endsWith(':')) return null
+  if (key.endsWith(':')) return Promise.resolve(null)
   const mem = memory.get(key)
-  if (mem && fresh(mem.value, mem.at, now)) return mem.value
+  if (mem && fresh(mem.value, mem.at, clock())) return Promise.resolve(mem.value)
+  const running = inflight.get(key)
+  if (running) return running
+  const work = resolveUncached(key, name, category, deps, clock).finally(() => inflight.delete(key))
+  inflight.set(key, work)
+  return work
+}
+
+async function resolveUncached(
+  key: string,
+  name: string,
+  category: SajuCategory,
+  deps: ResolveSubjectDeps,
+  clock: () => number,
+): Promise<SubjectBirth | null> {
+  const now = clock()
+  let stale: SubjectBirth | null = null
   try {
     const stored = await deps.store?.get(key)
     if (stored) {
@@ -403,15 +488,21 @@ export async function resolveSubjectBirth(
         memory.set(key, { value: stored.value, at })
         return stored.value
       }
+      stale = stored.value
     }
   } catch {
     /* store is optional */
   }
+  const budgetMs = deps.budgetMs ?? WIKIDATA_BUDGET_MS
+  const fetchJson = retryingFetch(deps.fetchJson ?? defaultWikidataFetch, now + budgetMs, deps.sleep ?? sleepMs, clock)
   let result: SubjectLookup
   try {
-    result = await withBudget(lookupSubjectBirth(name, category, deps.fetchJson ?? defaultWikidataFetch), deps.budgetMs ?? WIKIDATA_BUDGET_MS)
-  } catch {
-    return null
+    result = await withBudget(lookupSubjectBirth(name, category, fetchJson), budgetMs)
+  } catch (error) {
+    console.warn(
+      `[league-divination] subject lookup failed for ${key}: ${error instanceof Error ? error.message : String(error)}${stale ? ' (using stale cache)' : ''}`,
+    )
+    return stale
   }
   memory.set(key, { value: result.birth, at: now })
   try {

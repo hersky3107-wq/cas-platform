@@ -12,7 +12,7 @@ import {
   logRationaleCacheError,
   type RationaleTranslationStore,
 } from './rationale-i18n-store'
-import { rationaleTranslationGlossary, rejectsBaseRateMistranslation } from './translation-glossary'
+import { hasWrongBaseRateGloss, rationaleTranslationGlossary, rejectsBaseRateMistranslation } from './translation-glossary'
 import {
   hasLeftoverDiscourse,
   replaceRationaleSentences,
@@ -204,7 +204,12 @@ export async function translateRoundRationales(
     }
     const hit = cached.get(item.predictionId)
     const cachedText = hit && hit.source_hash === sourceHash(item.text) ? hit.translated_text.trim() : ''
-    if (cachedText && !rejectsBaseRateMistranslation(item.text, cachedText, locale) && !hasLeftoverDiscourse(cachedText)) {
+    if (
+      cachedText &&
+      !rejectsBaseRateMistranslation(item.text, cachedText, locale) &&
+      !hasWrongBaseRateGloss(cachedText, locale, category) &&
+      !hasLeftoverDiscourse(cachedText)
+    ) {
       const visible = visibleLeagueText(category, cachedText) ?? cachedText
       if (!rejectsBaseRateMistranslation(item.text, visible, locale) && !hasLeftoverDiscourse(visible)) {
         translations[item.predictionId] = visible
@@ -230,7 +235,7 @@ export async function translateRoundRationales(
 
   const lang = LANGUAGE_NAME[locale]
   const payload = missing.map((item, idx) => ({ id: idx, text: item.text }))
-  const glossary = rationaleTranslationGlossary(locale)
+  const glossary = rationaleTranslationGlossary(locale, category)
   const systemPrompt = [
     `You translate AI prediction rationales into ${lang}.`,
     'Rules:',

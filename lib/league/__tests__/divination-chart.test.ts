@@ -43,9 +43,12 @@ import {
   classifyEntity,
   clearSubjectBirthMemory,
   currentCeoId,
+  defaultWikidataFetch,
   lookupSubjectBirth,
+  parseRetryAfterMs,
   parseSubjectBirth,
   resolveSubjectBirth,
+  WikidataHttpError,
   wikidataYearMonth,
   type SajuCategory,
   type SubjectBirth,
@@ -430,6 +433,111 @@ describe('Wikidata subject lookup', () => {
       expect(await resolveSubjectBirth('Slow', 'tech', { fetchJson: slow, budgetMs: 20 })).toBeNull()
     })
 
+    it('retries a 429 once after Retry-After and still reaches the CEO', async () => {
+      const wiki = fakeWikidata({ NVIDIA: [{ id: 'Q182477', label: 'Nvidia' }] }, { Q182477: NVIDIA, Q305177: JENSEN })
+      let limited = true
+      const fetchJson = vi.fn(async (url: string) => {
+        if (limited && url.includes('ids=Q305177')) {
+          limited = false
+          throw new WikidataHttpError(429, 1_000)
+        }
+        return wiki.fetchJson(url)
+      })
+      const sleep = vi.fn(async (_ms: number) => undefined)
+      const put = vi.fn(async () => undefined)
+      const store: SubjectCacheStore = { get: async () => null, put }
+      expect(await resolveSubjectBirth('NVIDIA', 'tech', { fetchJson, sleep, store })).toEqual(NVIDIA_BIRTH)
+      expect(sleep).toHaveBeenCalledWith(1_000)
+      expect(fetchJson).toHaveBeenCalledTimes(4)
+      expect(put).toHaveBeenCalledWith('tech:nvidia', 'NVIDIA', NVIDIA_BIRTH)
+    })
+
+    it('does not cache a 429 that persists, logs it, and tries again next time', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      try {
+        const limited = vi.fn(async () => {
+          throw new WikidataHttpError(429, 500)
+        })
+        const put = vi.fn(async () => undefined)
+        const sleep = vi.fn(async () => undefined)
+        expect(await resolveSubjectBirth('NVIDIA', 'tech', { fetchJson: limited, sleep, store: { get: async () => null, put } })).toBeNull()
+        expect(limited).toHaveBeenCalledTimes(2)
+        expect(put).not.toHaveBeenCalled()
+        expect(warn.mock.calls.some(([line]) => /tech:nvidia.*wikidata 429/.test(String(line)))).toBe(true)
+        const { fetchJson } = fakeWikidata({ NVIDIA: [{ id: 'Q182477', label: 'Nvidia' }] }, { Q182477: NVIDIA, Q305177: JENSEN })
+        expect(await resolveSubjectBirth('NVIDIA', 'tech', { fetchJson })).toEqual(NVIDIA_BIRTH)
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('skips the retry when the wait would overrun the budget', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      try {
+        const limited = vi.fn(async () => {
+          throw new WikidataHttpError(503, 60_000)
+        })
+        const sleep = vi.fn(async () => undefined)
+        expect(await resolveSubjectBirth('NVIDIA', 'tech', { fetchJson: limited, sleep, budgetMs: 2_000 })).toBeNull()
+        expect(limited).toHaveBeenCalledTimes(1)
+        expect(sleep).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('shares one lookup between seats asking for the same subject at once', async () => {
+      const { fetchJson } = fakeWikidata({ NVIDIA: [{ id: 'Q182477', label: 'Nvidia' }] }, { Q182477: NVIDIA, Q305177: JENSEN })
+      const [a, b] = await Promise.all([
+        resolveSubjectBirth('NVIDIA', 'tech', { fetchJson }),
+        resolveSubjectBirth('Nvidia', 'tech', { fetchJson }),
+      ])
+      expect(a).toEqual(NVIDIA_BIRTH)
+      expect(b).toEqual(NVIDIA_BIRTH)
+      expect(fetchJson).toHaveBeenCalledTimes(3)
+    })
+
+    it('falls back to a stale stored hit while Wikidata is unavailable', async () => {
+      const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined)
+      try {
+        const store: SubjectCacheStore = {
+          get: async () => ({ value: NVIDIA_BIRTH, fetchedAt: '2026-01-01T00:00:00Z' }),
+          put: vi.fn(async () => undefined),
+        }
+        const failing = vi.fn(async () => {
+          throw new Error('offline')
+        })
+        const now = () => Date.parse('2026-10-06T00:00:00Z')
+        expect(await resolveSubjectBirth('NVIDIA', 'tech', { fetchJson: failing, store, now })).toEqual(NVIDIA_BIRTH)
+        expect(store.put).not.toHaveBeenCalled()
+      } finally {
+        warn.mockRestore()
+      }
+    })
+
+    it('reads Retry-After and identifies itself with a contact in the User-Agent', async () => {
+      expect(parseRetryAfterMs('2')).toBe(2_000)
+      expect(parseRetryAfterMs('Tue, 06 Oct 2026 13:00:05 GMT', Date.parse('2026-10-06T13:00:00Z'))).toBe(5_000)
+      expect(parseRetryAfterMs(null)).toBeNull()
+      const seen: Headers[] = []
+      vi.stubGlobal(
+        'fetch',
+        vi.fn(async (_url: string, init?: RequestInit) => {
+          seen.push(new Headers(init?.headers))
+          return new Response('Too many requests', { status: 429, headers: { 'retry-after': '3' } })
+        }),
+      )
+      try {
+        await expect(defaultWikidataFetch('https://www.wikidata.org/w/api.php?action=wbsearchentities')).rejects.toMatchObject({
+          status: 429,
+          retryAfterMs: 3_000,
+        })
+      } finally {
+        vi.unstubAllGlobals()
+      }
+      expect(seen[0]?.get('user-agent')).toMatch(/^CasPlatformLeague\/1\.0 \((https?:\/\/\S+|[^@\s]+@\S+)\)/)
+    })
+
     it('round-trips a stored row and rejects malformed ones', () => {
       expect(parseSubjectBirth(JSON.parse(JSON.stringify(NVIDIA_BIRTH)))).toEqual(NVIDIA_BIRTH)
       expect(parseSubjectBirth(null)).toBeNull()
@@ -692,6 +800,71 @@ describe('stored chart → card → tile', () => {
       }),
     )
     expect(other).not.toContain('divination-chart-line')
+  })
+})
+
+describe('NVIDIA tech round opened 2026-10-06', () => {
+  beforeEach(() => clearSubjectBirthMemory())
+
+  const nvidiaRound: RoundRow = {
+    id: '1b6a3752-2030-4bb2-9bd3-8f2bb344e713',
+    proposition_text: 'NVIDIA, 2026-10-06 이후 2026-10-31까지 새 GPU를 발표할까?',
+    category: 'tech',
+    color_bucket: 'yellow',
+    instrument: 'TECH:OPEN:nvidia:announce:새_gpu:20261031:official_newsroom',
+    horizon: '1m',
+    resolution_rule: 'Occurred if NVIDIA announces 새 GPU after 2026-10-06 and on or before 2026-10-31.',
+    resolves_at: '2026-10-31T23:59:59.999+00:00',
+    opened_at: '2026-10-06T13:39:23.176764+00:00',
+    actual_outcome: null,
+    resolved_at: null,
+  }
+  /** Same hit list Wikidata returns for "NVIDIA": one exact label, the rest products. */
+  const nvidiaHits: Hit[] = [
+    { id: 'Q182477', label: 'Nvidia', match: { type: 'label', text: 'Nvidia' } },
+    { id: 'Q56274119', label: 'Nvidia RTX', match: { type: 'label', text: 'Nvidia RTX' } },
+    { id: 'Q114062792', label: 'GeForce RTX 4080', match: { type: 'alias', text: 'Nvidia GeForce RTX 4080' }, aliases: ['Nvidia GeForce RTX 4080'] },
+    { id: 'Q825762', label: 'GeForce', match: { type: 'alias', text: 'Nvidia GeForce' }, aliases: ['Nvidia GeForce'] },
+  ]
+
+  it('resolves NVIDIA → Jensen Huang through a rate-limited Wikidata and shows "사주: 젠슨 황 계묘년 갑인월"', async () => {
+    const wiki = fakeWikidata({ NVIDIA: nvidiaHits }, { Q182477: NVIDIA, Q305177: JENSEN })
+    let limited = 1
+    const fetchJson = vi.fn(async (url: string) => {
+      if (limited-- > 0) throw new WikidataHttpError(429, 800)
+      return wiki.fetchJson(url)
+    })
+    const chart = await buildDivinationChart(
+      { ...nvidiaRound, subject_label: 'NVIDIA', created_at: nvidiaRound.opened_at },
+      { resolveSubject: (name, category) => resolveSubjectBirth(name, category, { fetchJson, sleep: async () => undefined }) },
+    )
+    expect(chart?.kind).toBe('saju')
+    if (chart?.kind !== 'saju') return
+    expect(chart.subject).toMatchObject({ qid: 'Q182477', source: 'ceo_birth', yearMonth: '1963-02', ceo: { qid: 'Q305177' } })
+    expect(chart.pillars).toEqual({ year: '癸卯', month: '甲寅' })
+    expect(divinationChartPromptLines(chart)[0]).toBe('대상 사주: 젠슨 황(현 CEO) 계묘년 갑인월 (출생 1963-02)')
+
+    const card = buildCardData(nvidiaRound, [
+      {
+        model_id: 'divination',
+        brand: '🔮 점술',
+        camp: 'other',
+        league_tier: 'extra',
+        predicted_direction: 'no',
+        predicted_value: 0,
+        reasoning_snippet: '본괘인 몽은 미숙함과 배움을 상징합니다.',
+        is_correct: null,
+        cost_usd: 0.003,
+        predicted_at: '2026-10-06T13:40:59.700Z',
+        divination_chart: JSON.parse(JSON.stringify(chart)),
+      },
+    ])
+    const tile = card.models.find((m) => m.model_id === 'divination')!
+    expect(tile.divinationChart).toEqual(chart)
+    const html = renderToStaticMarkup(createElement(ModelTile, { model: tile, t: getLeagueUiPack('ko'), locale: 'ko', category: 'tech' }))
+    expect(html).toContain('data-testid="divination-chart-line"')
+    expect(html).toContain('사주: 젠슨 황 계묘년 갑인월')
+    expect(html).toContain('오락용 점괘')
   })
 })
 

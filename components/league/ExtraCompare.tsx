@@ -1,5 +1,6 @@
 import type { CardModelPrediction, ConsensusSummary } from '@/lib/league/card-types'
 import { buildExtraCompareView, extraRecordsFromModels, hasExtraCompareModels } from '@/lib/league/extra-compare'
+import { showsConsensusNoMarket } from '@/lib/league/extra/descriptions'
 import type { ExtraSeatId } from '@/lib/league/extra/seats'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { SideLabels } from '@/lib/league/side-labels'
@@ -52,9 +53,12 @@ export function ExtraCompare({
           </span>
         </li>
         {view.seats.map((seat) => {
+          const noMarket = seat.present && showsConsensusNoMarket(seat.id, seat.direction)
           const word = seat.direction
             ? directionBadgeLabel(seat.direction, t, labels)
-            : t.modelList.noResponse
+            : noMarket
+              ? t.extraCompare.noMarket
+              : t.modelList.noResponse
           const vs =
             seat.vsCrowd === 'agree'
               ? t.extraCompare.agree
@@ -67,6 +71,7 @@ export function ExtraCompare({
               className={`inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-[13px] font-semibold text-league-fg ${SEAT_VS[seat.vsCrowd]}`}
               data-extra-seat={seat.id}
               data-vs-crowd={seat.vsCrowd}
+              data-no-market={noMarket ? 'true' : undefined}
             >
               <span>
                 {seat.badge}

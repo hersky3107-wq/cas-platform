@@ -13,7 +13,12 @@ import { hasCallableSide } from '@/lib/league/side-labels'
 import { CountryFlag } from '@/components/league/CountryFlag'
 import { divinationConfidenceLabel } from '@/lib/league/extra/copy'
 import { divinationChartLine } from '@/lib/league/extra/divination-chart-copy'
-import { extraDescriptionPack, extraNoMarketLine, extraSeatDescription } from '@/lib/league/extra/descriptions'
+import {
+  extraDescriptionPack,
+  extraNoMarketLine,
+  extraSeatDescription,
+  showsConsensusNoMarket,
+} from '@/lib/league/extra/descriptions'
 import { extraSeatBadge, isExtraSeatId } from '@/lib/league/extra/seats'
 import { lensDisplayLabel } from '@/lib/league/analysis-lenses'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
@@ -76,7 +81,7 @@ export function ModelTile({
     const sanitized = isScout ? sanitizeScoutRationaleDisplay(coerced) : coerced
     return category ? visibleLeagueText(category, sanitized) : sanitized
   }
-  const consensusAbstain = model.model_id === 'consensus' && !model.direction
+  const consensusAbstain = showsConsensusNoMarket(model.model_id, model.direction)
   const original = consensusAbstain ? null : snippetForDisplay(model.reasoning_snippet)
   const translated = consensusAbstain ? null : snippetForDisplay(translatedRationale)
   const rationale = translated || original

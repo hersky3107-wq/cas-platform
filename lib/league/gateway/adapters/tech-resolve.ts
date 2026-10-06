@@ -4,6 +4,7 @@
  * inside 3 months, and a verification class.
  */
 
+import { properNameCasing, restoreAcronymCasing } from '../../acronym-casing'
 import type { UiHorizon } from '../../horizon'
 import type { LeagueLocale } from '../../i18n/locales'
 import { horizonForResolveDate } from './tech-compose'
@@ -372,10 +373,12 @@ function finish(
 ): TechParseResult {
   const bounded = boundDeadline(deadline, now)
   if (!bounded.ok) return bounded
-  const object = objectRaw.replace(/\bagain\b/gi, ' ').replace(/[?.!]+$/g, '').replace(/\s+/g, ' ').trim()
+  const object = restoreAcronymCasing(
+    objectRaw.replace(/\bagain\b/gi, ' ').replace(/[?.!]+$/g, '').replace(/\s+/g, ' ').trim(),
+  )
   if (!subjectRaw.trim() || object.length < 1) return { ok: false, code: 'vague_claim' }
   const catalog = catalogCompanyForText(subjectRaw) ?? catalogCompanyForText(raw)
-  const subjectLabel = catalog ? (korean ? catalog.label_ko : catalog.label_en) : subjectRaw.trim()
+  const subjectLabel = catalog ? (korean ? catalog.label_ko : catalog.label_en) : restoreAcronymCasing(subjectRaw.trim())
   const subjectKey = catalog?.label_en ?? subjectRaw.trim()
   const verification = defaultVerification(event, raw)
   const instrument = encodeOpenTechInstrument({
@@ -517,12 +520,13 @@ export function claimFromOpenInstrument(
   const decoded = decodeOpenTechInstrument(instrument)
   if (!decoded) return null
   const catalog = catalogCompanyForText(decoded.subjectSlug) ?? companyById(decoded.subjectSlug.toUpperCase())
-  const subjectLabel = label.trim() || catalog?.label_en || decoded.subjectSlug
+  const slugSubject = properNameCasing(decoded.subjectSlug.replace(/_/g, ' '))
+  const subjectLabel = label.trim() || catalog?.label_en || slugSubject
   return {
-    subject: catalog?.label_en ?? decoded.subjectSlug,
+    subject: catalog?.label_en ?? slugSubject,
     subjectLabel,
     event: decoded.event,
-    object: decoded.objectSlug.replace(/_/g, ' '),
+    object: restoreAcronymCasing(decoded.objectSlug.replace(/_/g, ' ')),
     deadline: decoded.deadline,
     windowStart: todayYmd(now),
     horizon: horizonForResolveDate(decoded.deadline, now),

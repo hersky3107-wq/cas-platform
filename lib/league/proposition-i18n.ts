@@ -9,6 +9,7 @@ import {
   airankDisplayProposition,
   airankAllPropositions,
 } from './ai-ranking/instrument'
+import { restoreTechOpenCasing } from './acronym-casing'
 import type { LeagueLocale } from './i18n/locales'
 import { sportsPropositionDisplay } from './sports-display'
 
@@ -46,6 +47,10 @@ export function resolveLocalizedProposition(
     if (shown.trim()) return shown
   }
 
+  return restoreTechOpenCasing(round.instrument, storedProposition(round, locale))
+}
+
+function storedProposition(round: LocalizedPropositionTarget, locale: LeagueLocale): string {
   if (round.propositions && typeof round.propositions === 'object') {
     const direct = round.propositions[locale]
     if (typeof direct === 'string' && direct.trim()) return direct.trim()
