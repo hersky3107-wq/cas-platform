@@ -22,8 +22,8 @@ import {
   mergeFindings,
   type ResearchFinding,
 } from './deep-report-findings'
-import { pairDebaters, rebuttalsAwaitCounter } from './deep-debate-pairs'
-import type { ResearchAngle } from './deep-report-policy'
+import { pairDebaters, rebuttalsAwaitCounter, type PairSeat } from './deep-debate-pairs'
+import type { DebateSide, ResearchAngle } from './deep-report-policy'
 import { plainText, readerText, tallyVotes, type EvidencePoint, type ReplyStance } from './deep-report-structured'
 import { visibleLeagueText } from './visible-disclosure'
 
@@ -375,6 +375,19 @@ function asReplyStance(raw: unknown): ReplyStance | null {
   return raw === 'concede' || raw === 'partial' || raw === 'defend' ? raw : null
 }
 
+/** A fresh read of a raw row is `unknown`; the literal union only sticks on a local binding. */
+function asDebateSide(raw: unknown): DebateSide | null {
+  return raw === 'yes' || raw === 'no' ? raw : null
+}
+
+function threadSeat(row: RawTurn): PairSeat | null {
+  const assignedSide = asDebateSide(row.side)
+  const provider = str(row.provider) ?? ''
+  const model = str(row.model) ?? ''
+  if (row.ok !== true || !assignedSide || !provider || !model) return null
+  return { provider, model, assignedSide, finalSide: asDebateSide(row.finalSide) }
+}
+
 function reportConcessions(counters: readonly RawTurn[], say: Say): DeepReportConcession[] {
   return counters
     .filter((row) => row.ok === true && (row.stance === 'concede' || row.stance === 'partial'))
@@ -390,15 +403,10 @@ function reportThreads(
   say: Say,
 ): DeepReportThread[] {
   if (!rebuttals.some((row) => row.ok === true && typeof row.quotedClaim === 'string' && row.quotedClaim)) return []
-  const seats = openings
-    .filter((row) => row.ok === true && (row.side === 'yes' || row.side === 'no'))
-    .map((row) => ({
-      provider: str(row.provider) ?? '',
-      model: str(row.model) ?? '',
-      assignedSide: row.side as 'yes' | 'no',
-      finalSide: row.finalSide === 'yes' || row.finalSide === 'no' ? row.finalSide : null,
-    }))
-    .filter((row) => row.provider && row.model)
+  const seats = openings.flatMap((row) => {
+    const seat = threadSeat(row)
+    return seat ? [seat] : []
+  })
   return pairDebaters(roundId, seats)
     .map((pair): DeepReportThread | null => {
       const exchanges = [pair.yes, pair.no]
