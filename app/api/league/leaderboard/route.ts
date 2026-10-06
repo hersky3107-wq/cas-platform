@@ -1,19 +1,22 @@
 import { NextResponse } from 'next/server'
 import { creditsForLeagueLeaderboard } from '@/lib/credits'
 import { LEAGUE_VIEW_RATE_RULE } from '@/lib/league/access-policy'
-import { fetchLeaderboardData } from '@/lib/league/leaderboard'
-import { enforceRateLimit, resolveLeagueViewer } from '@/lib/league/public-access'
+import { readLeaderboardBoards, readLiveLeaderboardBoards } from '@/lib/league/boards/cache.server'
+import { parseBoardDoor, parseBoardFilters } from '@/lib/league/boards/filters'
+import { enforceRateLimit, resolveLeagueViewer, type LeagueViewer } from '@/lib/league/public-access'
 import { purchaseLeagueView } from '@/lib/league/view-charge'
 import { hasLeaderboardAccess } from '@/lib/league/view-purchases'
 import { lockedViewPayload } from '@/lib/league/view-purchase-policy'
-import { intersectDoorCategories, ledgerCategoriesForDoor, parseDoorParam, type HubDoor } from '@/lib/league/hub-doors'
 
 /**
- * GET /api/league/leaderboard
+ * GET /api/league/leaderboard?door=&cat=&h=&p=
  *
- * Read-only rankings. Never charges. A non-admin without a live
- * `league_view_purchases` row gets the locked payload (no ranks).
- * Admin skips the purchase check (operator preview).
+ * Read-only boards from `league_board_cache` (public graded rounds only: no
+ * test, no voided). Never charges and never computes, except a
+ * jurisdiction-narrowed category set no rebuild plans. A non-admin without a
+ * live `league_view_purchases` row gets the locked payload (no ranks). Admin
+ * skips the purchase check; `test=1` is an admin-only live preview that
+ * includes test rounds and is never cached.
  *
  * POST /api/league/leaderboard
  *
@@ -21,17 +24,10 @@ import { intersectDoorCategories, ledgerCategoriesForDoor, parseDoorParam, type 
  * update the board. Re-POST after purchase does not charge again.
  */
 
-async function loadBoard(categories: readonly string[] | undefined, includeTest = false) {
-  return fetchLeaderboardData(categories ? { categories, includeTest } : includeTest ? { includeTest } : undefined)
-}
-
-function boardScope(viewer: { isAdmin: boolean; visibleCategories: readonly string[] }, door: HubDoor | null) {
-  if (door) {
-    return viewer.isAdmin
-      ? [...ledgerCategoriesForDoor(door)]
-      : intersectDoorCategories(viewer.visibleCategories, door)
-  }
-  return viewer.isAdmin ? undefined : viewer.visibleCategories
+async function loadBoards(viewer: LeagueViewer, get: (name: string) => string | null | undefined) {
+  const filters = parseBoardFilters(get, parseBoardDoor(get('door'), 'all'))
+  if (viewer.isAdmin && get('test') === '1') return readLiveLeaderboardBoards(filters)
+  return readLeaderboardBoards(filters, viewer.isAdmin ? null : viewer.visibleCategories)
 }
 
 export async function GET(req: Request) {
@@ -46,9 +42,8 @@ export async function GET(req: Request) {
         return NextResponse.json(lockedViewPayload('leaderboard', creditsForLeagueLeaderboard()))
       }
     }
-    const door = parseDoorParam(new URL(req.url).searchParams.get('door'))
-    const data = await loadBoard(boardScope(viewer, door), viewer.isAdmin && !door)
-    return NextResponse.json(data)
+    const params = new URL(req.url).searchParams
+    return NextResponse.json(await loadBoards(viewer, (name) => params.get(name)))
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'failed to load leaderboard' },
@@ -78,9 +73,9 @@ export async function POST(req: Request) {
       const bought = await purchaseLeagueView({ userId: viewer.userId, product: 'leaderboard' })
       if (!bought.ok) return bought.response
     }
-    const door = parseDoorParam(typeof body.door === 'string' ? body.door : null)
-    const data = await loadBoard(boardScope(viewer, door), viewer.isAdmin && !door)
-    return NextResponse.json(data)
+    return NextResponse.json(
+      await loadBoards(viewer, (name) => (typeof body[name] === 'string' ? (body[name] as string) : null)),
+    )
   } catch (e: unknown) {
     return NextResponse.json(
       { error: e instanceof Error ? e.message : 'failed to open leaderboard' },

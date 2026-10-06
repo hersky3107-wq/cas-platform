@@ -222,3 +222,7 @@ export type BoardsResponse = {
   meta: BoardsMeta
   boards: BoardSet
 }
+
+export function isBoardsResponse(value: unknown): value is BoardsResponse {
+  return Boolean(value && typeof value === 'object' && (value as { kind?: unknown }).kind === 'boards')
+}

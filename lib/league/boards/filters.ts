@@ -57,6 +57,15 @@ export function parseBoardFilters(
   })
 }
 
+/** The query string `parseBoardFilters` reads back; defaults are omitted. */
+export function boardFiltersQuery(filters: BoardFilters): string {
+  const params = new URLSearchParams({ door: filters.door })
+  if (filters.category) params.set('cat', filters.category)
+  if (filters.horizon !== 'all') params.set('h', filters.horizon)
+  if (filters.period !== 'all') params.set('p', filters.period)
+  return params.toString()
+}
+
 export function normalizeBoardFilters(filters: BoardFilters): BoardFilters {
   if (!filters.category) return { ...filters, category: null }
   const door = boardDoorOfCategory(filters.category)

@@ -25,7 +25,7 @@ import { supportedRegionsLine } from '@/lib/league/real-estate/supported'
 import { stockChipLabel } from '@/lib/league/gateway/adapters/stock-catalog'
 import { SIGNUP_COUNTRY_CODES, getSignupCountryLabel } from '@/lib/league/jurisdiction/signup-countries'
 import { UI_HORIZONS, type UiHorizon } from '@/lib/league/horizon'
-import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
+import type { BoardsResponse } from '@/lib/league/boards/types'
 import type { RecordRoomPage } from '@/lib/league/record-room-aggregate'
 import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/league/view-purchase-policy'
 import { KR_DISCLOSURE, resolveKrLaneBanner, resolveKrLaneFooter } from '@/lib/league/korea-disclosure'
@@ -1142,14 +1142,14 @@ function categoryChipClass(tone: ColorBucket, selected: boolean): string {
 
 function LeaderboardPanel({ door }: { door: HubDoor }) {
   const { t } = useLeagueLocale()
-  const [data, setData] = useState<LeaderboardData | null>(null)
+  const [data, setData] = useState<BoardsResponse | null>(null)
   const [locked, setLocked] = useState<{ required: number } | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [buying, setBuying] = useState(false)
 
   const load = useCallback(async () => {
     const res = await fetch(`/api/league/leaderboard?door=${door}`, { credentials: 'include' })
-    const body = (await res.json()) as LeaderboardData | { error: string }
+    const body = (await res.json()) as BoardsResponse | { error: string }
     if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
     if (isLockedViewPayload(body)) {
       setLocked({ required: body.required })
@@ -1157,7 +1157,7 @@ function LeaderboardPanel({ door }: { door: HubDoor }) {
       return
     }
     setLocked(null)
-    setData(body as LeaderboardData)
+    setData(body as BoardsResponse)
   }, [door])
 
   useEffect(() => {
@@ -1184,14 +1184,14 @@ function LeaderboardPanel({ door }: { door: HubDoor }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ door }),
       })
-      const body = (await res.json()) as LeaderboardData | { error: string; required?: number; balance?: number }
+      const body = (await res.json()) as BoardsResponse | { error: string; required?: number; balance?: number }
       if (res.status === 402 && 'required' in body && 'balance' in body && body.required != null && body.balance != null) {
         throw new Error(t.leaderboard.insufficientCredits(body.required, body.balance))
       }
       if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
       if (isLockedViewPayload(body)) throw new Error(t.hub.genericError)
       setLocked(null)
-      setData(body as LeaderboardData)
+      setData(body as BoardsResponse)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'load_failed')
     } finally {
@@ -1213,7 +1213,7 @@ function LeaderboardPanel({ door }: { door: HubDoor }) {
     )
   }
   if (!data) return <PanelMessage text={t.hub.loading} />
-  return <Leaderboard data={data} />
+  return <Leaderboard initial={data} />
 }
 
 function RecordRoomPanel({ door }: { door: HubDoor }) {

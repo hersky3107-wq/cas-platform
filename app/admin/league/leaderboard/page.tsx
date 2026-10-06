@@ -5,33 +5,38 @@ import { supabase } from '@/lib/db/supabase'
 import { Leaderboard } from '@/components/league/Leaderboard'
 import { setLeagueLocaleOverride } from '@/lib/league/i18n/locale-store'
 import { normalizeLeagueLocale } from '@/lib/league/i18n/locales'
-import type { LeaderboardData } from '@/lib/league/leaderboard-aggregate'
+import { isBoardsResponse, type BoardsResponse } from '@/lib/league/boards/types'
 
 const OWNER_EMAIL = 'hersky3107@gmail.com'
 
 /**
- * Admin preview for the league leaderboard (read-only rankings computed
- * server-side from already-resolved predictions — see
- * `lib/league/leaderboard-aggregate.ts` and `GET /api/league/leaderboard`).
+ * Admin preview for the league leaderboard boards (`GET /api/league/leaderboard`).
+ * Without `test=1` it reads the same cache the public board reads; with it,
+ * boards are computed live and include test rounds (never cached).
  *
  * Usage:
  *   /admin/league/leaderboard
+ *   /admin/league/leaderboard?test=1      (live preview including test rounds)
  *   /admin/league/leaderboard?locale=ko   (force display language)
  */
 export default function LeagueLeaderboardPreviewPage() {
   const [authState, setAuthState] = useState<'checking' | 'denied' | 'allowed'>('checking')
-  const [data, setData] = useState<LeaderboardData | null>(null)
+  const [data, setData] = useState<BoardsResponse | null>(null)
+  const [query, setQuery] = useState<string | undefined>(undefined)
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (extra: string | undefined) => {
     setLoading(true)
     setError(null)
     try {
-      const res = await fetch('/api/league/leaderboard', { credentials: 'include' })
-      const body = (await res.json()) as LeaderboardData | { error: string }
-      if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
-      setData(body as LeaderboardData)
+      const res = await fetch(`/api/league/leaderboard?door=all${extra ? `&${extra}` : ''}`, { credentials: 'include' })
+      const body: unknown = await res.json()
+      if (!res.ok || !isBoardsResponse(body)) {
+        const message = body && typeof body === 'object' && 'error' in body ? String((body as { error: unknown }).error) : null
+        throw new Error(message ?? `request failed (${res.status})`)
+      }
+      setData(body)
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'failed to load leaderboard')
       setData(null)
@@ -53,8 +58,10 @@ export default function LeagueLeaderboardPreviewPage() {
       const params = new URLSearchParams(window.location.search)
       const forcedLocale = normalizeLeagueLocale(params.get('locale'))
       if (forcedLocale) setLeagueLocaleOverride(forcedLocale)
+      const extra = params.get('test') === '1' ? 'test=1' : undefined
+      setQuery(extra)
 
-      await load()
+      await load(extra)
     })()
   }, [load])
 
@@ -63,11 +70,11 @@ export default function LeagueLeaderboardPreviewPage() {
 
   return (
     <div className="mx-auto flex min-h-screen max-w-sm flex-col gap-4 bg-gray-50 p-4">
-      <h1 className="text-lg font-bold">League Leaderboard — preview</h1>
+      <h1 className="text-lg font-bold">League Leaderboard — preview{query ? ' (live, incl. test rounds)' : ''}</h1>
 
       {loading ? <p className="text-sm text-gray-500">Loading…</p> : null}
       {error ? <p className="text-sm text-red-600">{error}</p> : null}
-      {data ? <Leaderboard data={data} /> : null}
+      {data ? <Leaderboard initial={data} query={query} /> : null}
     </div>
   )
 }
