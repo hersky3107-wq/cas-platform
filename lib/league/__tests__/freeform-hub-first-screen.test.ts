@@ -38,12 +38,13 @@ describe('free-prompt first screen', () => {
     expect(HUB).toContain('freeformPanel')
     expect(HUB).toContain('onExample')
     expect(HUB).toMatch(/if \(!next \|\| isFreeformSearchCategory\(id\) \|\| next\.instruments\.length === 0\)/)
-    expect(getLeagueUiPack('ko').catalog.freeformPanel.tech.title).toBe('테크 · AI 순위')
+    expect(getLeagueUiPack('ko').catalog.freeformPanel.tech.title).toBe('테크')
+    expect(getLeagueUiPack('ko').catalog.freeformPanel.ai_ranking.title).toBe('AI 순위')
     expect(getLeagueUiPack('ko').catalog.freeformPanel.tech.title).not.toMatch(/준비 중/)
   })
 
   it('never renders horizon buttons for freeform categories', () => {
-    for (const id of ['tech', 'sports', 'politics_election', 'entertainment', 'real_estate'] as const) {
+    for (const id of ['tech', 'ai_ranking', 'sports', 'politics_election', 'entertainment', 'real_estate'] as const) {
       expect(isFreeformSearchCategory(id)).toBe(true)
       expect(usesHorizonChipRow(id)).toBe(false)
     }

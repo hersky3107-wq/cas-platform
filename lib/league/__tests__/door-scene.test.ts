@@ -97,9 +97,10 @@ describe('door scene markup', () => {
   it('renders room labels as list items and the world door rooms', () => {
     const html = renderToStaticMarkup(createElement(DoorScene, { locale: 'ko', hideMemecoin: true }))
     const world = anchorFor(html, 'world').body
-    for (const room of ['정치·선거', '엔터테인먼트', '스포츠', '부동산', '테크·AI 순위']) {
+    for (const room of ['정치·선거', '엔터테인먼트', '스포츠', '부동산', '테크', 'AI 순위']) {
       expect(world).toContain(`<li class="league-gate__room">${room}</li>`)
     }
+    expect(world).not.toContain('테크·AI')
   })
 
   it('hinges each door on its outer side and mirrors for RTL', () => {

@@ -49,6 +49,7 @@ export function publishedEnglishGloss(text: string): string | null {
     const pairs: Array<[readonly string[], readonly string[]]> = [
       [pack.catalog.techSamples, en.catalog.techSamples],
       [pack.catalog.freeformPanel.tech.examples, en.catalog.freeformPanel.tech.examples],
+      [pack.catalog.freeformPanel.ai_ranking.examples, en.catalog.freeformPanel.ai_ranking.examples],
       [pack.catalog.freeformPanel.politics_election.examples, en.catalog.freeformPanel.politics_election.examples],
       [pack.catalog.freeformPanel.entertainment.examples, en.catalog.freeformPanel.entertainment.examples],
       [pack.catalog.freeformPanel.real_estate.examples, en.catalog.freeformPanel.real_estate.examples],

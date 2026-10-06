@@ -53,7 +53,7 @@ import type {
 
 export const MAX_CLARIFY_ROUNDS = 2
 
-/** Categories whose adapter resolves races/fixtures/regions from raw text without the normalizer. */
+/** Categories whose adapter resolves races/fixtures/regions/rankings from raw text without the normalizer. */
 const SLATE_BACKED_CATEGORIES = new Set<string>([
   'politics_election',
   'sports',
@@ -61,6 +61,7 @@ const SLATE_BACKED_CATEGORIES = new Set<string>([
   'real_estate',
   'stocks',
   'tech',
+  'ai_models',
 ])
 
 export function isSlateBackedCategory(id: string): boolean {

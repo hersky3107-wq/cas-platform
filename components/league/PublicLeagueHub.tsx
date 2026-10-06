@@ -3,7 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
 import { ModuleCreditsLink } from '@/components/credits/ModuleCreditsLink'
-import { FreeformPromptBox } from '@/components/league/FreeformPromptBox'
+import { FreeformPromptBox, type AutoSubmitPrompt } from '@/components/league/FreeformPromptBox'
+import { categoryForOpenedRound } from '@/lib/league/ai-ranking/chip-route'
 import { PredictionCard } from '@/components/league/PredictionCard'
 import { DeepAnalysis } from '@/components/league/DeepAnalysis'
 import { Leaderboard } from '@/components/league/Leaderboard'
@@ -224,6 +225,7 @@ function CardsPanel({
   const [krAdvisoryRegNo, setKrAdvisoryRegNo] = useState<string | undefined>()
   const [krBizNo, setKrBizNo] = useState<string | undefined>()
   const [promptSeed, setPromptSeed] = useState('')
+  const [autoPrompt, setAutoPrompt] = useState<AutoSubmitPrompt | null>(null)
   const [actionBusy, setActionBusy] = useState(false)
   const [actionNotice, setActionNotice] = useState<string | null>(null)
   // Guards against a slower, now-superseded fetch overwriting the result of a
@@ -581,7 +583,7 @@ function CardsPanel({
         </div>
       ) : null}
 
-      {selectedCategory === 'tech' ? (
+      {selectedCategory === 'ai_ranking' ? (
         <AirankRankingPicker
           locale={locale}
           onOpen={(instrument, nextHorizon) => {
@@ -615,6 +617,14 @@ function CardsPanel({
         <FreeformPromptBox
           categoryId={selectedCategory}
           seedPrompt={promptSeed}
+          autoSubmit={autoPrompt}
+          onAutoSubmitted={() => setAutoPrompt(null)}
+          onReroute={(target, text) => {
+            if (!visibleCategories.some((c) => c.id === target)) return false
+            selectCategory(target)
+            setAutoPrompt((prev) => ({ text, nonce: (prev?.nonce ?? 0) + 1 }))
+            return true
+          }}
           onPickInstrument={(instrument) => {
             setSelectedInstrument(instrument)
             setSelectedRoundId(null)
@@ -624,6 +634,11 @@ function CardsPanel({
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
             setSelectedRoundId(null)
+            const owner = categoryForOpenedRound(selectedCategory, instrument)
+            if (owner !== selectedCategory && visibleCategories.some((c) => c.id === owner)) {
+              setSelectedCategory(owner)
+              writeCategorySearch(owner)
+            }
             setCategories((prev) => {
               if (!prev) return prev
               return prev.map((cat) => {
@@ -1072,7 +1087,8 @@ function ComingSoonPanel({
     categoryId === 'politics_election' ||
     categoryId === 'entertainment' ||
     categoryId === 'real_estate' ||
-    categoryId === 'tech'
+    categoryId === 'tech' ||
+    categoryId === 'ai_ranking'
       ? t.catalog.freeformPanel[categoryId]
       : null
   if (!panel) {

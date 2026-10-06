@@ -72,6 +72,7 @@ const ADAPTERS: readonly CategoryAdapter[] = [
 ]
 
 export function adapterForCategoryId(id: PublicCategoryId | string): CategoryAdapter | null {
+  if (id === 'ai_ranking') return aiModelsAdapter
   return ADAPTERS.find((a) => a.category_id === id) ?? null
 }
 

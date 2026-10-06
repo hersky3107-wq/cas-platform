@@ -88,7 +88,7 @@ describe('generate / gateway error UX', () => {
   })
 })
 
-describe('tech hub ranking-table button', () => {
+describe('AI ranking hub ranking-table button', () => {
   it('renders the picker above the free prompt and generate-on-miss', () => {
     expect(HUB).toContain('AirankRankingPicker')
     expect(HUB.indexOf('<AirankRankingPicker')).toBeLessThan(HUB.indexOf('<FreeformPromptBox'))
@@ -97,11 +97,15 @@ describe('tech hub ranking-table button', () => {
   })
 })
 
-describe('tech hub freeform panel copy', () => {
-  it('has no 준비 중 on the tech panel', () => {
-    const ko = getLeagueUiPack('ko').catalog.freeformPanel.tech
-    expect(ko.title).toBe('테크 · AI 순위')
-    expect(`${ko.title} ${ko.body} ${ko.examples.join(' ')}`).not.toMatch(/준비 중/)
+describe('tech and AI ranking freeform panel copy', () => {
+  it('has no 준비 중 on either panel', () => {
+    const tech = getLeagueUiPack('ko').catalog.freeformPanel.tech
+    const ranking = getLeagueUiPack('ko').catalog.freeformPanel.ai_ranking
+    expect(tech.title).toBe('테크')
+    expect(ranking.title).toBe('AI 순위')
+    for (const panel of [tech, ranking]) {
+      expect(`${panel.title} ${panel.body} ${panel.examples.join(' ')}`).not.toMatch(/준비 중/)
+    }
     expect(HUB).toContain('freeformPanel')
     expect(HUB).toContain('onExample')
   })

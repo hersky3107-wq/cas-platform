@@ -4,7 +4,7 @@ import { getLeagueUiPack } from '../../i18n/dictionary'
 import { detectBettingFraming } from '../betting-framing'
 import { prefilterRejects } from '../prefilter'
 
-const FREEFORM_HUBS = ['sports', 'politics_election', 'entertainment', 'real_estate', 'tech'] as const
+const FREEFORM_HUBS = ['sports', 'politics_election', 'entertainment', 'real_estate', 'tech', 'ai_ranking'] as const
 
 function layer0Refuse(raw: string, category?: string): 'low_confidence' | 'betting_framing' | null {
   if (prefilterRejects(raw)) return 'low_confidence'

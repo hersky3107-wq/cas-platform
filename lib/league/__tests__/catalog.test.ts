@@ -33,9 +33,10 @@ const FINANCIAL = [
 const COMING_SOON = ['sports', 'politics_election', 'entertainment', 'real_estate', 'tech'] as const
 
 describe('PUBLIC_CATALOG', () => {
-  it('is exactly the 12 final public categories, in the product order', () => {
+  it('is exactly the 13 final public categories, in the product order', () => {
     expect(PUBLIC_CATALOG.map((c) => c.id)).toEqual([...PUBLIC_CATEGORY_IDS])
-    expect(PUBLIC_CATEGORY_IDS).toHaveLength(12)
+    expect(PUBLIC_CATEGORY_IDS).toHaveLength(13)
+    expect(PUBLIC_CATEGORY_IDS.indexOf('ai_ranking')).toBe(PUBLIC_CATEGORY_IDS.indexOf('tech') + 1)
   })
 
   it('maps each public id onto a ledger category and a tone', () => {

@@ -48,6 +48,11 @@ const PUBLIC_OF_LEDGER: Record<string, PublicCategoryId> = {
   sports: 'sports',
   real_estate: 'real_estate',
   tech: 'tech',
+  ai_models: 'ai_ranking',
+}
+
+export function publicCategoryOfLedger(key: string): PublicCategoryId | null {
+  return PUBLIC_OF_LEDGER[key] ?? null
 }
 
 export type BoardLabels = {

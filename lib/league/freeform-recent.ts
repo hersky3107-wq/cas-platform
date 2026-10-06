@@ -72,12 +72,15 @@ export function isOpenUngradedRound(
   return true
 }
 
-export function publicCategoryForLedger(category: string): 'sports' | 'politics_election' | 'entertainment' | 'real_estate' | 'tech' | null {
+export function publicCategoryForLedger(
+  category: string,
+): 'sports' | 'politics_election' | 'entertainment' | 'real_estate' | 'tech' | 'ai_ranking' | null {
   if (category === 'sports') return 'sports'
   if (category === 'politics_election') return 'politics_election'
   if (category === 'entertainment_awards' || category === 'entertainment') return 'entertainment'
   if (category === 'real_estate') return 'real_estate'
-  if (category === 'tech' || category === 'ai_models') return 'tech'
+  if (category === 'tech') return 'tech'
+  if (category === 'ai_models') return 'ai_ranking'
   return null
 }
 

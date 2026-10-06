@@ -490,20 +490,18 @@ describe('tech adapter — public free-prompt category', () => {
     expect(PUBLIC_CATALOG.find((c) => c.id === 'tech')?.instruments).toEqual([])
     expect(getLeagueUiPack('ko').catalog.categories.tech).toBe('테크')
     expect(getLeagueUiPack('en').catalog.categories.tech).toBe('Tech')
-    expect(getLeagueUiPack('ko').catalog.freeformPanel.tech.title).toBe('테크 · AI 순위')
+    expect(getLeagueUiPack('ko').catalog.freeformPanel.tech.title).toBe('테크')
     expect(getLeagueUiPack('ko').catalog.techSamples).toEqual([
       '애플이 10월 안에 새 아이패드를 발표할까?',
       '삼성이 연말까지 3단 폴더블을 출시할까?',
-      '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
-      '중국 AI가 이번 달 종합 순위 3위 안에 들까?',
     ])
     expect(getLeagueUiPack('ko').catalog.freeformPanel.tech.body).not.toMatch(/준비 중/)
     for (const locale of LEAGUE_LOCALES) {
       const pack = getLeagueUiPack(locale)
       expect(pack.catalog.categories.tech.trim().length).toBeGreaterThan(0)
       expect(pack.catalog.techHint.trim().length).toBeGreaterThan(0)
-      expect(pack.catalog.techSamples).toHaveLength(4)
-      expect(pack.catalog.freeformPanel.tech.examples).toHaveLength(4)
+      expect(pack.catalog.techSamples).toHaveLength(2)
+      expect(pack.catalog.freeformPanel.tech.examples).toHaveLength(2)
       expect(pack.catalog.freeformPanel.tech.title).not.toMatch(/준비 중|Coming soon|近日公開|即將推出/)
       expect(pack.gateway.placeholder.tech.trim().length).toBeGreaterThan(0)
     }

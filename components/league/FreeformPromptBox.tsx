@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { creditsForLeagueGenerate } from '@/lib/credits'
+import { rerouteCategoryForPrompt } from '@/lib/league/ai-ranking/chip-route'
 import { nextClarifySubmission } from '@/lib/league/gateway/clarify-answer'
 import type { PublicCategoryId } from '@/lib/league/catalog'
 import type { UiHorizon } from '@/lib/league/horizon'
@@ -35,16 +36,26 @@ type GatewayResponse =
       gateway_receipt: string
     }
 
+export type AutoSubmitPrompt = { text: string; nonce: number }
+
 export function FreeformPromptBox({
   categoryId,
   seedPrompt,
+  autoSubmit,
   onRoundOpened,
   onPickInstrument,
+  onReroute,
+  onAutoSubmitted,
 }: {
   categoryId: PublicCategoryId
   seedPrompt?: string
+  /** Submitted once on arrival; the parent clears it in `onAutoSubmitted` so a remount cannot resend it. */
+  autoSubmit?: AutoSubmitPrompt | null
   onRoundOpened: (instrument: string, horizon: UiHorizon) => void
   onPickInstrument?: (instrument: string) => void
+  /** A question that belongs to another chip (a ranking question in 테크). False keeps it here. */
+  onReroute?: (categoryId: PublicCategoryId, text: string) => boolean
+  onAutoSubmitted?: () => void
 }) {
   const { t, locale } = useLeagueLocale()
   const [draft, setDraft] = useState('')
@@ -73,10 +84,23 @@ export function FreeformPromptBox({
     if (seedPrompt && seedPrompt.trim()) setDraft(seedPrompt.trim())
   }, [seedPrompt])
 
-  async function submit(nextAnswered: Record<string, string>, nextRound: number) {
-    if (busy) return
-    const text = draft.trim()
+  useEffect(() => {
+    const text = autoSubmit?.text.trim()
     if (!text) return
+    setDraft(text)
+    onAutoSubmitted?.()
+    void submit({}, 0, text)
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per nonce; the same question may be rerouted twice
+  }, [autoSubmit?.nonce])
+
+  async function submit(nextAnswered: Record<string, string>, nextRound: number, textOverride?: string) {
+    if (busy) return
+    const text = (textOverride ?? draft).trim()
+    if (!text) return
+    if (nextRound === 0 && Object.keys(nextAnswered).length === 0 && onReroute) {
+      const target = rerouteCategoryForPrompt(categoryId, text)
+      if (target && onReroute(target, text)) return
+    }
     setBusy(true)
     setRefusal(null)
     setRefusalChips([])

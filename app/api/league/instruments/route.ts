@@ -33,6 +33,7 @@ async function loadRecentPublicFreeformRounds(
     entertainment: [],
     real_estate: [],
     tech: [],
+    ai_ranking: [],
   }
   try {
     let rows: FreeformRecentRow[] = []
@@ -80,6 +81,7 @@ async function loadRecentPublicFreeformRounds(
       entertainment: [],
       real_estate: [],
       tech: [],
+      ai_ranking: [],
     }
     for (const row of rows) {
       const publicId = publicCategoryForLedger(row.category)
@@ -99,7 +101,7 @@ async function loadRecentPublicFreeformRounds(
 /**
  * GET /api/league/instruments
  *
- * The 12-category public catalog this caller may browse, jurisdiction-filtered.
+ * The 13-category public catalog this caller may browse, jurisdiction-filtered.
  * Instrument lists are CHIP-VISIBLE members only — rotated-out catalog
  * members stay gradeable but are omitted here. `promptAllowed` is the
  * (jurisdiction × category) freeform-box flag from the matrix only —

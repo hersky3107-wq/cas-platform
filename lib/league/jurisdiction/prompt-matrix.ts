@@ -214,7 +214,13 @@ export const PROMPT_ALLOWED: Record<JurisdictionGroup, PromptRow> = {
   },
 }
 
+/** Public chip ids whose prompt cell is the ledger category's. */
+const PROMPT_CATEGORY_ALIASES: Readonly<Record<string, PromptCategoryId>> = {
+  ai_ranking: 'ai_models',
+}
+
 export function isPromptAllowedForGroup(group: JurisdictionGroup, category: string): boolean {
   const row = PROMPT_ALLOWED[group]
-  return row?.[category as PromptCategoryId] === true
+  const key = PROMPT_CATEGORY_ALIASES[category] ?? category
+  return row?.[key as PromptCategoryId] === true
 }

@@ -27,7 +27,7 @@ import type { JurisdictionGroup } from './jurisdiction/types'
  * keeps the instrument gradeable (rounds, record room, win rates) while
  * hiding it from the hub rail. Do not delete a rotated-out row.
  *
- * The 12 public ids are the product surface. Each maps onto one ledger
+ * The 13 public ids are the product surface. Each maps onto one ledger
  * `PredictionCategory` (the 17-value CHECK constraint after tech/ai_models).
  * Schema leftovers that are NOT a top-level chip:
  *  - esports never existed — absorbed into `sports`
@@ -35,7 +35,10 @@ import type { JurisdictionGroup } from './jurisdiction/types'
  *  - `bond_rate` and `macro_econ` stay on the ledger CHECK only (not a public chip)
  *  - `futures_derivatives` is schema-only (not a public chip)
  *  - `entertainment_awards` is the ledger key for public `entertainment`
- *  - `tech` is a public free-prompt category (no chips). Ranking questions route to `ai_models` / AIRANK.
+ *  - `tech` is a public free-prompt category (no chips) for company/product events.
+ *  - `ai_ranking` is the public id for ledger `ai_models` (AIRANK). It is not
+ *    `ai_models` because divination and other ledger-keyed tables treat any
+ *    public id as their own key.
  */
 
 export const PUBLIC_CATEGORY_IDS = [
@@ -51,6 +54,7 @@ export const PUBLIC_CATEGORY_IDS = [
   'memecoin',
   'real_estate',
   'tech',
+  'ai_ranking',
 ] as const
 
 export type PublicCategoryId = (typeof PUBLIC_CATEGORY_IDS)[number]
@@ -67,6 +71,7 @@ export const FREEFORM_SEARCH_CATEGORY_IDS = [
   'entertainment',
   'real_estate',
   'tech',
+  'ai_ranking',
 ] as const
 
 export function isFreeformSearchCategory(id: string): boolean {
@@ -287,6 +292,13 @@ export const PUBLIC_CATALOG: readonly PublicCategoryDef[] = [
   {
     id: 'tech',
     ledgerCategory: 'tech',
+    tone: 'yellow',
+    kind: 'coming_soon',
+    instruments: [],
+  },
+  {
+    id: 'ai_ranking',
+    ledgerCategory: 'ai_models',
     tone: 'yellow',
     kind: 'coming_soon',
     instruments: [],

@@ -19,7 +19,19 @@ export const WORLD_CATEGORY_IDS = [
   'sports',
   'real_estate',
   'tech',
+  'ai_ranking',
 ] as const satisfies readonly PublicCategoryId[]
+
+/** `?cat=` values that name a chip by its ledger key. */
+const CATEGORY_PARAM_ALIASES: Readonly<Record<string, PublicCategoryId>> = {
+  ai_models: 'ai_ranking',
+}
+
+export function canonicalCategoryParam(value: string | null | undefined): string | null {
+  const raw = value?.trim()
+  if (!raw) return null
+  return CATEGORY_PARAM_ALIASES[raw] ?? raw
+}
 
 /** Ledger categories that belong on the finance door (registration surface). */
 export const FINANCE_LEDGER_CATEGORIES = [
@@ -84,7 +96,7 @@ export function parseHubTab(value: string | null | undefined): 'cards' | 'leader
 export function redirectForDoorSearch(door: HubDoor, search: string): string | null {
   const raw = search.startsWith('?') ? search.slice(1) : search
   const params = new URLSearchParams(raw)
-  const cat = params.get('cat')
+  const cat = canonicalCategoryParam(params.get('cat'))
   if (!cat) return null
   const owner = doorForCategory(cat)
   if (!owner || owner === door) return null
@@ -99,7 +111,7 @@ export function redirectForDoorSearch(door: HubDoor, search: string): string | n
 export function redirectForCategorySearch(search: string): string | null {
   const raw = search.startsWith('?') ? search.slice(1) : search
   const params = new URLSearchParams(raw)
-  const cat = params.get('cat')
+  const cat = canonicalCategoryParam(params.get('cat'))
   if (!cat) return null
   const door = doorForCategory(cat)
   if (!door) return null
@@ -124,7 +136,7 @@ export function chipsForDoor<T extends { id: string }>(categories: readonly T[],
 
 export function categoryFromSearch(search: string, visibleIds: readonly string[]): string | null {
   const raw = search.startsWith('?') ? search.slice(1) : search
-  const id = new URLSearchParams(raw).get('cat')
+  const id = canonicalCategoryParam(new URLSearchParams(raw).get('cat'))
   if (!id || !visibleIds.includes(id)) return null
   return id
 }

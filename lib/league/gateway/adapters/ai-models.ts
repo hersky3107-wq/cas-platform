@@ -1,9 +1,10 @@
 /**
  * AI_MODELS adapter — AIRANK engine + freeform ranking prompts.
- * Horizons: 1w / 1m / 3m. Tech free-prompt also routes ranking here.
+ * Horizons: 1w / 1m / 3m. The public chip id is `ai_ranking`.
  */
 
 import { isUiHorizon } from '../../horizon'
+import { bridgePromptToEnglish } from '../prompt-bridge'
 import { refusalMessageKey } from '../refusal-copy'
 import type {
   CategoryAdapter,
@@ -57,17 +58,18 @@ export function createAiModelsAdapter(io: AirankAdapterIo, nowFn: () => Date = (
     observation_shape: 'occurrence',
 
     async resolveEntity(raw: string, locale: string): Promise<EntityResolution> {
-      if (isAirankInstrument(raw) && decodeAirankInstrument(raw)) {
-        const parts = decodeAirankInstrument(raw)!
+      const text = (await bridgePromptToEnglish(raw, locale)).text
+      if (isAirankInstrument(text) && decodeAirankInstrument(text)) {
+        const parts = decodeAirankInstrument(text)!
         return {
           ok: true,
-          entity_id: raw,
+          entity_id: text,
           entity_kind: 'company',
           label: airankSubjectLabel(parts, locale === 'ko' ? 'ko' : 'en'),
           skip_confirm: true,
         }
       }
-      const parsed = parseAirankPrompt(raw, nowFn())
+      const parsed = parseAirankPrompt(text, nowFn())
       if (parsed.ok) {
         return {
           ok: true,

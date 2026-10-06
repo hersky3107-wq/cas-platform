@@ -26,6 +26,7 @@ export const CATEGORY_PROPOSITION_KIND: Record<PublicCategoryId, PropositionKind
   memecoin: PRICE_KIND,
   real_estate: 'binary_subject_outcome',
   tech: 'binary_subject_outcome',
+  ai_ranking: 'binary_subject_outcome',
 }
 
 const SLOT_HINT: Record<PublicCategoryId, string> = {
@@ -42,10 +43,12 @@ const SLOT_HINT: Record<PublicCategoryId, string> = {
   memecoin: 'entity_mention = doge, shib, pepe, wif, or bonk. Empty if they named none.',
   real_estate: 'entity_mention = a published housing region (강남구, 서울, Case-Shiller city, London borough). Never a complex name, address, or dong.',
   tech: 'entity_mention = the ONE company or organization (any company worldwide). slots.event = launch|announce|ship|release|approve|file|acquire|publish. slots.object = the product or event. slots.deadline = YYYY-MM-DD when the user named a date inside 3 months, else null. Price moves, AI leaderboard ranks, and subjective hits (흥행/혁신/잘 팔릴) are still extracted; the server refuses them.',
+  ai_ranking: 'entity_mention = the ONE AI brand, model, or camp (Claude, GPT, Gemini, 중국 AI…). slots.field = the leaderboard field (overall, coding, math, writing, image, video, webdev, agent, reasoning). slots.deadline = YYYY-MM-DD when the user named a date, else null.',
 }
 
+/** Adapter-only ids (`ai_models`) are yes/no about one named subject. */
 export function propositionKindFor(categoryId: PublicCategoryId): PropositionKind {
-  return CATEGORY_PROPOSITION_KIND[categoryId]
+  return CATEGORY_PROPOSITION_KIND[categoryId] ?? 'binary_subject_outcome'
 }
 
 export function buildNormalizerSystemPrompt(categoryId: PublicCategoryId): string {

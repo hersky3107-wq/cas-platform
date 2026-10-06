@@ -41,7 +41,8 @@ const WORLD_LEAKS = [
   '엔터테인먼트',
   '스포츠',
   '부동산',
-  '테크·AI',
+  '테크',
+  'AI 순위',
   '세상 예측',
   'The world',
   'Entertainment',
@@ -233,7 +234,11 @@ describe('unified sizing', () => {
       expect(copy.enter.length).toBeGreaterThan(1)
       expect(copy.backToDoors.length).toBeGreaterThan(1)
       expect(copy.financeRooms).toHaveLength(6)
-      expect(copy.worldRooms).toHaveLength(5)
+      expect(copy.worldRooms).toHaveLength(6)
+      expect(copy.worldRooms.slice(-2)).toEqual([
+        getLeagueUiPack(locale).catalog.categories.tech,
+        getLeagueUiPack(locale).catalog.categories.ai_ranking,
+      ])
     }
   })
 })

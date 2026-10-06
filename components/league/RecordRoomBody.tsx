@@ -1,4 +1,5 @@
 import type { RecordRoomModelEntry, RecordRoomPage, RecordRoomRoundEntry } from '@/lib/league/record-room-aggregate'
+import { publicCategoryOfLedger } from '@/lib/league/boards/display'
 import type { LeagueUiPack } from '@/lib/league/i18n/dictionary'
 import type { LeagueLocale } from '@/lib/league/i18n/locales'
 import { headerWindow } from '@/lib/league/card-header-copy'
@@ -179,7 +180,7 @@ function RoundEntry({ entry, t, locale }: { entry: RecordRoomRoundEntry; t: Leag
         <div className="min-w-0">
           <p className="truncate text-sm font-medium text-league-fg">{entry.proposition_text}</p>
           <p className="text-[10px] text-league-fg-muted">
-            {entry.instrument} · {formatCategory(entry.category)} · {t.recordRoom.resolvedAtLabel}{' '}
+            {entry.instrument} · {formatCategory(entry.category, t)} · {t.recordRoom.resolvedAtLabel}{' '}
             {formatDate(entry.resolved_at)}
             {entry.item_type ? (
               <>
@@ -268,8 +269,9 @@ function Pagination({
   )
 }
 
-function formatCategory(category: string): string {
-  return category.replace(/_/g, ' ')
+function formatCategory(category: string, t: LeagueUiPack): string {
+  const pub = publicCategoryOfLedger(category)
+  return (pub && t.catalog.categories[pub]) || category.replace(/_/g, ' ')
 }
 
 function formatDate(iso: string): string {

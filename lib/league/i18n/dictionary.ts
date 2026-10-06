@@ -286,12 +286,12 @@ export type LeagueUiPack = {
     koreaStocksHint: string
     stockLaneAdminGlobal: string
     stockLaneAdminKorea: string
-    /** Free-prompt tech panel: one hint and sample questions. No chips. */
+    /** Free-prompt tech panel: one hint and sample questions. No chips. AI rankings live under `ai_ranking`. */
     techHint: string
     techSamples: readonly string[]
     /** User-facing freeform hub panel (replaces the old coming-soon placeholder). */
     freeformPanel: Record<
-      'sports' | 'politics_election' | 'entertainment' | 'real_estate' | 'tech',
+      'sports' | 'politics_election' | 'entertainment' | 'real_estate' | 'tech' | 'ai_ranking',
       { title: string; body: string; examples: readonly string[] }
     >
     /** Open public-gateway questions under the freeform intro. */
@@ -1024,6 +1024,7 @@ const en: LeagueUiPack = {
       memecoin: 'Memecoin',
       real_estate: 'Real estate',
       tech: 'Tech',
+      ai_ranking: 'AI Rankings',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -1082,20 +1083,18 @@ const en: LeagueUiPack = {
     koreaStocksHint: 'Korean listings are not open yet. This lane has no search box.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Korea',
-    techHint: 'Ask a yes/no question about a company, a product, or an AI ranking. 40 AIs predict; the real result grades them.',
-    techSamples: [
-      'Will Apple announce a new iPad in October?',
-      'Will Samsung ship a tri-fold phone by year-end?',
-      'Will Claude rank above GPT in coding by the end of this month?',
-      'Will a Chinese AI company rank in the top 3 overall this month?',
-    ],
+    techHint: 'Ask a yes/no question about a company or a product. 40 AIs predict; the real result grades them.',
+    techSamples: ['Will Apple announce a new iPad in October?', 'Will Samsung ship a tri-fold phone by year-end?'],
     freeformPanel: {
       tech: {
-        title: 'Tech · AI rankings',
-        body: 'Ask a yes/no question about a company, a product, or an AI ranking. 40 AIs predict; the real result grades them.',
+        title: 'Tech',
+        body: 'Ask a yes/no question about a company or a product. 40 AIs predict; the real result grades them.',
+        examples: ['Will Apple announce a new iPad in October?', 'Will Samsung ship a tri-fold phone by year-end?'],
+      },
+      ai_ranking: {
+        title: 'AI Rankings',
+        body: 'Ask a yes/no question about an AI leaderboard rank. 40 AIs predict; the published ranking grades them.',
         examples: [
-          'Will Apple announce a new iPad in October?',
-          'Will Samsung ship a tri-fold phone by year-end?',
           'Will Claude rank above GPT in coding by the end of this month?',
           'Will a Chinese AI company rank in the top 3 overall this month?',
         ],
@@ -1490,6 +1489,7 @@ const en: LeagueUiPack = {
       memecoin: 'Will Dogecoin close higher tomorrow?',
       real_estate: 'Will the Seoul apartment price index rise next print?',
       tech: 'Will Apple announce a new iPad in October?',
+      ai_ranking: 'Will Claude rank above GPT in coding by the end of this month?',
     },
     submit: 'Ask',
     retry: 'Edit and retry',
@@ -1682,6 +1682,7 @@ const ko: LeagueUiPack = {
       memecoin: '밈코인',
       real_estate: '부동산',
       tech: '테크',
+      ai_ranking: 'AI 순위',
     },
     instruments: {
       AAPL: '애플 (AAPL)',
@@ -1740,23 +1741,18 @@ const ko: LeagueUiPack = {
     koreaStocksHint: '한국 상장 종목 칩은 준비 중입니다. 이 화면에는 검색창이 없습니다.',
     stockLaneAdminGlobal: '글로벌',
     stockLaneAdminKorea: '한국',
-    techHint: '기업·제품 소식이나 AI 순위를 예/아니오로 물어보세요. 40개 AI가 예측하고, 실제 결과로 채점합니다.',
-    techSamples: [
-      '애플이 10월 안에 새 아이패드를 발표할까?',
-      '삼성이 연말까지 3단 폴더블을 출시할까?',
-      '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
-      '중국 AI가 이번 달 종합 순위 3위 안에 들까?',
-    ],
+    techHint: '기업·제품 소식을 예/아니오로 물어보세요. 40개 AI가 예측하고, 실제 결과로 채점합니다.',
+    techSamples: ['애플이 10월 안에 새 아이패드를 발표할까?', '삼성이 연말까지 3단 폴더블을 출시할까?'],
     freeformPanel: {
       tech: {
-        title: '테크 · AI 순위',
-        body: '기업·제품 소식이나 AI 순위를 예/아니오로 물어보세요. 40개 AI가 예측하고, 실제 결과로 채점합니다.',
-        examples: [
-          '애플이 10월 안에 새 아이패드를 발표할까?',
-          '삼성이 연말까지 3단 폴더블을 출시할까?',
-          '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
-          '중국 AI가 이번 달 종합 순위 3위 안에 들까?',
-        ],
+        title: '테크',
+        body: '기업·제품 소식을 예/아니오로 물어보세요. 40개 AI가 예측하고, 실제 결과로 채점합니다.',
+        examples: ['애플이 10월 안에 새 아이패드를 발표할까?', '삼성이 연말까지 3단 폴더블을 출시할까?'],
+      },
+      ai_ranking: {
+        title: 'AI 순위',
+        body: 'AI 리더보드 순위를 예/아니오로 물어보세요. 40개 AI가 예측하고, 공개 순위로 채점합니다.',
+        examples: ['클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?', '중국 AI가 이번 달 종합 순위 3위 안에 들까?'],
       },
       sports: {
         title: '스포츠',
@@ -2141,6 +2137,7 @@ const ko: LeagueUiPack = {
       memecoin: '도지코인 내일 오를까?',
       real_estate: '서울 아파트 가격지수 오를까?',
       tech: '애플이 10월 안에 새 아이패드를 발표할까?',
+      ai_ranking: '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
     },
     submit: '질문하기',
     retry: '고쳐서 다시',
@@ -2332,6 +2329,7 @@ const ja: LeagueUiPack = {
       memecoin: 'ミームコイン',
       real_estate: '不動産',
       tech: 'テック',
+      ai_ranking: 'AI順位',
     },
     instruments: {
       AAPL: 'アップル (AAPL)',
@@ -2390,23 +2388,18 @@ const ja: LeagueUiPack = {
     koreaStocksHint: '韓国上場銘柄のチップは準備中です。この画面に検索欄はありません。',
     stockLaneAdminGlobal: 'グローバル',
     stockLaneAdminKorea: '韓国',
-    techHint: '企業・製品の発表やAI順位をはい/いいえで聞いてください。40のAIが予測し、実際の結果で採点します。',
-    techSamples: [
-      'アップルは10月中に新しいiPadを発表する？',
-      'サムスンは年末までに3つ折りを発売する？',
-      'クロードは今月末のコーディング順位でGPTより上？',
-      '中国AIは今月の総合順位で3位以内？',
-    ],
+    techHint: '企業・製品の発表をはい/いいえで聞いてください。40のAIが予測し、実際の結果で採点します。',
+    techSamples: ['アップルは10月中に新しいiPadを発表する？', 'サムスンは年末までに3つ折りを発売する？'],
     freeformPanel: {
       tech: {
-        title: 'テック · AI順位',
-        body: '企業・製品の発表やAI順位をはい/いいえで聞いてください。40のAIが予測し、実際の結果で採点します。',
-        examples: [
-          'アップルは10月中に新しいiPadを発表する？',
-          'サムスンは年末までに3つ折りを発売する？',
-          'クロードは今月末のコーディング順位でGPTより上？',
-          '中国AIは今月の総合順位で3位以内？',
-        ],
+        title: 'テック',
+        body: '企業・製品の発表をはい/いいえで聞いてください。40のAIが予測し、実際の結果で採点します。',
+        examples: ['アップルは10月中に新しいiPadを発表する？', 'サムスンは年末までに3つ折りを発売する？'],
+      },
+      ai_ranking: {
+        title: 'AI順位',
+        body: 'AIリーダーボードの順位をはい/いいえで聞いてください。40のAIが予測し、公開順位で採点します。',
+        examples: ['クロードは今月末のコーディング順位でGPTより上？', '中国AIは今月の総合順位で3位以内？'],
       },
       sports: {
         title: 'スポーツ',
@@ -2789,6 +2782,7 @@ const ja: LeagueUiPack = {
       memecoin: 'ドージコインは明日上がる？',
       real_estate: 'ソウルの住宅価格指数は上がる？',
       tech: 'アップルは10月中に新しいiPadを発表する？',
+      ai_ranking: 'クロードは今月末のコーディング順位でGPTより上？',
     },
     submit: '質問する',
     retry: '直して再試行',
@@ -2979,6 +2973,7 @@ const zhTW: LeagueUiPack = {
       memecoin: '迷因幣',
       real_estate: '不動產',
       tech: '科技',
+      ai_ranking: 'AI 排名',
     },
     instruments: {
       AAPL: '蘋果 (AAPL)',
@@ -3037,23 +3032,18 @@ const zhTW: LeagueUiPack = {
     koreaStocksHint: '韓國上市股票籌碼準備中。此畫面沒有搜尋框。',
     stockLaneAdminGlobal: '全球',
     stockLaneAdminKorea: '韓國',
-    techHint: '用是／否問企業、產品消息或 AI 排名。40 個 AI 預測，實際結果計分。',
-    techSamples: [
-      '蘋果會在10月內發表新iPad嗎？',
-      '三星會在年底前推出三摺手機嗎？',
-      'Claude 這個月底在程式排名會高過 GPT 嗎？',
-      '中國 AI 這個月綜合排名會進前三嗎？',
-    ],
+    techHint: '用是／否問企業或產品消息。40 個 AI 預測，實際結果計分。',
+    techSamples: ['蘋果會在10月內發表新iPad嗎？', '三星會在年底前推出三摺手機嗎？'],
     freeformPanel: {
       tech: {
-        title: '科技 · AI 排名',
-        body: '用是／否問企業、產品消息或 AI 排名。40 個 AI 預測，實際結果計分。',
-        examples: [
-          '蘋果會在10月內發表新iPad嗎？',
-          '三星會在年底前推出三摺手機嗎？',
-          'Claude 這個月底在程式排名會高過 GPT 嗎？',
-          '中國 AI 這個月綜合排名會進前三嗎？',
-        ],
+        title: '科技',
+        body: '用是／否問企業或產品消息。40 個 AI 預測，實際結果計分。',
+        examples: ['蘋果會在10月內發表新iPad嗎？', '三星會在年底前推出三摺手機嗎？'],
+      },
+      ai_ranking: {
+        title: 'AI 排名',
+        body: '用是／否問 AI 排行榜名次。40 個 AI 預測，公開排名計分。',
+        examples: ['Claude 這個月底在程式排名會高過 GPT 嗎？', '中國 AI 這個月綜合排名會進前三嗎？'],
       },
       sports: {
         title: '運動',
@@ -3433,6 +3423,7 @@ const zhTW: LeagueUiPack = {
       memecoin: '狗狗幣明天會漲嗎？',
       real_estate: '首爾房價指數會漲嗎？',
       tech: '蘋果會在10月內發表新iPad嗎？',
+      ai_ranking: 'Claude 這個月底在程式排名會高過 GPT 嗎？',
     },
     submit: '提問',
     retry: '修改後重試',
@@ -3624,6 +3615,7 @@ const fr: LeagueUiPack = {
       memecoin: 'Memecoin',
       real_estate: 'Immobilier',
       tech: 'Tech',
+      ai_ranking: 'Classements IA',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -3682,20 +3674,24 @@ const fr: LeagueUiPack = {
     koreaStocksHint: 'Les actions coréennes ne sont pas encore ouvertes. Cette voie n’a pas de champ de recherche.',
     stockLaneAdminGlobal: 'Monde',
     stockLaneAdminKorea: 'Corée',
-    techHint: 'Posez une question oui/non sur une entreprise, un produit ou un classement IA. 40 IA prédisent ; le résultat réel les note.',
+    techHint: 'Posez une question oui/non sur une entreprise ou un produit. 40 IA prédisent ; le résultat réel les note.',
     techSamples: [
       'Apple annoncera-t-il un nouvel iPad en octobre ?',
       'Samsung lancera-t-il un tri-fold d’ici la fin de l’année ?',
-      'Claude sera-t-il au-dessus de GPT en coding d’ici la fin du mois ?',
-      'Une IA chinoise sera-t-elle dans le top 3 ce mois-ci ?',
     ],
     freeformPanel: {
       tech: {
-        title: 'Tech · classements IA',
-        body: 'Posez une question oui/non sur une entreprise, un produit ou un classement IA. 40 IA prédisent ; le résultat réel les note.',
+        title: 'Tech',
+        body: 'Posez une question oui/non sur une entreprise ou un produit. 40 IA prédisent ; le résultat réel les note.',
         examples: [
           'Apple annoncera-t-il un nouvel iPad en octobre ?',
           'Samsung lancera-t-il un tri-fold d’ici la fin de l’année ?',
+        ],
+      },
+      ai_ranking: {
+        title: 'Classements IA',
+        body: 'Posez une question oui/non sur un classement de modèles d’IA. 40 IA prédisent ; le classement publié les note.',
+        examples: [
           'Claude sera-t-il au-dessus de GPT en coding d’ici la fin du mois ?',
           'Une IA chinoise sera-t-elle dans le top 3 ce mois-ci ?',
         ],
@@ -4096,6 +4092,7 @@ const fr: LeagueUiPack = {
       memecoin: 'Dogecoin va-t-il monter demain ?',
       real_estate: 'L’indice des prix à Séoul va-t-il monter ?',
       tech: 'Apple annoncera-t-il un nouvel iPad en octobre ?',
+      ai_ranking: 'Claude sera-t-il au-dessus de GPT en coding d’ici la fin du mois ?',
     },
     submit: 'Demander',
     retry: 'Corriger et r\u00e9essayer',
@@ -4289,6 +4286,7 @@ const es: LeagueUiPack = {
       memecoin: 'Memecoin',
       real_estate: 'Inmuebles',
       tech: 'Tech',
+      ai_ranking: 'Rankings de IA',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -4347,23 +4345,18 @@ const es: LeagueUiPack = {
     koreaStocksHint: 'Las acciones coreanas aún no están abiertas. Este carril no tiene búsqueda.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Corea',
-    techHint: 'Pregunta sí/no sobre una empresa, un producto o un ranking de IA. 40 IA predicen; el resultado real las puntúa.',
-    techSamples: [
-      '¿Apple anunciará un iPad nuevo en octubre?',
-      '¿Samsung lanzará un plegable triple antes de fin de año?',
-      '¿Claude estará por encima de GPT en coding a fin de mes?',
-      '¿Una IA china estará en el top 3 este mes?',
-    ],
+    techHint: 'Pregunta sí/no sobre una empresa o un producto. 40 IA predicen; el resultado real las puntúa.',
+    techSamples: ['¿Apple anunciará un iPad nuevo en octubre?', '¿Samsung lanzará un plegable triple antes de fin de año?'],
     freeformPanel: {
       tech: {
-        title: 'Tech · rankings de IA',
-        body: 'Pregunta sí/no sobre una empresa, un producto o un ranking de IA. 40 IA predicen; el resultado real las puntúa.',
-        examples: [
-          '¿Apple anunciará un iPad nuevo en octubre?',
-          '¿Samsung lanzará un plegable triple antes de fin de año?',
-          '¿Claude estará por encima de GPT en coding a fin de mes?',
-          '¿Una IA china estará en el top 3 este mes?',
-        ],
+        title: 'Tech',
+        body: 'Pregunta sí/no sobre una empresa o un producto. 40 IA predicen; el resultado real las puntúa.',
+        examples: ['¿Apple anunciará un iPad nuevo en octubre?', '¿Samsung lanzará un plegable triple antes de fin de año?'],
+      },
+      ai_ranking: {
+        title: 'Rankings de IA',
+        body: 'Pregunta sí/no sobre un ranking de modelos de IA. 40 IA predicen; el ranking publicado las puntúa.',
+        examples: ['¿Claude estará por encima de GPT en coding a fin de mes?', '¿Una IA china estará en el top 3 este mes?'],
       },
       sports: {
         title: 'Deportes',
@@ -4761,6 +4754,7 @@ const es: LeagueUiPack = {
       memecoin: '\u00bfSubir\u00e1 Dogecoin ma\u00f1ana?',
       real_estate: '¿Subirá el índice de precios de Seúl?',
       tech: '¿Apple anunciará un iPad nuevo en octubre?',
+      ai_ranking: '¿Claude estará por encima de GPT en coding a fin de mes?',
     },
     submit: 'Preguntar',
     retry: 'Editar y reintentar',
@@ -4954,6 +4948,7 @@ const ar: LeagueUiPack = {
       memecoin: 'ميم كوين',
       real_estate: 'عقارات',
       tech: 'تقنية',
+      ai_ranking: 'ترتيب الذكاء الاصطناعي',
     },
     instruments: {
       AAPL: 'أبل (AAPL)',
@@ -5012,20 +5007,18 @@ const ar: LeagueUiPack = {
     koreaStocksHint: 'أسهم كوريا غير جاهزة بعد. هذا المسار بلا مربع بحث.',
     stockLaneAdminGlobal: 'عالمي',
     stockLaneAdminKorea: 'كوريا',
-    techHint: 'اسأل بنعم/لا عن شركة أو منتج أو ترتيب للذكاء الاصطناعي. 40 نموذجًا يتنبأ والنتيجة الفعلية تُقيّمهم.',
-    techSamples: [
-      'هل تعلن آبل عن آيباد جديد في أكتوبر؟',
-      'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟',
-      'هل يتفوق كلود على GPT في الترميز قبل نهاية هذا الشهر؟',
-      'هل تدخل شركة ذكاء اصطناعي صينية قائمة الثلاثة الأوائل هذا الشهر؟',
-    ],
+    techHint: 'اسأل بنعم/لا عن شركة أو منتج. 40 نموذجًا يتنبأ والنتيجة الفعلية تُقيّمهم.',
+    techSamples: ['هل تعلن آبل عن آيباد جديد في أكتوبر؟', 'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟'],
     freeformPanel: {
       tech: {
-        title: 'التقنية · ترتيب الذكاء الاصطناعي',
-        body: 'اسأل بنعم/لا عن شركة أو منتج أو ترتيب للذكاء الاصطناعي. 40 نموذجًا يتنبأ والنتيجة الفعلية تُقيّمهم.',
+        title: 'التقنية',
+        body: 'اسأل بنعم/لا عن شركة أو منتج. 40 نموذجًا يتنبأ والنتيجة الفعلية تُقيّمهم.',
+        examples: ['هل تعلن آبل عن آيباد جديد في أكتوبر؟', 'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟'],
+      },
+      ai_ranking: {
+        title: 'ترتيب الذكاء الاصطناعي',
+        body: 'اسأل بنعم/لا عن ترتيب نماذج الذكاء الاصطناعي. 40 نموذجًا يتنبأ والترتيب المنشور يُقيّمهم.',
         examples: [
-          'هل تعلن آبل عن آيباد جديد في أكتوبر؟',
-          'هل تطلق سامسونغ هاتفًا ثلاثي الطي قبل نهاية العام؟',
           'هل يتفوق كلود على GPT في الترميز قبل نهاية هذا الشهر؟',
           'هل تدخل شركة ذكاء اصطناعي صينية قائمة الثلاثة الأوائل هذا الشهر؟',
         ],
@@ -5411,6 +5404,7 @@ const ar: LeagueUiPack = {
       memecoin: 'هل سترتفع دوجكوين غدًا؟',
       real_estate: 'هل يرتفع مؤشر أسعار سيول؟',
       tech: 'هل تعلن آبل عن آيباد جديد في أكتوبر؟',
+      ai_ranking: 'هل يتفوق كلود على GPT في الترميز قبل نهاية هذا الشهر؟',
     },
     submit: 'اسأل',
     retry: 'عدّل وأعد المحاولة',
@@ -5609,6 +5603,7 @@ const pt: LeagueUiPack = {
       memecoin: 'Memecoin',
       real_estate: 'Imóveis',
       tech: 'Tech',
+      ai_ranking: 'Rankings de IA',
     },
     instruments: {
       AAPL: 'Apple (AAPL)',
@@ -5667,23 +5662,18 @@ const pt: LeagueUiPack = {
     koreaStocksHint: 'As ações coreanas ainda não estão abertas. Esta faixa não tem busca.',
     stockLaneAdminGlobal: 'Global',
     stockLaneAdminKorea: 'Coreia',
-    techHint: 'Pergunte sim/não sobre uma empresa, um produto ou um ranking de IA. 40 IAs preveem; o resultado real as pontua.',
-    techSamples: [
-      'A Apple anuncia um novo iPad em outubro?',
-      'A Samsung lança um dobrável triplo até o fim do ano?',
-      'A Claude fica acima da GPT em coding até o fim do mês?',
-      'Uma IA chinesa entra no top 3 neste mês?',
-    ],
+    techHint: 'Pergunte sim/não sobre uma empresa ou um produto. 40 IAs preveem; o resultado real as pontua.',
+    techSamples: ['A Apple anuncia um novo iPad em outubro?', 'A Samsung lança um dobrável triplo até o fim do ano?'],
     freeformPanel: {
       tech: {
-        title: 'Tech · rankings de IA',
-        body: 'Pergunte sim/não sobre uma empresa, um produto ou um ranking de IA. 40 IAs preveem; o resultado real as pontua.',
-        examples: [
-          'A Apple anuncia um novo iPad em outubro?',
-          'A Samsung lança um dobrável triplo até o fim do ano?',
-          'A Claude fica acima da GPT em coding até o fim do mês?',
-          'Uma IA chinesa entra no top 3 neste mês?',
-        ],
+        title: 'Tech',
+        body: 'Pergunte sim/não sobre uma empresa ou um produto. 40 IAs preveem; o resultado real as pontua.',
+        examples: ['A Apple anuncia um novo iPad em outubro?', 'A Samsung lança um dobrável triplo até o fim do ano?'],
+      },
+      ai_ranking: {
+        title: 'Rankings de IA',
+        body: 'Pergunte sim/não sobre um ranking de modelos de IA. 40 IAs preveem; o ranking publicado as pontua.',
+        examples: ['A Claude fica acima da GPT em coding até o fim do mês?', 'Uma IA chinesa entra no top 3 neste mês?'],
       },
       sports: {
         title: 'Esportes',
@@ -6076,6 +6066,7 @@ const pt: LeagueUiPack = {
       memecoin: 'A Dogecoin sobe amanhã?',
       real_estate: 'O índice de preços de Seul sobe?',
       tech: 'A Apple anuncia um novo iPad em outubro?',
+      ai_ranking: 'A Claude fica acima da GPT em coding até o fim do mês?',
     },
     submit: 'Perguntar',
     retry: 'Editar e tentar de novo',

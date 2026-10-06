@@ -9,6 +9,8 @@ import type { RealEstatePacketIo } from '../adapters/real-estate-packet'
 import { createSportsAdapter } from '../adapters/sports'
 import type { SportsPacketIo } from '../adapters/sports-packet'
 import { createTechAdapter } from '../adapters/tech'
+import { createAiModelsAdapter } from '../adapters/ai-models'
+import type { AirankAdapterIo } from '../adapters/ai-models-packet'
 import { listHubExamples } from '../hub-examples'
 import type { CategoryAdapter, EntityResolution, GatewayViewer } from '../types'
 import type { ElectionCandidateLite } from '../../politics/markets'
@@ -93,12 +95,19 @@ const REAL_ESTATE_IO: RealEstatePacketIo = {
 
 const TECH_IO = { getResearchPacket: DEAD_RESEARCH }
 
+const AIRANK_IO: AirankAdapterIo = {
+  listPublishDates: DEAD_RESEARCH as AirankAdapterIo['listPublishDates'],
+  loadBrandRanking: DEAD_RESEARCH as AirankAdapterIo['loadBrandRanking'],
+  getResearchPacket: DEAD_RESEARCH as AirankAdapterIo['getResearchPacket'],
+}
+
 const adapters: Record<string, CategoryAdapter> = {
   sports: createSportsAdapter(SPORTS_IO, () => NOW),
   politics_election: createPoliticsAdapter(POLITICS_IO, () => NOW),
   entertainment: createEntertainmentAdapter(ENTERTAINMENT_IO, () => NOW),
   real_estate: createRealEstateAdapter(REAL_ESTATE_IO, () => NOW),
   tech: createTechAdapter(TECH_IO, () => NOW),
+  ai_models: createAiModelsAdapter(AIRANK_IO, () => NOW),
 }
 
 function refused(hit: EntityResolution): string | null {
@@ -117,6 +126,38 @@ describe('hub examples resolve offline', () => {
     expect(rows.some((r) => /토트넘이 아스날을|Tottenham beat Arsenal|Yankees beat the Red Sox/.test(r.text))).toBe(
       false,
     )
+  })
+
+  it('keeps tech and AI-ranking examples in separate hubs in every locale', () => {
+    const rows = listHubExamples()
+    for (const locale of ['ar', 'en', 'es', 'fr', 'ja', 'ko', 'pt', 'zh-TW'] as const) {
+      const tech = rows.filter((r) => r.locale === locale && r.hub === 'tech')
+      const ranking = rows.filter((r) => r.locale === locale && r.hub === 'ai_ranking')
+      expect(tech, locale).toHaveLength(2)
+      expect(ranking, locale).toHaveLength(2)
+      expect(ranking.every((r) => r.category === 'ai_models'), locale).toBe(true)
+      expect(tech.some((r) => ranking.some((x) => x.text === r.text)), locale).toBe(false)
+    }
+    const ko = rows.filter((r) => r.locale === 'ko')
+    expect(ko.filter((r) => r.hub === 'tech').map((r) => r.text)).toEqual([
+      '애플이 10월 안에 새 아이패드를 발표할까?',
+      '삼성이 연말까지 3단 폴더블을 출시할까?',
+    ])
+    expect(ko.filter((r) => r.hub === 'ai_ranking').map((r) => r.text)).toEqual([
+      '클로드가 이번 달 말 코딩 순위에서 GPT보다 위일까?',
+      '중국 AI가 이번 달 종합 순위 3위 안에 들까?',
+    ])
+  })
+
+  it('resolves AI-ranking examples to AIRANK instruments, and tech examples to non-AIRANK entities', async () => {
+    for (const row of listHubExamples()) {
+      if (row.hub !== 'ai_ranking' && row.hub !== 'tech') continue
+      const hit = await adapters[row.category]!.resolveEntity(row.text, row.locale, US)
+      const label = `${row.locale} ${row.hub}: ${row.text}`
+      if (row.hub === 'ai_ranking') expect(hit.ok, label).toBe(true)
+      if (!hit.ok) continue
+      expect(hit.entity_id.startsWith('AIRANK:'), label).toBe(row.hub === 'ai_ranking')
+    }
   })
 
   it('resolves every published hub example without a refusal', async () => {
