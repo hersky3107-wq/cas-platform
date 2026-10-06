@@ -72,6 +72,8 @@ export type ManualQueueItem = {
   /** Official index evidence for a housing round still in this queue. */
   housing_evidence?: string | null
   is_test?: boolean
+  /** KRSTOCK portal provisional rewritten to the official close. */
+  anchor_correction_note?: string | null
 }
 
 export type ManualSuggestion = {

@@ -8,4 +8,5 @@ export const ADMIN_ONLY_PUBLIC_UI = [
   { id: 'kr-election-admin-banners', where: 'admin layout', what: 'KR election stage banners' },
   { id: 'admin-preview-as-user', where: 'door pages', what: '일반 사용자로 보기 toggle' },
   { id: 'admin-test-badge', where: 'admin grade / lists', what: '테스트 badge on is_test rounds' },
+  { id: 'admin-anchor-correction', where: 'admin grade', what: 'KRX portal → official anchor correction note' },
 ] as const

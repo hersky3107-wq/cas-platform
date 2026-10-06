@@ -147,6 +147,7 @@ export function DoorScene({ locale, hideMemecoin }: { locale: LeagueLocale; hide
             title={door === 'finance' ? copy.financeMark : copy.worldMark}
             subtitle={door === 'finance' ? copy.financeTitle : copy.worldTitle}
             tagline={door === 'finance' ? copy.financeTagline : copy.worldTagline}
+            taglineHint={door === 'world' ? copy.worldTaglineHint : undefined}
             rooms={door === 'finance' ? financeRoomLabels(copy, hideMemecoin) : copy.worldRooms}
             enter={copy.enter}
             motion={opening?.door === door ? opening.motion : null}
@@ -178,6 +179,7 @@ function Gate({
   title,
   subtitle,
   tagline,
+  taglineHint,
   rooms,
   enter,
   motion,
@@ -190,6 +192,7 @@ function Gate({
   title: string
   subtitle: string
   tagline: string
+  taglineHint?: string
   rooms: readonly string[]
   enter: string
   motion: DoorMotion | null
@@ -233,6 +236,7 @@ function Gate({
               <p id={taglineId} className="league-gate__tagline">
                 {tagline}
               </p>
+              {taglineHint ? <p className="league-gate__tagline-hint">{taglineHint}</p> : null}
               <ul id={roomsId} className="league-gate__rooms">
                 {rooms.map((room) => (
                   <li key={room} className="league-gate__room">

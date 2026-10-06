@@ -330,6 +330,8 @@ export function krStockRefusalMessage(
     const kind = last.ok ? krxPrePublicationKind(last.date, now) : 'later'
     return getLeagueUiPack(locale).hub.krxNotPublished(kind)
   }
+  if (code === 'krx_portal_unavailable') return getLeagueUiPack(locale).hub.krxPortalUnavailable
+  if (code === 'older_session_rejected') return '기준 세션이 올바르지 않습니다.'
   if (code === 'anchor_unavailable') return '기준가를 아직 확인할 수 없습니다. 잠시 후 다시 시도하세요.'
   if (code === 'kr_stock_not_open') return KR_STOCK_PENDING_NOTICE
   return null

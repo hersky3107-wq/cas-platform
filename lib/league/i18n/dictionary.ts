@@ -697,6 +697,8 @@ export type LeagueUiPack = {
     noInstruments: string
     /** Official KRX close is not in the daily file yet (before ~08:00 next day). */
     krxNotPublished: (kind: 'yesterday' | 'today' | 'later') => string
+    /** data.krx.co.kr session/login failed while fetching a same-day provisional close. */
+    krxPortalUnavailable: string
     /** Paid CTA — MUST carry its price. Same button for create and unlock. */
     openRound: (credits: number) => string
     /** No round row yet. Starts the shared generate flow. MUST carry its price. */
@@ -1357,6 +1359,7 @@ const en: LeagueUiPack = {
         : kind === 'yesterday'
           ? "Yesterday's official close is available after 8:00 a.m. KST."
           : 'The official close for this session is available after 8:00 a.m. KST the next day.',
+    krxPortalUnavailable: 'Could not reach the exchange quote service. Try again shortly.',
     openRound: (credits) => `Open this round \u00b7 ${credits} credits`,
     generateForty: (credits) => `Generate 40 AI predictions \u00b7 ${credits} credits`,
     viewCard: 'View card',
@@ -1996,6 +1999,7 @@ const ko: LeagueUiPack = {
         : kind === 'yesterday'
           ? '어제 종가는 오전 8시 이후 확인됩니다.'
           : '이 세션 종가는 다음 날 오전 8시 이후 확인됩니다.',
+    krxPortalUnavailable: '거래소 시세 접속에 실패했습니다. 잠시 후 다시 시도하세요.',
     openRound: (credits) => `이 라운드 열람 · ${credits} 크레딧`,
     generateForty: (credits) => `AI 40개 예측 생성 · ${credits} 크레딧`,
     viewCard: '카드 보기',
@@ -2631,6 +2635,7 @@ const ja: LeagueUiPack = {
         : kind === 'yesterday'
           ? '昨日の公式終値は午前8時以降に確認できます。'
           : 'このセッションの公式終値は翌午前8時以降に確認できます。',
+    krxPortalUnavailable: '取引所の相場に接続できませんでした。しばらくしてから再試行してください。',
     openRound: (credits) => `このラウンドを開く・${credits}クレジット`,
     generateForty: (credits) => `AI 40件の予測を生成 · ${credits}クレジット`,
     viewCard: 'カードを見る',
@@ -3262,6 +3267,7 @@ const zhTW: LeagueUiPack = {
         : kind === 'yesterday'
           ? '昨日的官方收盤價將於上午 8 時後可供查詢。'
           : '此交易日的官方收盤價將於次日上午 8 時後可供查詢。',
+    krxPortalUnavailable: '無法連上交易所行情。請稍後再試。',
     openRound: (credits) => `開啟此回合・${credits} 點數`,
     generateForty: (credits) => `生成 40 個 AI 預測 · ${credits} 點數`,
     viewCard: '查看卡片',
@@ -3906,6 +3912,7 @@ const fr: LeagueUiPack = {
         : kind === 'yesterday'
           ? "Le cours officiel d'hier sera disponible après 8 h (KST)."
           : 'Le cours officiel de cette séance sera disponible le lendemain après 8 h (KST).',
+    krxPortalUnavailable: 'Impossible de joindre le service de cours. Réessayez dans un instant.',
     openRound: (credits) => `Ouvrir cette manche \u00b7 ${credits} crédits`,
     generateForty: (credits) => `Générer 40 prédictions IA \u00b7 ${credits} crédits`,
     viewCard: 'Voir la carte',
@@ -4558,6 +4565,7 @@ const es: LeagueUiPack = {
         : kind === 'yesterday'
           ? 'El cierre oficial de ayer estará disponible después de las 8:00 (KST).'
           : 'El cierre oficial de esta sesión estará disponible al día siguiente después de las 8:00 (KST).',
+    krxPortalUnavailable: 'No se pudo conectar al servicio de cotizaciones. Inténtelo de nuevo en breve.',
     openRound: (credits) => `Abrir esta ronda \u00b7 ${credits} créditos`,
     generateForty: (credits) => `Generar 40 predicciones de IA \u00b7 ${credits} créditos`,
     viewCard: 'Ver la tarjeta',
@@ -5201,6 +5209,7 @@ const ar: LeagueUiPack = {
         : kind === 'yesterday'
           ? 'إغلاق الأمس الرسمي يتوفر بعد الساعة 8 صباحًا بتوقيت كوريا.'
           : 'إغلاق هذه الجلسة الرسمي يتوفر في اليوم التالي بعد الساعة 8 صباحًا بتوقيت كوريا.',
+    krxPortalUnavailable: 'تعذر الوصول إلى خدمة أسعار البورصة. حاول مرة أخرى بعد قليل.',
     openRound: (credits) => `افتح هذه الجولة · ${credits} من الرصيد`,
     generateForty: (credits) => `إنشاء 40 توقعًا · ${credits} رصيد`,
     viewCard: 'عرض البطاقة',
@@ -5847,6 +5856,7 @@ const pt: LeagueUiPack = {
         : kind === 'yesterday'
           ? 'O fechamento oficial de ontem estará disponível após as 8h (KST).'
           : 'O fechamento oficial desta sessão estará disponível no dia seguinte após as 8h (KST).',
+    krxPortalUnavailable: 'Não foi possível acessar o serviço de cotações. Tente de novo em instantes.',
     openRound: (credits) => `Abrir esta rodada \u00b7 ${credits} créditos`,
     generateForty: (credits) => `Gerar 40 previsões de IA \u00b7 ${credits} créditos`,
     viewCard: 'Ver o cartão',

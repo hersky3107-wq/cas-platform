@@ -21,6 +21,7 @@ function io(over: Partial<KrStockRoundIo> = {}): KrStockRoundIo {
     now: () => kst('2026-10-02', '16:00'),
     getVisibleRow: async () => ({ name: '삼성전자' }),
     getOfficialClose: async () => 71400,
+    getProvisionalClose: async () => 'empty',
     getTwelveDataClose: async () => 71300,
     ...over,
   }
@@ -32,6 +33,7 @@ describe('resolveKrStockAnchor a/b/c', () => {
       ok: true,
       price: 71400,
       source: 'krx_official',
+      provisional: false,
     })
   })
 
@@ -46,10 +48,50 @@ describe('resolveKrStockAnchor a/b/c', () => {
           getOfficialClose: async () => 'not_published',
         }),
       ),
-    ).resolves.toEqual({ ok: true, price: 71300, source: 'twelvedata' })
+    ).resolves.toEqual({ ok: true, price: 71300, source: 'twelvedata', provisional: false })
   })
 
-  it('refuses before the next-day 08:00 KST official file without calling Twelve Data', async () => {
+  it('uses a same-day portal close after the session when the official file is unpublished', async () => {
+    let tdCalls = 0
+    let officialDates: string[] = []
+    await expect(
+      resolveKrStockAnchor(
+        'KOSPI',
+        '005930',
+        '2026-10-06',
+        io({
+          now: () => kst('2026-10-06', '17:25'),
+          getOfficialClose: async (_m, _c, date) => {
+            officialDates.push(date)
+            return 'not_published'
+          },
+          getProvisionalClose: async () => 72000,
+          getTwelveDataClose: async () => {
+            tdCalls += 1
+            return 1
+          },
+        }),
+      ),
+    ).resolves.toEqual({ ok: true, price: 72000, source: 'krx_data_portal', provisional: true })
+    expect(tdCalls).toBe(0)
+    expect(officialDates).toEqual(['2026-10-06'])
+  })
+
+  it('rejects an older session as the generate anchor', async () => {
+    await expect(
+      resolveKrStockAnchor(
+        'KOSPI',
+        '005930',
+        '2026-10-02',
+        io({
+          now: () => kst('2026-10-06', '17:25'),
+          getOfficialClose: async () => 71400,
+        }),
+      ),
+    ).resolves.toEqual({ ok: false, reason: 'older_session_rejected' })
+  })
+
+  it('surfaces a portal login/session failure instead of waiting on the official file', async () => {
     let tdCalls = 0
     await expect(
       resolveKrStockAnchor(
@@ -59,13 +101,14 @@ describe('resolveKrStockAnchor a/b/c', () => {
         io({
           now: () => kst('2026-10-06', '17:25'),
           getOfficialClose: async () => 'not_published',
+          getProvisionalClose: async () => 'unavailable',
           getTwelveDataClose: async () => {
             tdCalls += 1
             return 1
           },
         }),
       ),
-    ).resolves.toEqual({ ok: false, reason: 'krx_not_published' })
+    ).resolves.toEqual({ ok: false, reason: 'krx_portal_unavailable' })
     expect(tdCalls).toBe(0)
   })
 
@@ -93,7 +136,22 @@ describe('buildKrStockRankedRoundInput', () => {
     expect(built.input.anchor_session_date).toBe('2026-10-02')
     expect(built.input.anchor_price).toBe(71400)
     expect(built.input.anchor_source).toBe('krx_official')
+    expect(built.input.anchor_provisional).toBe(false)
     expect(built.input.anchor_price_at).toBe(krxSessionCloseIso('2026-10-02'))
+  })
+
+  it('after the close, persists today\'s portal close and never yesterday\'s official', async () => {
+    const built = await buildKrStockRankedRoundInput(KR, '1d', kst('2026-10-06', '17:25'), io({
+      now: () => kst('2026-10-06', '17:25'),
+      getOfficialClose: async () => 'not_published',
+      getProvisionalClose: async () => 72000,
+    }))
+    expect(built.ok).toBe(true)
+    if (!built.ok) return
+    expect(built.input.anchor_session_date).toBe('2026-10-06')
+    expect(built.input.anchor_price).toBe(72000)
+    expect(built.input.anchor_source).toBe('krx_data_portal')
+    expect(built.input.anchor_provisional).toBe(true)
   })
 
   it('refuses when the KRX calendar is unverified', async () => {

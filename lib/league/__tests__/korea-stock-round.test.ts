@@ -8,7 +8,8 @@ import type { PriceSeriesIo } from '../gateway/adapters/price-series-packet'
 import { gradePlanFor } from '../gateway/grade-plan'
 import { krStockPropositionDisplay, krStockPropositionEn } from '../korea-stock-display'
 import { krxBarsToDataPacket, KRSTOCK_PACKET_SERIES_SOURCE } from '../korea-stock-packet'
-import { reconcileTwelfthDataAnchor } from '../korea-stock-reconcile'
+import { reconcilePortalAnchor, reconcileTwelfthDataAnchor } from '../korea-stock-reconcile'
+import { formatPortalAnchorCorrectionNote } from '../korea-stock-display'
 import { resolveKrxGradingSession, isKrxTradingDay, krxSessionCloseIso } from '../krx-calendar'
 import { resolveRoundOutcome } from '../../prediction/resolution'
 import { rankedPropositionDisplay } from '../card-header-copy'
@@ -66,6 +67,54 @@ describe('KRSTOCK Twelve Data anchor reconciliation', () => {
         anchorSource: 'krx_official',
         storedAnchor: 71400,
         official: 71500,
+      }),
+    ).toEqual({ action: 'noop' })
+  })
+})
+
+describe('KRSTOCK portal provisional reconciliation', () => {
+  it('marks official when the published close matches the portal anchor', () => {
+    expect(
+      reconcilePortalAnchor({
+        anchorSource: 'krx_data_portal',
+        storedAnchor: 72000,
+        official: 72000,
+        sessionDate: '2026-10-06',
+      }),
+    ).toEqual({ action: 'mark_official' })
+  })
+
+  it('rewrites the stored anchor to the official close when they differ', () => {
+    expect(
+      reconcilePortalAnchor({
+        anchorSource: 'krx_data_portal',
+        storedAnchor: 72000,
+        official: 71400,
+        sessionDate: '2026-10-06',
+      }),
+    ).toEqual({
+      action: 'correct',
+      official: 71400,
+      stored: 72000,
+      note: formatPortalAnchorCorrectionNote({ stored: 72000, official: 71400, sessionDate: '2026-10-06' }),
+    })
+  })
+
+  it('waits while the official file is unpublished and noops other sources', () => {
+    expect(
+      reconcilePortalAnchor({
+        anchorSource: 'krx_data_portal',
+        storedAnchor: 72000,
+        official: 'not_published',
+        sessionDate: '2026-10-06',
+      }),
+    ).toEqual({ action: 'wait' })
+    expect(
+      reconcilePortalAnchor({
+        anchorSource: 'krx_official',
+        storedAnchor: 72000,
+        official: 71400,
+        sessionDate: '2026-10-06',
       }),
     ).toEqual({ action: 'noop' })
   })

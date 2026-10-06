@@ -377,6 +377,7 @@ export type CatalogRankedRoundInput = {
   anchor_price_at?: string
   anchor_session_date?: string
   anchor_source?: string
+  anchor_provisional?: boolean
   propositions?: Record<string, string>
 }
 

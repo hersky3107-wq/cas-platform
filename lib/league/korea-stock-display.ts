@@ -4,7 +4,19 @@
 
 import { decodeKrStockInstrument } from './korea-equity-catalog'
 
-export type KrStockAnchorSource = 'krx_official' | 'twelvedata' | 'krx_official_verified'
+export type KrStockAnchorSource =
+  | 'krx_official'
+  | 'krx_data_portal'
+  | 'twelvedata'
+  | 'krx_official_verified'
+
+export function formatPortalAnchorCorrectionNote(args: {
+  stored: number
+  official: number
+  sessionDate: string
+}): string {
+  return `잠정 종가 ${args.stored}원이 공식 종가 ${args.official}원으로 정정됨 (${args.sessionDate})`
+}
 
 const KRSTOCK_PROP_RE =
   /^Will (.+) \(([0-9A-Z]{6})\) close higher at the KRX regular-session close on (\d{4}-\d{2}-\d{2}) than at its KRX regular-session close on (\d{4}-\d{2}-\d{2})\?$/

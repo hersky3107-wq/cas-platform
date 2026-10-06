@@ -1,7 +1,7 @@
 import 'server-only'
 
 /**
- * KRSTOCK ranked-round builder: KRX calendar resolves_at, official/TD/unavailable
+ * KRSTOCK ranked-round builder: KRX calendar resolves_at, official/portal/TD
  * anchor, Korean name from the visible universe row.
  */
 
@@ -12,6 +12,7 @@ import {
   getOfficialClose,
   type OfficialCloseResult,
 } from './korea-market-data'
+import { getPortalClose, type PortalCloseResult } from './korea-portal-close'
 import { getVisibleUniverseRow } from './korea-universe-store'
 import { fetchTwelveDataSessionClose } from './market-data'
 import { krxOfficialIsPublished, krxSessionCloseIso, lastCompletedKrxSession } from './krx-calendar'
@@ -21,6 +22,7 @@ export type KrStockRoundIo = {
   now: () => Date
   getVisibleRow: (market: KrMarket, code: string) => Promise<{ name: string } | null>
   getOfficialClose: (market: KrMarket, code: string, date: string) => Promise<OfficialCloseResult>
+  getProvisionalClose: (market: KrMarket, code: string, date: string) => Promise<PortalCloseResult>
   getTwelveDataClose: (code: string, sessionDate: string) => Promise<number | null>
 }
 
@@ -31,6 +33,7 @@ export type KrStockRankedRound =
     anchor_price_at: string
     anchor_session_date: string
     anchor_source: Exclude<KrStockAnchorSource, 'krx_official_verified'>
+    anchor_provisional: boolean
   }
 
 export type KrStockRoundBuildResult =
@@ -43,6 +46,8 @@ export type KrStockRoundBuildResult =
         | 'us_calendar_unverified'
         | 'anchor_unavailable'
         | 'krx_not_published'
+        | 'krx_portal_unavailable'
+        | 'older_session_rejected'
     }
 
 function liveIo(): KrStockRoundIo {
@@ -54,6 +59,7 @@ function liveIo(): KrStockRoundIo {
       return { name: row.name.trim() }
     },
     getOfficialClose: (market, code, date) => getOfficialClose(market, code, date),
+    getProvisionalClose: (market, code, date) => getPortalClose(market, code, date),
     getTwelveDataClose: (code, sessionDate) => fetchTwelveDataSessionClose(code, 'KRX', sessionDate),
   }
 }
@@ -64,18 +70,32 @@ export async function resolveKrStockAnchor(
   anchorDate: string,
   io: KrStockRoundIo,
 ): Promise<
-  | { ok: true; price: number; source: 'krx_official' | 'twelvedata' }
-  | { ok: false; reason: 'anchor_unavailable' | 'krx_not_published' }
+  | { ok: true; price: number; source: 'krx_official' | 'krx_data_portal' | 'twelvedata'; provisional: boolean }
+  | {
+      ok: false
+      reason: 'anchor_unavailable' | 'krx_not_published' | 'krx_portal_unavailable' | 'older_session_rejected'
+    }
 > {
+  const last = lastCompletedKrxSession(io.now())
+  if (!last.ok) return { ok: false, reason: 'anchor_unavailable' }
+  if (anchorDate !== last.date) return { ok: false, reason: 'older_session_rejected' }
+
   const official = await io.getOfficialClose(market, code, anchorDate)
   if (typeof official === 'number' && Number.isFinite(official) && official > 0) {
-    return { ok: true, price: official, source: 'krx_official' }
+    return { ok: true, price: official, source: 'krx_official', provisional: false }
   }
+
+  const portal = await io.getProvisionalClose(market, code, anchorDate)
+  if (typeof portal === 'number' && Number.isFinite(portal) && portal > 0) {
+    return { ok: true, price: portal, source: 'krx_data_portal', provisional: true }
+  }
+
   const waitingOnOfficial = official === 'not_published' && !krxOfficialIsPublished(anchorDate, io.now())
-  if (waitingOnOfficial) return { ok: false, reason: 'krx_not_published' }
+  if (waitingOnOfficial) return { ok: false, reason: 'krx_portal_unavailable' }
+
   const td = await io.getTwelveDataClose(code, anchorDate)
   if (typeof td === 'number' && Number.isFinite(td) && td > 0) {
-    return { ok: true, price: td, source: 'twelvedata' }
+    return { ok: true, price: td, source: 'twelvedata', provisional: false }
   }
   if (official === 'not_published') return { ok: false, reason: 'krx_not_published' }
   return { ok: false, reason: 'anchor_unavailable' }
@@ -130,6 +150,7 @@ export async function buildKrStockRankedRoundInput(
       anchor_price_at: krxSessionCloseIso(last.date),
       anchor_session_date: last.date,
       anchor_source: anchor.source,
+      anchor_provisional: anchor.provisional,
     },
   }
 }

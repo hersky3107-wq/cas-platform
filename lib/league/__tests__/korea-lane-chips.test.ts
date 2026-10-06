@@ -3,6 +3,8 @@ import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it } from 'vitest'
+import { getLeagueUiPack } from '../i18n/dictionary'
+import { LEAGUE_LOCALES } from '../i18n/locales'
 import { KR_GROUPS } from '../korea-equity-catalog'
 import { KoreaStockLane } from '@/components/league/PublicLeagueHub'
 import { KrUniverseChipBrowser, KrSelectionBar, hotStripFromRows, krStockRefusalMessage, type KrUniverseRow } from '@/components/league/KrUniverseChipBrowser'
@@ -181,6 +183,14 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(
       krStockRefusalMessage('krx_not_published', 'ko', new Date('2026-10-07T00:00:00.000Z')),
     ).toBe('어제 종가는 오전 8시 이후 확인됩니다.')
+    expect(krStockRefusalMessage('krx_portal_unavailable', 'ko')).toBe(
+      '거래소 시세 접속에 실패했습니다. 잠시 후 다시 시도하세요.',
+    )
+    for (const locale of LEAGUE_LOCALES) {
+      const message = krStockRefusalMessage('krx_portal_unavailable', locale)
+      expect(message).toBe(getLeagueUiPack(locale).hub.krxPortalUnavailable)
+      expect(message && message.length).toBeGreaterThan(12)
+    }
     expect(krStockRefusalMessage('jurisdiction_blocked')).toBeNull()
     expect(hubSrc).toContain('krStockRefusalMessage')
   })

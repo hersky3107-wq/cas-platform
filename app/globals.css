@@ -610,6 +610,15 @@ body {
   color: #eef1f7;
   text-wrap: balance;
 }
+.league-gate__tagline-hint {
+  max-width: 20em;
+  margin: 0.35rem 0 0;
+  font-size: clamp(0.72rem, 0.68rem + 0.15vw, 0.85rem);
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgb(238 241 247 / 0.72);
+  text-wrap: balance;
+}
 .league-gate__rooms {
   display: flex;
   flex-wrap: wrap;

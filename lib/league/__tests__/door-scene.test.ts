@@ -68,8 +68,9 @@ describe('door scene markup', () => {
       expect(body).toContain('class="league-gate__cta"')
       expect(open).toMatch(/aria-labelledby="[^"]+-title [^"]+-cta"/)
     }
-    expect(html).toContain('AI 40개가 시장의 방향을 예측합니다')
-    expect(html).toContain('세상일을 예/아니오로 물어보세요')
+    expect(html).toContain('40개가 넘는 AI가 시장의 방향을 예측합니다')
+    expect(html).toContain('40개가 넘는 AI가 세상일의 결과를 예측합니다')
+    expect(html).toContain('질문은 예/아니오로')
     expect(html).toContain('<h1 class="league-hall__title">AI 예측 리그</h1>')
   })
 
@@ -283,13 +284,21 @@ describe('door scene styles and page', () => {
       expect(copy.sceneTitle.length).toBeGreaterThan(3)
       expect(copy.financeTagline.length).toBeGreaterThan(8)
       expect(copy.worldTagline.length).toBeGreaterThan(8)
+      expect(copy.worldTaglineHint.length).toBeGreaterThan(4)
       expect(copy.memecoinRoom.length).toBeGreaterThan(1)
       expect(copy.financeRooms).not.toContain(copy.memecoinRoom)
       for (const room of [...copy.financeRooms, ...copy.worldRooms]) expect(room.trim().length).toBeGreaterThan(0)
     }
     const ko = leagueSurfaceCopy('ko').doors
-    expect(ko.financeTagline).toBe('AI 40개가 시장의 방향을 예측합니다')
-    expect(ko.worldTagline).toBe('세상일을 예/아니오로 물어보세요')
+    expect(ko.financeTagline).toBe('40개가 넘는 AI가 시장의 방향을 예측합니다')
+    expect(ko.worldTagline).toBe('40개가 넘는 AI가 세상일의 결과를 예측합니다')
+    expect(ko.worldTaglineHint).toBe('질문은 예/아니오로')
     expect(ko.enter).toBe('들어가기')
+    for (const locale of LEAGUE_LOCALES) {
+      const copy = leagueSurfaceCopy(locale).doors
+      expect(copy.worldTagline).not.toBe(copy.worldTaglineHint)
+      expect(copy.financeTagline).not.toBe('AI 40개가 시장의 방향을 예측합니다')
+      expect(copy.worldTagline).not.toBe('세상일을 예/아니오로 물어보세요')
+    }
   })
 })

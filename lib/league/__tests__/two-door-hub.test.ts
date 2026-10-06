@@ -140,6 +140,7 @@ describe('admin-only public UI', () => {
       'kr-election-admin-banners',
       'admin-preview-as-user',
       'admin-test-badge',
+      'admin-anchor-correction',
     ])
     const html = renderToStaticMarkup(createElement(PublicLeagueHub, { door: 'world' }))
     expect(html).not.toContain('data-testid="admin-stock-lane"')
@@ -150,6 +151,7 @@ describe('admin-only public UI', () => {
     expect(ADMIN_LAYOUT).toContain('KrElectionAdminBanners')
     expect(HUB).not.toContain('KrElectionAdminBanners')
     expect(GRADE).toContain('admin-test-badge')
+    expect(GRADE).toContain('admin-anchor-correction')
   })
 
   it('preview-as-user uses effectiveIsAdmin so Korean language toggle and KR generation hide', () => {

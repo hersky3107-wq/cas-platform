@@ -491,6 +491,11 @@ export default function LeagueManualGradePage() {
                     Housing index evidence: {selected.housing_evidence}
                   </p>
                 ) : null}
+                {selected.anchor_correction_note ? (
+                  <p className="mt-2 text-xs text-amber-200/90" data-testid="admin-anchor-correction">
+                    {selected.anchor_correction_note}
+                  </p>
+                ) : null}
 
                 {selected.null_seats.length > 0 ? (
                   <div className="mt-4 rounded-xl border border-white/10 bg-black/20 px-3 py-3">

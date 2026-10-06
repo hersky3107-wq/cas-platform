@@ -91,6 +91,7 @@ function memoryIo(opts?: {
       const present = { KOSPI: false, KOSDAQ: false }
       for (const row of table.values()) {
         if (row.date !== isoDate) continue
+        if (row.provisional === true || row.source === 'krx_data_portal') continue
         present[row.market] = true
       }
       return present
@@ -164,6 +165,7 @@ describe('parseKrxNumber / mapKrxTradeRow', () => {
     const rows = extractKrxRows({ OutBlock_1: [SAMSUNG_FIXTURE] })
     expect(rows).toHaveLength(1)
     expect(extractKrxRows({ outBlock_1: [ECOPRO_FIXTURE] })).toHaveLength(1)
+    expect(extractKrxRows({ output: [SAMSUNG_FIXTURE] })).toHaveLength(1)
     expect(extractKrxRows({})).toEqual([])
   })
 })
@@ -243,6 +245,41 @@ describe('ensureKrxDay', () => {
     expect(latest).toEqual({ ok: true, date: '2026-10-06', result: 'ok' })
     expect(mem.fetchCalls).toEqual(['20261006'])
     await expect(getOfficialClose('KOSPI', '402340', '2026-10-06', mem.io)).resolves.toBe(1200000)
+  })
+})
+
+describe('official grading ignores provisional portal rows', () => {
+  it('still fetches the official file and grades against official closes', async () => {
+    const mem = memoryIo({
+      fetchByDate: {
+        '2026-10-06': [
+          bar({ date: '2026-10-06', market: 'KOSPI', code: '000660', close: 580000 }),
+          bar({ date: '2026-10-06', market: 'KOSDAQ', code: '247540', close: 1 }),
+        ],
+      },
+    })
+    await mem.io.upsertRows([
+      bar({
+        date: '2026-10-06',
+        market: 'KOSPI',
+        code: '000660',
+        close: 579000,
+        source: 'krx_data_portal',
+        provisional: true,
+      }),
+      bar({
+        date: '2026-10-06',
+        market: 'KOSDAQ',
+        code: '247540',
+        close: 2,
+        source: 'krx_data_portal',
+        provisional: true,
+      }),
+    ])
+    await expect(getOfficialClose('KOSPI', '000660', '2026-10-06', mem.io)).resolves.toBe(580000)
+    const bars = await getOfficialClosesBetween('KOSPI', '000660', '2026-10-06', '2026-10-06', mem.io)
+    expect(bars).toEqual([{ sessionDate: '2026-10-06', close: 580000 }])
+    expect(mem.fetchCalls).toContain('20261006')
   })
 })
 

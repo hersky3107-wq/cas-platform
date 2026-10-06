@@ -13,6 +13,8 @@ import { housingEvidenceFromInstrument } from '@/lib/league/real-estate/evidence
 import { storedIndexMetric } from '@/lib/league/real-estate/support'
 
 const QUEUE_COLUMNS =
+  'id, proposition_text, propositions, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status, is_test, anchor_correction_note'
+const QUEUE_COLUMNS_LEGACY =
   'id, proposition_text, propositions, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status, is_test'
 
 export async function countNeedsGrading(): Promise<number> {
@@ -27,7 +29,7 @@ export async function countNeedsGrading(): Promise<number> {
 }
 
 export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
-  const { data, error } = await supabaseAdmin
+  let { data, error } = await supabaseAdmin
     .from('prediction_rounds')
     .select(QUEUE_COLUMNS)
     .eq('grading_status', 'needs_grading')
@@ -35,6 +37,18 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
     .lt('resolves_at', new Date().toISOString())
     .order('resolves_at', { ascending: true })
     .limit(200)
+  if (error && /anchor_correction_note/i.test(error.message)) {
+    const retry = await supabaseAdmin
+      .from('prediction_rounds')
+      .select(QUEUE_COLUMNS_LEGACY)
+      .eq('grading_status', 'needs_grading')
+      .is('actual_outcome', null)
+      .lt('resolves_at', new Date().toISOString())
+      .order('resolves_at', { ascending: true })
+      .limit(200)
+    data = retry.data
+    error = retry.error
+  }
   if (error) throw new Error(error.message)
   const rows = data ?? []
   if (rows.length === 0) return []
@@ -91,6 +105,10 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
       seat_counters: countersByRound.get(String(row.id)) ?? [],
       housing_evidence: housingEvidence.get(String(row.instrument ?? '')) ?? null,
       is_test: row.is_test === true,
+      anchor_correction_note:
+        typeof row.anchor_correction_note === 'string' && row.anchor_correction_note.trim()
+          ? row.anchor_correction_note
+          : null,
     }
   })
 }

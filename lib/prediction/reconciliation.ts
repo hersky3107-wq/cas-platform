@@ -16,7 +16,7 @@ import {
   getOfficialClose,
   getOfficialClosesBetween,
 } from '@/lib/league/korea-market-data'
-import { reconcileTwelfthDataAnchor } from '@/lib/league/korea-stock-reconcile'
+import { reconcilePortalAnchor, reconcileTwelfthDataAnchor } from '@/lib/league/korea-stock-reconcile'
 import { stampConsensusIsCorrect } from '@/lib/league/consensus-correctness'
 import { scheduleLessonRefresh } from '@/lib/league/extra/lesson-refresh'
 import {
@@ -145,6 +145,9 @@ function migrationHint(message: string): string {
   }
   if (isMissingColumnError(message, 'anchor_source')) {
     return `${message} — apply migration 20261003000003_prediction_rounds_anchor_source.sql; KRSTOCK needs anchor_source`
+  }
+  if (isMissingColumnError(message, 'anchor_provisional') || isMissingColumnError(message, 'anchor_correction_note')) {
+    return `${message} — apply migration 20261006000003_krx_provisional_close.sql; KRSTOCK portal anchors need anchor_provisional`
   }
   return message
 }
@@ -384,13 +387,88 @@ async function markAnchorOfficialVerified(roundId: string): Promise<void> {
   }
 }
 
+async function markPortalAnchorOfficial(
+  roundId: string,
+  patch: { official?: number; note?: string },
+): Promise<void> {
+  const update: Record<string, unknown> = {
+    anchor_source: 'krx_official',
+    anchor_provisional: false,
+  }
+  if (typeof patch.official === 'number') update.anchor_price = patch.official
+  if (patch.note) update.anchor_correction_note = patch.note
+  const { error } = await supabaseAdmin
+    .from('prediction_rounds')
+    .update(update)
+    .eq('id', roundId)
+    .eq('anchor_source', 'krx_data_portal')
+    .is('actual_outcome', null)
+  if (error && (isMissingColumnError(error.message, 'anchor_provisional') || isMissingColumnError(error.message, 'anchor_correction_note'))) {
+    const { anchor_provisional: _p, anchor_correction_note: _n, ...safe } = update
+    const retry = await supabaseAdmin
+      .from('prediction_rounds')
+      .update(safe)
+      .eq('id', roundId)
+      .eq('anchor_source', 'krx_data_portal')
+      .is('actual_outcome', null)
+    if (retry.error && !isMissingColumnError(retry.error.message, 'anchor_source')) {
+      console.warn(`[prediction/grading] round ${roundId} could not apply portal official: ${retry.error.message}`)
+    }
+    return
+  }
+  if (error && !isMissingColumnError(error.message, 'anchor_source')) {
+    console.warn(`[prediction/grading] round ${roundId} could not apply portal official: ${error.message}`)
+  }
+}
+
+async function applyPortalAnchorDecision(args: {
+  roundId: string
+  storedAnchor: number
+  official: number | 'not_published' | 'holiday' | 'unknown_code'
+  sessionDate: string
+  anchorSource: string | null
+}): Promise<'continue' | 'defer'> {
+  const decision = reconcilePortalAnchor({
+    anchorSource: args.anchorSource,
+    storedAnchor: args.storedAnchor,
+    official: args.official,
+    sessionDate: args.sessionDate,
+  })
+  if (decision.action === 'wait') return 'defer'
+  if (decision.action === 'mark_official') {
+    await markPortalAnchorOfficial(args.roundId, {})
+    return 'continue'
+  }
+  if (decision.action === 'correct') {
+    console.warn(
+      `[krx-portal] anchor correction round ${args.roundId} ${decision.stored} → ${decision.official} ${args.sessionDate}`,
+    )
+    await markPortalAnchorOfficial(args.roundId, { official: decision.official, note: decision.note })
+    return 'continue'
+  }
+  return 'continue'
+}
+
 async function beforeGradeKrStock(round: GradingRoundRecord): Promise<'continue' | 'park' | 'defer'> {
   const parts = decodeKrStockInstrument(round.instrument)
   if (!parts) return 'continue'
   const facts = await loadKrStockAnchorFacts(round.id)
-  if (!facts || facts.anchorSource !== 'twelvedata') return 'continue'
-  if (!facts.anchorSessionDate) return 'defer'
-  if (!Number.isFinite(round.anchor_price) || (round.anchor_price ?? 0) <= 0) return 'defer'
+  if (!facts) return 'continue'
+  if (!facts.anchorSessionDate) return facts.anchorSource === 'twelvedata' || facts.anchorSource === 'krx_data_portal' ? 'defer' : 'continue'
+  if (!Number.isFinite(round.anchor_price) || (round.anchor_price ?? 0) <= 0) {
+    return facts.anchorSource === 'twelvedata' || facts.anchorSource === 'krx_data_portal' ? 'defer' : 'continue'
+  }
+  if (facts.anchorSource === 'krx_data_portal') {
+    const official = await getOfficialClose(parts.market, parts.code, facts.anchorSessionDate)
+    return applyPortalAnchorDecision({
+      roundId: round.id,
+      storedAnchor: round.anchor_price as number,
+      official,
+      sessionDate: facts.anchorSessionDate,
+      anchorSource: facts.anchorSource,
+    })
+  }
+  if (facts.anchorSource !== 'twelvedata') return 'continue'
   const official = await getOfficialClose(parts.market, parts.code, facts.anchorSessionDate)
   const decision = reconcileTwelfthDataAnchor({
     anchorSource: facts.anchorSource,
@@ -404,6 +482,45 @@ async function beforeGradeKrStock(round: GradingRoundRecord): Promise<'continue'
   if (decision.action === 'park_manual') return 'park'
   if (decision.action === 'wait') return 'defer'
   return 'continue'
+}
+
+export async function reconcileOpenPortalAnchors(now: Date = new Date()): Promise<number> {
+  let rows: { id: unknown; instrument: unknown; anchor_price: unknown; anchor_source: unknown; anchor_session_date: unknown; resolves_at: unknown }[]
+  try {
+    const { data, error } = await supabaseAdmin
+      .from('prediction_rounds')
+      .select('id, instrument, anchor_price, anchor_source, anchor_session_date, resolves_at')
+      .eq('anchor_source', 'krx_data_portal')
+      .is('actual_outcome', null)
+      .gt('resolves_at', now.toISOString())
+      .limit(200)
+    if (error) {
+      if (isMissingColumnError(error.message, 'anchor_source')) return 0
+      throw new Error(migrationHint(error.message))
+    }
+    rows = (data ?? []) as typeof rows
+  } catch (e: unknown) {
+    const message = e instanceof Error ? e.message : ''
+    if (isMissingColumnError(message, 'anchor_source')) return 0
+    throw e
+  }
+  let applied = 0
+  for (const row of rows) {
+    const parts = decodeKrStockInstrument(String(row.instrument ?? ''))
+    const sessionDate = typeof row.anchor_session_date === 'string' ? row.anchor_session_date.slice(0, 10) : ''
+    const stored = typeof row.anchor_price === 'number' ? row.anchor_price : Number(row.anchor_price)
+    if (!parts || !sessionDate || !Number.isFinite(stored) || stored <= 0) continue
+    const official = await getOfficialClose(parts.market, parts.code, sessionDate)
+    const before = await applyPortalAnchorDecision({
+      roundId: String(row.id),
+      storedAnchor: stored,
+      official,
+      sessionDate,
+      anchorSource: typeof row.anchor_source === 'string' ? row.anchor_source : null,
+    })
+    if (before === 'continue' && typeof official === 'number') applied += 1
+  }
+  return applied
 }
 
 async function fetchKrxOfficialCloses(instrument: string, startDate: string, endDate: string) {
@@ -494,6 +611,13 @@ export async function gradeAllDueRounds() {
     await ensureLatestKrxOfficialSession()
   } catch {
     // Sweep still walks every due round; per-round ensureKrxDay retries the day.
+  }
+  try {
+    await reconcileOpenPortalAnchors()
+  } catch (e: unknown) {
+    console.warn(
+      `[krx-portal] open-anchor reconciliation failed: ${e instanceof Error ? e.message : e}`,
+    )
   }
   const report = await engine.gradeAllDueRounds()
   return report

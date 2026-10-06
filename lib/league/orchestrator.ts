@@ -109,6 +109,7 @@ export type RoundInput =
       anchor_price_at?: string
       anchor_session_date?: string
       anchor_source?: string
+      anchor_provisional?: boolean
       propositions?: Record<string, string> | null
     }
 
@@ -336,6 +337,9 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
           ...(input.anchor_price_at ? { anchor_price_at: input.anchor_price_at } : {}),
           ...(input.anchor_session_date ? { anchor_session_date: input.anchor_session_date } : {}),
           ...(input.anchor_source ? { anchor_source: input.anchor_source } : {}),
+          ...(typeof input.anchor_provisional === 'boolean'
+            ? { anchor_provisional: input.anchor_provisional }
+            : {}),
         }
       : {}),
   }
@@ -345,6 +349,17 @@ async function ensureRound(input: RoundInput): Promise<{ round: ResolvedRound; c
     .insert(insertPayload)
     .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
     .single()
+
+  if (error && error.message.includes('anchor_provisional')) {
+    const { anchor_provisional: _omitProv, ...withoutProv } = insertPayload
+    const retryProv = await supabaseAdmin
+      .from('prediction_rounds')
+      .insert(withoutProv)
+      .select('id, proposition_text, category, instrument, horizon, resolution_rule, resolves_at, proposition_kind')
+      .single()
+    data = retryProv.data
+    error = retryProv.error
+  }
 
   if (error && error.message.includes('propositions')) {
     const { propositions: _omitted, ...safePayload } = insertPayload

@@ -36,6 +36,8 @@ export type KrxDailyBar = {
   volume: number | null
   trdval: number | null
   mktcap: number | null
+  source?: string
+  provisional?: boolean
 }
 
 export type KrxCloseBar = {
@@ -102,7 +104,7 @@ export function mapKrxTradeRow(
   const code = sixDigitCode(row)
   const close = parseKrxNumber(row.TDD_CLSPRC ?? row.tddClsprc)
   if (!code || close == null) return null
-  const nameRaw = String(row.ISU_NM ?? row.isuNm ?? '').trim()
+  const nameRaw = String(row.ISU_NM ?? row.isuNm ?? row.ISU_ABBRV ?? row.isuAbbrv ?? '').trim()
   return {
     date: isoDate,
     market,
@@ -123,7 +125,12 @@ export function extractKrxRows(json: unknown): Record<string, unknown>[] {
   const rec = json as Record<string, unknown>
   if (Array.isArray(rec.OutBlock_1)) return rec.OutBlock_1 as Record<string, unknown>[]
   if (Array.isArray(rec.outBlock_1)) return rec.outBlock_1 as Record<string, unknown>[]
+  if (Array.isArray(rec.output)) return rec.output as Record<string, unknown>[]
   return []
+}
+
+export function isOfficialKrxBar(row: KrxDailyBar | null | undefined): row is KrxDailyBar {
+  return Boolean(row && row.provisional !== true && row.source !== 'krx_data_portal')
 }
 
 export function emptyKrxFetchOutcome(isoDate: string): 'holiday' | 'not_published' {
@@ -195,7 +202,13 @@ function toDbRow(row: KrxDailyBar) {
     volume: row.volume,
     trdval: row.trdval,
     mktcap: row.mktcap,
+    source: row.source ?? 'krx_open_api',
+    provisional: row.provisional === true,
   }
+}
+
+function isMissingDailyColumn(message: string, column: string): boolean {
+  return message.toLowerCase().includes(column) && /does not exist|schema cache/i.test(message)
 }
 
 async function marketHasRows(isoDate: string, market: KrxMarket): Promise<boolean> {
@@ -204,8 +217,21 @@ async function marketHasRows(isoDate: string, market: KrxMarket): Promise<boolea
     .select('code')
     .eq('bas_dd', isoDate)
     .eq('market', market)
+    .eq('provisional', false)
     .limit(1)
-  if (error) throw new Error(`league_krx_daily marketsPresent: ${error.message}`)
+  if (error) {
+    if (isMissingDailyColumn(error.message, 'provisional')) {
+      const fallback = await supabaseAdmin
+        .from(TABLE)
+        .select('code')
+        .eq('bas_dd', isoDate)
+        .eq('market', market)
+        .limit(1)
+      if (fallback.error) throw new Error(`league_krx_daily marketsPresent: ${fallback.error.message}`)
+      return (fallback.data?.length ?? 0) > 0
+    }
+    throw new Error(`league_krx_daily marketsPresent: ${error.message}`)
+  }
   return (data?.length ?? 0) > 0
 }
 
@@ -216,10 +242,23 @@ async function defaultMarketsPresent(isoDate: string): Promise<{ KOSPI: boolean;
 
 async function defaultUpsertRows(rows: KrxDailyBar[]): Promise<void> {
   if (rows.length === 0) return
-  const { error } = await supabaseAdmin.from(TABLE).upsert(rows.map(toDbRow), {
+  const official = rows.map((row) =>
+    toDbRow({ ...row, source: row.source ?? 'krx_open_api', provisional: false }),
+  )
+  const { error } = await supabaseAdmin.from(TABLE).upsert(official, {
     onConflict: 'bas_dd,market,code',
   })
-  if (error) throw new Error(`league_krx_daily upsert: ${error.message}`)
+  if (error) {
+    if (isMissingDailyColumn(error.message, 'source') || isMissingDailyColumn(error.message, 'provisional')) {
+      const { error: fallback } = await supabaseAdmin.from(TABLE).upsert(
+        official.map(({ source: _s, provisional: _p, ...rest }) => rest),
+        { onConflict: 'bas_dd,market,code' },
+      )
+      if (fallback) throw new Error(`league_krx_daily upsert: ${fallback.message}`)
+      return
+    }
+    throw new Error(`league_krx_daily upsert: ${error.message}`)
+  }
 }
 
 function barFromDailyRow(data: {
@@ -234,6 +273,8 @@ function barFromDailyRow(data: {
   volume: unknown
   trdval: unknown
   mktcap: unknown
+  source?: unknown
+  provisional?: unknown
 }): KrxDailyBar | null {
   if (data.close == null) return null
   const market = data.market === 'KOSDAQ' ? 'KOSDAQ' : data.market === 'KOSPI' ? 'KOSPI' : null
@@ -250,10 +291,14 @@ function barFromDailyRow(data: {
     volume: data.volume == null ? null : Number(data.volume),
     trdval: data.trdval == null ? null : Number(data.trdval),
     mktcap: data.mktcap == null ? null : Number(data.mktcap),
+    source: typeof data.source === 'string' ? data.source : undefined,
+    provisional: data.provisional === true,
   }
 }
 
-const DAILY_COLUMNS = 'bas_dd, market, code, name, open, high, low, close, volume, trdval, mktcap'
+const DAILY_COLUMNS =
+  'bas_dd, market, code, name, open, high, low, close, volume, trdval, mktcap, source, provisional'
+const DAILY_COLUMNS_LEGACY = 'bas_dd, market, code, name, open, high, low, close, volume, trdval, mktcap'
 
 async function defaultGetRow(
   market: KrxMarket,
@@ -267,7 +312,21 @@ async function defaultGetRow(
     .eq('market', market)
     .eq('code', code)
     .maybeSingle()
-  if (error) throw new Error(`league_krx_daily getRow: ${error.message}`)
+  if (error) {
+    if (isMissingDailyColumn(error.message, 'source') || isMissingDailyColumn(error.message, 'provisional')) {
+      const fallback = await supabaseAdmin
+        .from(TABLE)
+        .select(DAILY_COLUMNS_LEGACY)
+        .eq('bas_dd', isoDate)
+        .eq('market', market)
+        .eq('code', code)
+        .maybeSingle()
+      if (fallback.error) throw new Error(`league_krx_daily getRow: ${fallback.error.message}`)
+      if (!fallback.data) return null
+      return barFromDailyRow(fallback.data)
+    }
+    throw new Error(`league_krx_daily getRow: ${error.message}`)
+  }
   if (!data) return null
   return barFromDailyRow(data)
 }
@@ -284,7 +343,24 @@ async function defaultListCodeRows(
     .eq('market', market)
     .eq('code', code)
     .in('bas_dd', [...isoDates])
-  if (error) throw new Error(`league_krx_daily listCodeRows: ${error.message}`)
+  if (error) {
+    if (isMissingDailyColumn(error.message, 'source') || isMissingDailyColumn(error.message, 'provisional')) {
+      const fallback = await supabaseAdmin
+        .from(TABLE)
+        .select(DAILY_COLUMNS_LEGACY)
+        .eq('market', market)
+        .eq('code', code)
+        .in('bas_dd', [...isoDates])
+      if (fallback.error) throw new Error(`league_krx_daily listCodeRows: ${fallback.error.message}`)
+      const bars: KrxDailyBar[] = []
+      for (const row of fallback.data ?? []) {
+        const bar = barFromDailyRow(row)
+        if (bar) bars.push(bar)
+      }
+      return bars
+    }
+    throw new Error(`league_krx_daily listCodeRows: ${error.message}`)
+  }
   const bars: KrxDailyBar[] = []
   for (const row of data ?? []) {
     const bar = barFromDailyRow(row)
@@ -379,7 +455,7 @@ export async function getOfficialClose(
   if (ensured === 'holiday') return 'holiday'
   if (ensured === 'not_published') return 'not_published'
   const row = await deps.getRow(market, code, isoDate)
-  if (!row) return 'unknown_code'
+  if (!isOfficialKrxBar(row)) return 'unknown_code'
   return row.close
 }
 
@@ -399,7 +475,7 @@ export async function getKrxCloseSeries(
   }
   const dates = lastNKrxSessionDates(last.date, sessions)
   const tradingDates = dates.filter((date) => isKrxTradingDay(date))
-  const cached = await deps.listCodeRows(market, code, tradingDates)
+  const cached = (await deps.listCodeRows(market, code, tradingDates)).filter(isOfficialKrxBar)
   const byDate = new Map(cached.map((row) => [row.date, row]))
   const series: KrxCloseBar[] = []
   const notPublished: string[] = []
@@ -415,8 +491,9 @@ export async function getKrxCloseSeries(
       }
       if (ensured === 'holiday') continue
       row = await deps.getRow(market, code, date)
+      if (!isOfficialKrxBar(row)) row = null
     }
-    if (!row) continue
+    if (!isOfficialKrxBar(row)) continue
     series.push({
       date: row.date,
       open: row.open,
@@ -451,7 +528,7 @@ export async function getOfficialClosesBetween(
     const ensured = await ensureKrxDay(date, deps)
     if (ensured === 'not_published' || ensured === 'holiday') continue
     const row = await deps.getRow(market, code, date)
-    if (!row) continue
+    if (!isOfficialKrxBar(row)) continue
     bars.push({ sessionDate: row.date, close: row.close })
   }
   return bars
