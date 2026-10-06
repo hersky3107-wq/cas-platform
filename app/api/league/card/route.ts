@@ -241,12 +241,25 @@ async function catalogLockedPreview(
     }
   }
   const krStockParts = decodeKrStockInstrument(gate.instrument)
-  const wouldOpen = krStockParts
-    ? await (async () => {
-        const built = await buildKrStockRankedRoundInput(gate.instrument, gate.horizon)
-        return built.ok ? built.input : null
-      })()
+  let wouldOpen = krStockParts
+    ? null
     : buildPublicRankedRoundInput(gate.instrument, gate.horizon)
+  if (krStockParts) {
+    const built = await buildKrStockRankedRoundInput(gate.instrument, gate.horizon)
+    if (!built.ok) {
+      console.warn(
+        '[league-card]',
+        JSON.stringify({ code: 'no_round', reason: built.reason, instrument: gate.instrument, horizon: gate.horizon }),
+      )
+      return {
+        response: NextResponse.json(
+          { error: 'No ranked round available yet', code: 'no_round', reason: built.reason },
+          { status: 404 },
+        ),
+      }
+    }
+    wouldOpen = built.input
+  }
   if (!wouldOpen) {
     console.warn('[league-card]', JSON.stringify({ code: 'no_round', instrument: gate.instrument, horizon: gate.horizon }))
     return {

@@ -31,7 +31,7 @@ import { isLockedViewPayload, RECORD_ROOM_PURCHASE_ROUND_LIMIT } from '@/lib/lea
 import { KR_DISCLOSURE, resolveKrLaneBanner, resolveKrLaneFooter } from '@/lib/league/korea-disclosure'
 import { KrUsageNoticeList } from '@/components/league/KrLaneDisclosureBlocks'
 import { isDeepDisabledForViewer } from '@/lib/league/korea-lane-features'
-import { KrUniverseChipBrowser, krStockRefusalMessage } from '@/components/league/KrUniverseChipBrowser'
+import { KrUniverseChipBrowser, InstrumentActionButton, krStockRefusalMessage, scrollToLeagueRoundCard } from '@/components/league/KrUniverseChipBrowser'
 import { generateErrorMessage, tryAgainSoonMessage } from '@/lib/league/generate-error-copy'
 import { formatSessionDate } from '@/lib/league/card-header-copy'
 import { publicFacingLabel } from '@/lib/league/public-label'
@@ -46,6 +46,8 @@ import {
   type HubDoor,
 } from '@/lib/league/hub-doors'
 import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
+import { creditsForLeagueGenerate } from '@/lib/credits'
+import { cardMissPhase, selectionActionCopy, selectionBarAction, selectionPhaseFromCard } from '@/lib/league/selection-action'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -104,6 +106,7 @@ export function PublicLeagueHub({
   const [tab, setTab] = useState<LeagueHubTab>(initialTab)
   const [realAdmin, setRealAdmin] = useState(false)
   const copy = leagueSurfaceCopy(locale).doors
+  const doorMark = door === 'finance' ? copy.financeMark : copy.worldMark
   const doorTitle = door === 'finance' ? copy.financeTitle : copy.worldTitle
 
   return (
@@ -124,7 +127,10 @@ export function PublicLeagueHub({
         </header>
 
         <div>
-          <h1 className="text-xl font-bold text-slate-900">{doorTitle}</h1>
+          <h1 className="league-engraved" data-testid="door-mark">
+            {doorMark}
+          </h1>
+          <p className="mt-1 text-sm font-semibold text-slate-600">{doorTitle}</p>
         </div>
 
         <AdminPreviewToggle />
@@ -218,6 +224,8 @@ function CardsPanel({
   const [krAdvisoryRegNo, setKrAdvisoryRegNo] = useState<string | undefined>()
   const [krBizNo, setKrBizNo] = useState<string | undefined>()
   const [promptSeed, setPromptSeed] = useState('')
+  const [actionBusy, setActionBusy] = useState(false)
+  const [actionNotice, setActionNotice] = useState<string | null>(null)
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
@@ -251,8 +259,8 @@ function CardsPanel({
           | { error: string; code?: string }
         if (requestId !== requestIdRef.current) return
         if (!res.ok) {
-          const errBody = body as { error?: string; code?: string }
-          const refusal = krStockRefusalMessage(errBody.code ?? errBody.error)
+          const errBody = body as { error?: string; code?: string; reason?: string }
+          const refusal = krStockRefusalMessage(errBody.reason ?? errBody.code ?? errBody.error)
           if (refusal) {
             setView({ kind: 'krNotice', text: refusal })
             return { missing: false }
@@ -262,6 +270,11 @@ function CardsPanel({
           } else if ('code' in body && body.code === 'jurisdiction_blocked') {
             setView({ kind: 'blocked' })
           } else if (res.status === 404 || ('code' in body && body.code === 'no_round')) {
+            const miss = cardMissPhase(errBody.code, refusal)
+            if (miss.phase === 'unavailable') {
+              setView({ kind: 'krNotice', text: miss.reason })
+              return { missing: false }
+            }
             setView({ kind: 'none' })
             return { missing: true }
           } else {
@@ -446,6 +459,71 @@ function CardsPanel({
     active && isFreeformSearchCategory(active.id) && view.kind !== 'card' && view.kind !== 'locked',
   )
 
+  const generateCredits = creditsForLeagueGenerate()
+  const barPhase = selectedInstrument
+    ? selectionPhaseFromCard({
+        kind: view.kind,
+        text:
+          view.kind === 'krNotice' || view.kind === 'error'
+            ? view.text
+            : view.kind === 'blocked'
+              ? t.gating.unavailable
+              : view.kind === 'electionClosed'
+                ? t.disclaimer.electionManualClose
+                : null,
+        lockedRoundId: view.kind === 'locked' ? view.locked.round.round_id : null,
+        generationStatus: view.kind === 'card' ? (view.card.generation?.status ?? null) : null,
+        queuePosition: view.kind === 'card' ? (view.card.generation?.queuePosition ?? null) : null,
+        etaMinutes: view.kind === 'card' ? (view.card.generation?.etaMinutes ?? null) : null,
+      })
+    : null
+  const barAction = barPhase ? selectionBarAction(barPhase) : null
+  const barCopy = barAction ? selectionActionCopy(t, barAction, generateCredits) : null
+
+  async function pressBar() {
+    if (!selectedInstrument || !barAction || actionBusy) return
+    if (barAction.kind === 'view') {
+      scrollToLeagueRoundCard()
+      return
+    }
+    if (barAction.kind !== 'generate' && barAction.kind !== 'open') return
+    setActionBusy(true)
+    setActionNotice(null)
+    try {
+      const res = await fetch('/api/league/generate', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ instrument: selectedInstrument, horizon, locale }),
+      })
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null)) as
+          | { balance?: number; required?: number; code?: string; error?: string; reason?: string }
+          | null
+        const refusal = krStockRefusalMessage(detail?.reason ?? detail?.code ?? detail?.error)
+        if (refusal) {
+          setView({ kind: 'krNotice', text: refusal })
+        } else if (res.status === 402) {
+          setActionNotice(t.hub.insufficientCredits(detail?.required ?? generateCredits, detail?.balance ?? 0))
+        } else if (res.status === 429) {
+          setActionNotice(t.hub.rateLimited)
+        } else if (res.status === 503 && detail?.code === 'busy') {
+          setActionNotice(t.hub.generationBusy)
+        } else if (res.status === 503 && detail?.code === 'market_data_unavailable') {
+          setActionNotice(t.hub.marketDataUnavailable)
+        } else {
+          setActionNotice(generateErrorMessage(detail?.code, locale, res.status))
+        }
+        return
+      }
+      void loadCard(selectedInstrument, horizon)
+    } catch {
+      setView({ kind: 'error', text: tryAgainSoonMessage(locale) })
+    } finally {
+      setActionBusy(false)
+    }
+  }
+
   const visibleCategories = chipsForDoor(categories, door)
 
   return (
@@ -570,6 +648,17 @@ function CardsPanel({
           regNo={krAdvisoryRegNo}
           bizNo={krBizNo}
           isAdmin={effectiveIsAdmin}
+          actionLabel={
+            barCopy
+              ? actionBusy && (barAction?.kind === 'generate' || barAction?.kind === 'open')
+                ? t.hub.openingRound
+                : barCopy.text
+              : null
+          }
+          actionEnabled={Boolean(barCopy?.enabled) && !actionBusy}
+          actionEta={barCopy?.eta ?? null}
+          actionNotice={actionNotice}
+          onAction={() => void pressBar()}
           onSelectUsInstrument={(instrument, nextHorizon) => {
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
@@ -689,11 +778,7 @@ function CardsPanel({
             <LockedRoundPanel
               locked={view.locked}
               instrument={selectedInstrument ?? view.locked.round.instrument}
-              horizon={horizon}
               locale={locale}
-              onOpened={() =>
-                void loadCard(selectedInstrument ?? view.locked.round.instrument, horizon)
-              }
             />
           ) : view.kind === 'card' ? (
             <>
@@ -724,6 +809,21 @@ function CardsPanel({
           ) : null}
         </div>
       ) : null}
+
+      {!koreaStocks && selectedInstrument && barCopy ? (
+        <div
+          data-testid="instrument-action-bar"
+          className="sticky bottom-0 z-20 border-t border-slate-200 bg-white/95 px-3 py-2.5"
+        >
+          <InstrumentActionButton
+            label={actionBusy && (barAction?.kind === 'generate' || barAction?.kind === 'open') ? t.hub.openingRound : barCopy.text}
+            enabled={barCopy.enabled && !actionBusy}
+            eta={barCopy.eta}
+            notice={actionNotice}
+            onPress={() => void pressBar()}
+          />
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -739,62 +839,13 @@ function CardsPanel({
 function LockedRoundPanel({
   locked,
   instrument,
-  horizon,
   locale,
-  onOpened,
 }: {
   locked: LockedCardPayload
   instrument: string
-  horizon: UiHorizon
   locale: LeagueLocale
-  onOpened: () => void
 }) {
   const { t } = useLeagueLocale()
-  const [busy, setBusy] = useState(false)
-  const [notice, setNotice] = useState<string | null>(null)
-
-  async function open() {
-    if (busy) return
-    setBusy(true)
-    setNotice(null)
-    try {
-      const res = await fetch('/api/league/generate', {
-        method: 'POST',
-        credentials: 'include',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ instrument, horizon, locale }),
-      })
-      if (!res.ok) {
-        const detail = (await res.json().catch(() => null)) as
-          | { balance?: number; required?: number; code?: string; error?: string }
-          | null
-        if (res.status === 402) {
-          setNotice(t.hub.insufficientCredits(detail?.required ?? locked.price, detail?.balance ?? 0))
-        } else if (res.status === 429) {
-          setNotice(t.hub.rateLimited)
-        } else if (res.status === 503 && detail?.code === 'busy') {
-          setNotice(t.hub.generationBusy)
-        } else if (res.status === 503 && detail?.code === 'market_data_unavailable') {
-          setNotice(t.hub.marketDataUnavailable)
-        } else {
-          const refusal = krStockRefusalMessage(detail?.code ?? detail?.error)
-          if (refusal) {
-            setNotice(refusal)
-          } else if (res.status === 403) {
-            setNotice(generateErrorMessage(detail?.code ?? 'not_public', locale, res.status))
-          } else {
-            setNotice(generateErrorMessage(detail?.code, locale, res.status))
-          }
-        }
-        return
-      }
-      onOpened()
-    } catch {
-      setNotice(tryAgainSoonMessage(locale))
-    } finally {
-      setBusy(false)
-    }
-  }
 
   return (
     <div className="rounded-2xl border border-slate-200 bg-white px-4 py-6">
@@ -806,16 +857,7 @@ function LockedRoundPanel({
           {t.hub.generationFailedRefunded}
         </p>
       ) : null}
-      <button
-        type="button"
-        disabled={busy}
-        onClick={() => void open()}
-        className="league-btn-primary mt-4 w-full md:max-w-sm"
-      >
-        {busy ? t.hub.openingRound : t.hub.openRound(locked.price)}
-      </button>
       <p className="mt-2 text-[11px] leading-relaxed text-slate-500">{t.hub.openRoundNote}</p>
-      {notice ? <p className="mt-3 text-xs text-rose-700">{notice}</p> : null}
     </div>
   )
 }
@@ -957,11 +999,21 @@ export function KoreaStockLane({
   bizNo,
   isAdmin = false,
   onSelectUsInstrument,
+  actionLabel = null,
+  actionEnabled = false,
+  actionEta = null,
+  actionNotice = null,
+  onAction,
 }: {
   regNo?: string
   bizNo?: string
   isAdmin?: boolean
   onSelectUsInstrument?: (instrument: string, horizon: UiHorizon) => void
+  actionLabel?: string | null
+  actionEnabled?: boolean
+  actionEta?: string | null
+  actionNotice?: string | null
+  onAction?: () => void
 } = {}) {
   const { main: bannerMain, regLine: bannerRegText } = resolveKrLaneBanner(regNo)
   const footerText = resolveKrLaneFooter(regNo, bizNo)
@@ -988,6 +1040,11 @@ export function KoreaStockLane({
 
       <KrUniverseChipBrowser
         isAdmin={isAdmin}
+        actionLabel={actionLabel}
+        actionEnabled={actionEnabled}
+        actionEta={actionEta}
+        actionNotice={actionNotice}
+        onAction={onAction}
         onSelectUsInstrument={(instrument, horizon) => onSelectUsInstrument?.(instrument, horizon)}
       />
 

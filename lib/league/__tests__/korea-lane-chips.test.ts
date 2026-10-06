@@ -90,7 +90,7 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
     expect(hubSrc).toContain('isAdmin={effectiveIsAdmin}')
     expect(hubSrc).toContain("instrument.startsWith('KRSTOCK:')")
-    expect(hubSrc).toContain("JSON.stringify({ instrument, horizon, locale })")
+    expect(hubSrc).toContain('JSON.stringify({ instrument: selectedInstrument, horizon, locale })')
     expect(hubSrc).toContain('/api/league/generate')
     expect(hubSrc).toContain('/api/league/card?instrument=${encodeURIComponent(instrument)}')
   })

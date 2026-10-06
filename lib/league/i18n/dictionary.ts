@@ -697,6 +697,12 @@ export type LeagueUiPack = {
     noInstruments: string
     /** Paid CTA — MUST carry its price. Same button for create and unlock. */
     openRound: (credits: number) => string
+    /** No round row yet. Starts the shared generate flow. MUST carry its price. */
+    generateForty: (credits: number) => string
+    /** Round exists and this viewer can already read it. */
+    viewCard: string
+    /** Job is queued or running. Button stays disabled. */
+    generatingQueue: (position: number) => string
     /** Busy label while the open press is in flight (~a second). */
     openingRound: string
     /** Permanent-access promise under the CTA. */
@@ -1344,6 +1350,9 @@ const en: LeagueUiPack = {
     loading: 'Loading\u2026',
     noInstruments: 'The league isn\u2019t available in your region yet.',
     openRound: (credits) => `Open this round \u00b7 ${credits} credits`,
+    generateForty: (credits) => `Generate 40 AI predictions \u00b7 ${credits} credits`,
+    viewCard: 'View card',
+    generatingQueue: (position) => `Generating \u00b7 queue ${position}`,
     openingRound: 'Opening\u2026',
     openRoundNote: 'One payment per round. Once opened, you can come back to it any time \u2014 including after grading \u2014 at no extra charge.',
     generationQueued: 'In line \u2014 your round starts shortly. You can close this screen; it keeps running.',
@@ -1974,6 +1983,9 @@ const ko: LeagueUiPack = {
     loading: '불러오는 중…',
     noInstruments: '아직 회원님의 지역에서는 리그를 이용할 수 없습니다.',
     openRound: (credits) => `이 라운드 열람 · ${credits} 크레딧`,
+    generateForty: (credits) => `AI 40개 예측 생성 · ${credits} 크레딧`,
+    viewCard: '카드 보기',
+    generatingQueue: (position) => `생성 중 · 대기 ${position}번째`,
     openingRound: '여는 중…',
     openRoundNote: '라운드당 1회 결제입니다. 한 번 열면 채점 이후를 포함해 언제든 추가 비용 없이 다시 볼 수 있습니다.',
     generationQueued: '대기열에 등록되었습니다 — 곧 시작됩니다. 화면을 닫아도 계속 진행됩니다.',
@@ -2600,6 +2612,9 @@ const ja: LeagueUiPack = {
     loading: '読み込み中…',
     noInstruments: 'お住まいの地域では、リーグはまだご利用いただけません。',
     openRound: (credits) => `このラウンドを開く・${credits}クレジット`,
+    generateForty: (credits) => `AI 40件の予測を生成 · ${credits}クレジット`,
+    viewCard: 'カードを見る',
+    generatingQueue: (position) => `生成中 · 待ち ${position}番目`,
     openingRound: '開いています…',
     openRoundNote: 'ラウンドごとに1回のお支払いです。一度開けば、採点後も含めていつでも追加料金なしで再閲覧できます。',
     generationQueued: '順番待ちに登録されました — まもなく開始します。画面を閉じても処理は続きます。',
@@ -3222,6 +3237,9 @@ const zhTW: LeagueUiPack = {
     loading: '載入中…',
     noInstruments: '您所在的地區尚未開放本聯賽。',
     openRound: (credits) => `開啟此回合・${credits} 點數`,
+    generateForty: (credits) => `生成 40 個 AI 預測 · ${credits} 點數`,
+    viewCard: '查看卡片',
+    generatingQueue: (position) => `生成中 · 排隊第 ${position} 位`,
     openingRound: '開啟中…',
     openRoundNote: '每回合僅收費一次。開啟後可隨時重看（包含評分後），不再另外收費。',
     generationQueued: '已進入佇列 — 即將開始。關閉畫面也會繼續進行。',
@@ -3857,6 +3875,9 @@ const fr: LeagueUiPack = {
     loading: 'Chargement\u2026',
     noInstruments: 'La ligue n\u2019est pas encore disponible dans votre région.',
     openRound: (credits) => `Ouvrir cette manche \u00b7 ${credits} crédits`,
+    generateForty: (credits) => `Générer 40 prédictions IA \u00b7 ${credits} crédits`,
+    viewCard: 'Voir la carte',
+    generatingQueue: (position) => `Génération · file ${position}`,
     openingRound: 'Ouverture\u2026',
     openRoundNote: 'Paiement unique par manche. Une fois ouverte, vous pouvez y revenir à tout moment — même après notation — sans frais supplémentaires.',
     generationQueued: 'En file d\u2019attente — votre manche démarre sous peu. Vous pouvez fermer cet écran, le traitement continue.',
@@ -4500,6 +4521,9 @@ const es: LeagueUiPack = {
     loading: 'Cargando\u2026',
     noInstruments: 'La liga todavía no está disponible en tu región.',
     openRound: (credits) => `Abrir esta ronda \u00b7 ${credits} créditos`,
+    generateForty: (credits) => `Generar 40 predicciones de IA \u00b7 ${credits} créditos`,
+    viewCard: 'Ver la tarjeta',
+    generatingQueue: (position) => `Generando · cola ${position}`,
     openingRound: 'Abriendo\u2026',
     openRoundNote: 'Pago único por ronda. Una vez abierta, puedes volver a verla cuando quieras — incluso tras la calificación — sin costo adicional.',
     generationQueued: 'En cola — tu ronda comienza en breve. Puedes cerrar esta pantalla; sigue en marcha.',
@@ -5134,6 +5158,9 @@ const ar: LeagueUiPack = {
     loading: 'جارٍ التحميل…',
     noInstruments: 'الدوري غير متاح بعد في منطقتك.',
     openRound: (credits) => `افتح هذه الجولة · ${credits} من الرصيد`,
+    generateForty: (credits) => `إنشاء 40 توقعًا · ${credits} رصيد`,
+    viewCard: 'عرض البطاقة',
+    generatingQueue: (position) => `جارٍ الإنشاء · الانتظار ${position}`,
     openingRound: 'جارٍ الفتح…',
     openRoundNote: 'دفعة واحدة لكل جولة. بعد فتحها يمكنك العودة إليها في أي وقت — حتى بعد التقييم — دون رسوم إضافية.',
     generationQueued: 'في قائمة الانتظار — ستبدأ جولتك قريبًا. يمكنك إغلاق هذه الشاشة وسيستمر التنفيذ.',
@@ -5771,6 +5798,9 @@ const pt: LeagueUiPack = {
     loading: 'Carregando\u2026',
     noInstruments: 'A liga ainda não está disponível na sua região.',
     openRound: (credits) => `Abrir esta rodada \u00b7 ${credits} créditos`,
+    generateForty: (credits) => `Gerar 40 previsões de IA \u00b7 ${credits} créditos`,
+    viewCard: 'Ver o cartão',
+    generatingQueue: (position) => `Gerando · fila ${position}`,
     openingRound: 'Abrindo\u2026',
     openRoundNote: 'Pagamento único por rodada. Depois de aberta, você pode revê-la a qualquer momento — inclusive após a avaliação — sem custo extra.',
     generationQueued: 'Na fila — sua rodada começa em instantes. Pode fechar esta tela; o processo continua.',

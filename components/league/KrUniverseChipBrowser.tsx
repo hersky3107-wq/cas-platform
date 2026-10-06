@@ -339,6 +339,11 @@ export function KrSelectionBar({
   pendingNotice,
   onPickHorizon,
   onClose,
+  actionLabel,
+  actionEnabled = false,
+  actionEta = null,
+  actionNotice = null,
+  onAction,
 }: {
   selected: KrUniverseRow
   showHorizons: boolean
@@ -347,6 +352,11 @@ export function KrSelectionBar({
   pendingNotice: string | null
   onPickHorizon: (next: UiHorizon) => void
   onClose: () => void
+  actionLabel?: string | null
+  actionEnabled?: boolean
+  actionEta?: string | null
+  actionNotice?: string | null
+  onAction?: () => void
 }) {
   const ticker = selected.market === 'US' ? krTickerFromInstrument(selected.instrument) : selected.code
   return (
@@ -386,6 +396,15 @@ export function KrSelectionBar({
               {pendingNotice}
             </p>
           ) : null}
+          {actionLabel ? (
+            <InstrumentActionButton
+              label={actionLabel}
+              enabled={actionEnabled}
+              eta={actionEta}
+              notice={actionNotice}
+              onPress={onAction}
+            />
+          ) : null}
         </div>
         <button
           type="button"
@@ -400,13 +419,57 @@ export function KrSelectionBar({
   )
 }
 
+export function InstrumentActionButton({
+  label,
+  enabled,
+  eta,
+  notice,
+  onPress,
+}: {
+  label: string
+  enabled: boolean
+  eta?: string | null
+  notice?: string | null
+  onPress?: () => void
+}) {
+  return (
+    <div className="mt-2">
+      <button
+        type="button"
+        data-testid="instrument-action"
+        disabled={!enabled}
+        onClick={() => onPress?.()}
+        className="league-btn-primary w-full"
+      >
+        {label}
+      </button>
+      {eta ? (
+        <p data-testid="instrument-action-eta" className="mt-1 text-[11px] leading-relaxed text-slate-500">
+          {eta}
+        </p>
+      ) : null}
+      {notice ? <p className="mt-1 text-xs text-rose-700">{notice}</p> : null}
+    </div>
+  )
+}
+
 export function KrUniverseChipBrowser({
   onSelectUsInstrument,
   isAdmin = false,
+  actionLabel = null,
+  actionEnabled = false,
+  actionEta = null,
+  actionNotice = null,
+  onAction,
 }: {
   onSelectUsInstrument: (instrument: string, horizon: UiHorizon) => void
   /** Hub `viewerIsAdmin`. KR stocks generate for every signed-in user. */
   isAdmin?: boolean
+  actionLabel?: string | null
+  actionEnabled?: boolean
+  actionEta?: string | null
+  actionNotice?: string | null
+  onAction?: () => void
 }) {
   void isAdmin
   const { t } = useLeagueLocale()
@@ -661,6 +724,11 @@ export function KrUniverseChipBrowser({
           pendingNotice={null}
           onPickHorizon={pickHorizon}
           onClose={() => setSelected(null)}
+          actionLabel={actionLabel}
+          actionEnabled={actionEnabled}
+          actionEta={actionEta}
+          actionNotice={actionNotice}
+          onAction={onAction}
         />
       ) : null}
     </div>
