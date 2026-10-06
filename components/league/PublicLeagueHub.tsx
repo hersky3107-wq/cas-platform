@@ -2,7 +2,6 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import Link from 'next/link'
-import { ChevronLeft } from 'lucide-react'
 import { ModuleCreditsLink } from '@/components/credits/ModuleCreditsLink'
 import { FreeformPromptBox } from '@/components/league/FreeformPromptBox'
 import { PredictionCard } from '@/components/league/PredictionCard'
@@ -13,7 +12,6 @@ import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
 import type { CardData, ColorBucket, LockedCardPayload } from '@/lib/league/card-types'
 import { GENERATION_POLL_MS } from '@/lib/league/generation/policy'
 import {
-  defaultCatalogCategoryId,
   isFreeformSearchCategory,
   usesHorizonChipRow,
   type CatalogKind,
@@ -39,16 +37,15 @@ import { formatSessionDate } from '@/lib/league/card-header-copy'
 import { publicFacingLabel } from '@/lib/league/public-label'
 import type { FreeformRecentItem } from '@/lib/league/freeform-recent'
 import { AirankRankingPicker } from '@/components/league/AirankRankingPicker'
-import { HubDoors } from '@/components/league/HubDoors'
+import { AdminPreviewProvider, useAdminPreview } from '@/lib/league/admin-preview'
 import {
-  HUB_DOOR_STORAGE_KEY,
   categoryFromSearch,
   chipsForDoor,
   doorForCategory,
-  parseStoredDoor,
+  doorPath,
   type HubDoor,
-  type HubDoorFilter,
 } from '@/lib/league/hub-doors'
+import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
 
 export type LeagueHubTab = 'cards' | 'leaderboard' | 'recordRoom'
 
@@ -96,48 +93,81 @@ type InstrumentsPayload = {
  * Freeform input sits under the category chips. The gateway composes a
  * catalog proposition; it never forwards the user's sentence to the models.
  */
-export function PublicLeagueHub({ initialTab = 'cards' }: { initialTab?: LeagueHubTab }) {
-  const { t, dir } = useLeagueLocale()
+export function PublicLeagueHub({
+  initialTab = 'cards',
+  door,
+}: {
+  initialTab?: LeagueHubTab
+  door: HubDoor
+}) {
+  const { t, dir, locale } = useLeagueLocale()
   const [tab, setTab] = useState<LeagueHubTab>(initialTab)
+  const [realAdmin, setRealAdmin] = useState(false)
+  const copy = leagueSurfaceCopy(locale).doors
+  const doorTitle = door === 'finance' ? copy.financeTitle : copy.worldTitle
 
   return (
-    <div dir={dir} className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 bg-slate-50 px-3 pb-16 pt-3 sm:px-6">
-      <header className="flex items-center justify-between gap-2">
-        <Link
-          href="/"
-          aria-label="Home"
-          className="inline-flex items-center rounded-full bg-white px-3 py-2 text-sm text-slate-700 shadow-sm transition hover:bg-slate-100"
-        >
-          <ChevronLeft className="h-4 w-4" aria-hidden />
-        </Link>
-        <ModuleCreditsLink className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-white px-3 py-2 text-xs font-semibold text-emerald-700 transition hover:bg-emerald-50" />
-      </header>
+    <AdminPreviewProvider isRealAdmin={realAdmin}>
+      <div
+        dir={dir}
+        data-league-door={door}
+        data-testid={`league-door-${door}`}
+        className="mx-auto flex min-h-screen w-full max-w-7xl flex-col gap-4 bg-slate-50 px-3 pb-16 pt-3 sm:px-6"
+      >
+        <header className="flex items-center justify-between gap-2">
+          <Link href="/league" className="league-btn-primary bg-white text-slate-800" data-testid="door-back">
+            {copy.backToDoors}
+          </Link>
+          {door === 'world' ? (
+            <ModuleCreditsLink className="league-btn-primary border border-emerald-300 bg-white text-emerald-700" />
+          ) : null}
+        </header>
 
-      <div>
-        <h1 className="text-xl font-bold text-slate-900">{t.hub.title}</h1>
-        <p className="mt-1 text-xs leading-relaxed text-slate-600">{t.hub.subtitle}</p>
+        <div>
+          <h1 className="text-xl font-bold text-slate-900">{doorTitle}</h1>
+        </div>
+
+        <AdminPreviewToggle />
+
+        <nav className="flex gap-1 rounded-full bg-white p-1 shadow-sm" aria-label={doorTitle}>
+          {(['cards', 'leaderboard', 'recordRoom'] as const).map((key) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => setTab(key)}
+              aria-current={tab === key}
+              className={`league-chip flex-1 ${
+                tab === key ? 'bg-slate-900 text-white' : 'bg-transparent text-slate-600 hover:bg-slate-100'
+              }`}
+            >
+              {t.hub.tabs[key]}
+            </button>
+          ))}
+        </nav>
+
+        {tab === 'cards' ? <CardsPanel door={door} onAdminKnown={setRealAdmin} /> : null}
+        {tab === 'leaderboard' ? <LeaderboardPanel door={door} /> : null}
+        {tab === 'recordRoom' ? <RecordRoomPanel door={door} /> : null}
       </div>
+    </AdminPreviewProvider>
+  )
+}
 
-      <nav className="flex gap-1 rounded-full bg-white p-1 shadow-sm" aria-label={t.hub.title}>
-        {(['cards', 'leaderboard', 'recordRoom'] as const).map((key) => (
-          <button
-            key={key}
-            type="button"
-            onClick={() => setTab(key)}
-            aria-current={tab === key}
-            className={`flex-1 rounded-full px-2 py-2 text-xs font-semibold transition ${
-              tab === key ? 'bg-slate-900 text-white' : 'text-slate-600 hover:bg-slate-100'
-            }`}
-          >
-            {t.hub.tabs[key]}
-          </button>
-        ))}
-      </nav>
-
-      {tab === 'cards' ? <CardsPanel /> : null}
-      {tab === 'leaderboard' ? <LeaderboardPanel /> : null}
-      {tab === 'recordRoom' ? <RecordRoomPanel /> : null}
-    </div>
+function AdminPreviewToggle() {
+  const { locale } = useLeagueLocale()
+  const { isRealAdmin, previewAsUser, setPreviewAsUser } = useAdminPreview()
+  if (!isRealAdmin) return null
+  const copy = leagueSurfaceCopy(locale).doors
+  return (
+    <button
+      type="button"
+      data-testid="admin-preview-as-user"
+      data-active={previewAsUser ? 'true' : 'false'}
+      onClick={() => setPreviewAsUser(!previewAsUser)}
+      className="league-chip w-auto self-start bg-white text-slate-700 ring-1 ring-slate-200"
+    >
+      {previewAsUser ? copy.previewAsOperator : copy.previewAsUser}
+    </button>
   )
 }
 
@@ -163,8 +193,15 @@ function koreaLaneShowsInstrumentPanel(
   return isAdmin && instrument.startsWith('KRSTOCK:')
 }
 
-function CardsPanel() {
+function CardsPanel({
+  door,
+  onAdminKnown,
+}: {
+  door: HubDoor
+  onAdminKnown: (isAdmin: boolean) => void
+}) {
   const { t, locale } = useLeagueLocale()
+  const { effectiveIsAdmin } = useAdminPreview()
   const [categories, setCategories] = useState<PublicCatalogCategory[] | null>(null)
   const [selectedCategory, setSelectedCategory] = useState<PublicCategoryId | null>(null)
   const [selectedInstrument, setSelectedInstrument] = useState<string | null>(null)
@@ -176,12 +213,10 @@ function CardsPanel() {
   const [declaredMissing, setDeclaredMissing] = useState(false)
   const [countryMismatch, setCountryMismatch] = useState(false)
   const [admissionLane, setAdmissionLane] = useState<'global' | 'korea'>('global')
-  const [viewerIsAdmin, setViewerIsAdmin] = useState(false)
   const [adminLane, setAdminLane] = useState<'global' | 'korea' | null>(null)
   const [krAdvisoryRegNo, setKrAdvisoryRegNo] = useState<string | undefined>()
   const [krBizNo, setKrBizNo] = useState<string | undefined>()
   const [promptSeed, setPromptSeed] = useState('')
-  const [door, setDoor] = useState<HubDoorFilter>('all')
   // Guards against a slower, now-superseded fetch overwriting the result of a
   // later one (e.g. clicking two instruments/horizons in quick succession).
   const requestIdRef = useRef(0)
@@ -265,21 +300,19 @@ function CardsPanel() {
         setDeclaredMissing(Boolean(body.jurisdiction?.declaredMissing))
         setCountryMismatch(Boolean(body.jurisdiction?.mismatch))
         setAdmissionLane(body.stockLane === 'korea' ? 'korea' : 'global')
-        setViewerIsAdmin(Boolean(body.viewerIsAdmin))
+        onAdminKnown(Boolean(body.viewerIsAdmin))
         if (body.krAdvisoryRegNo) setKrAdvisoryRegNo(body.krAdvisoryRegNo)
         if (body.krBizNo) setKrBizNo(body.krBizNo)
-        setCategories(list)
-        const visibleIds = list.map((row) => row.id)
+        const visible = chipsForDoor(list, door)
+        setCategories(visible)
+        const visibleIds = visible.map((row) => row.id)
         const requested = categoryFromSearch(window.location.search, visibleIds)
-        const stored = parseStoredDoor(window.localStorage.getItem(HUB_DOOR_STORAGE_KEY))
-        const nextDoor: HubDoorFilter = requested
-          ? (doorForCategory(requested) ?? 'all')
-          : (stored ?? 'all')
-        setDoor(nextDoor)
-        const visible = chipsForDoor(list, nextDoor)
-        const firstId =
-          (requested as PublicCategoryId | null) ??
-          (nextDoor === 'all' ? defaultCatalogCategoryId(list) : (visible[0]?.id ?? null))
+        if (requested && doorForCategory(requested) && doorForCategory(requested) !== door) {
+          const nextDoor = doorForCategory(requested)!
+          window.location.replace(`${doorPath(nextDoor)}?cat=${encodeURIComponent(requested)}`)
+          return
+        }
+        const firstId = (requested as PublicCategoryId | null) ?? visible[0]?.id ?? null
         setSelectedCategory(firstId)
         const firstCat = list.find((c) => c.id === firstId)
         if (firstCat && isFreeformSearchCategory(firstCat.id)) {
@@ -306,7 +339,7 @@ function CardsPanel() {
     return () => {
       cancelled = true
     }
-  }, [loadCard])
+  }, [loadCard, door, onAdminKnown])
 
   // POLL while a background generation job is queued/running. Survives locked
   // screens and closed tabs by construction: the job runs server-side, and
@@ -356,28 +389,6 @@ function CardsPanel() {
     void loadCard(first, horizon)
   }
 
-  function rememberDoor(next: HubDoorFilter) {
-    setDoor(next)
-    try {
-      window.localStorage.setItem(HUB_DOOR_STORAGE_KEY, next)
-    } catch {
-      /* private mode */
-    }
-  }
-
-  function chooseDoor(next: HubDoor) {
-    rememberDoor(next)
-    if (!categories || !selectedCategory) return
-    const visible = chipsForDoor(categories, next)
-    if (visible.some((row) => row.id === selectedCategory)) return
-    const first = visible[0]
-    if (first) selectCategory(first.id)
-  }
-
-  function showAllDoors() {
-    rememberDoor('all')
-  }
-
   // A plain click handler, not a `[selected]`-keyed effect: re-clicking the
   // ALREADY-selected instrument must still fire a fresh fetch.
   function selectInstrument(instrument: string) {
@@ -406,13 +417,13 @@ function CardsPanel() {
   if (categories.length === 0) return <PanelMessage text={t.hub.noInstruments} />
 
   const active = categories.find((c) => c.id === selectedCategory) ?? null
-  const stockLane = viewerIsAdmin && adminLane ? adminLane : admissionLane
+  const stockLane = effectiveIsAdmin && adminLane ? adminLane : admissionLane
   const koreaStocks = active?.id === 'stocks' && stockLane === 'korea'
   const showPrompt = Boolean(
     selectedCategory &&
       active &&
       (active.id === 'stocks'
-        ? stockLane === 'global' && (active.promptAllowed || viewerIsAdmin)
+        ? stockLane === 'global' && (active.promptAllowed || effectiveIsAdmin)
         : active.promptAllowed),
   )
   const showInstrumentChips = Boolean(
@@ -438,23 +449,14 @@ function CardsPanel() {
 
   return (
     <div className="flex flex-col gap-3">
-      <HubDoors
-        categories={categories}
-        door={door}
-        locale={locale}
-        labelFor={(id) => t.catalog.categories[id]}
-        onChooseDoor={chooseDoor}
-        onShowAll={showAllDoors}
-        onSelectCategory={selectCategory}
-      />
-      <div className="-mx-3 flex gap-2 overflow-x-auto px-3 pb-1 sm:mx-0 sm:flex-wrap sm:overflow-visible sm:px-0">
+      <div className="league-chip-grid" data-testid="door-chips">
         {visibleCategories.map((c) => (
           <button
             key={c.id}
             type="button"
             onClick={() => selectCategory(c.id)}
             aria-current={selectedCategory === c.id}
-            className={categoryChipClass(c.tone, selectedCategory === c.id)}
+            className={`${categoryChipClass(c.tone, selectedCategory === c.id)} league-chip`}
           >
             {t.catalog.categories[c.id]}
           </button>
@@ -475,8 +477,8 @@ function CardsPanel() {
         </p>
       ) : null}
 
-      {viewerIsAdmin && active?.id === 'stocks' ? (
-        <div className="flex gap-1.5" data-admin-stock-lane={stockLane}>
+      {effectiveIsAdmin && active?.id === 'stocks' ? (
+        <div className="flex gap-1.5" data-admin-stock-lane={stockLane} data-testid="admin-stock-lane">
           {(['global', 'korea'] as const).map((lane) => (
             <button
               key={lane}
@@ -490,7 +492,7 @@ function CardsPanel() {
                 }
               }}
               aria-current={stockLane === lane}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              className={`league-chip ${
                 stockLane === lane ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'
               }`}
             >
@@ -566,7 +568,7 @@ function CardsPanel() {
         <KoreaStockLane
           regNo={krAdvisoryRegNo}
           bizNo={krBizNo}
-          isAdmin={viewerIsAdmin}
+          isAdmin={effectiveIsAdmin}
           onSelectUsInstrument={(instrument, nextHorizon) => {
             setHorizon(nextHorizon)
             setSelectedInstrument(instrument)
@@ -621,7 +623,7 @@ function CardsPanel() {
                 type="button"
                 onClick={() => selectInstrument(i.instrument)}
                 aria-current={selected}
-                className={`rounded-xl px-3 py-2 text-left text-xs font-semibold transition ${
+                className={`league-chip text-left ${
                   selected ? 'bg-slate-900 text-white' : 'bg-white text-slate-700 shadow-sm hover:bg-slate-100'
                 }`}
               >
@@ -643,7 +645,7 @@ function CardsPanel() {
               type="button"
               onClick={() => selectHorizon(h)}
               aria-current={horizon === h}
-              className={`rounded-full px-3 py-1.5 text-xs font-semibold transition ${
+              className={`league-chip ${
                 horizon === h ? 'bg-slate-900 text-white' : 'bg-white text-slate-600 shadow-sm hover:bg-slate-100'
               }`}
             >
@@ -680,7 +682,7 @@ function CardsPanel() {
       {(view.kind === 'locked' || view.kind === 'card') &&
       (selectedRoundId ||
         (selectedInstrument &&
-          koreaLaneShowsInstrumentPanel(koreaStocks, viewerIsAdmin, selectedInstrument))) ? (
+          koreaLaneShowsInstrumentPanel(koreaStocks, effectiveIsAdmin, selectedInstrument))) ? (
         <div data-testid="league-round-card">
           {view.kind === 'locked' && (selectedInstrument ?? view.locked.round.instrument) ? (
             <LockedRoundPanel
@@ -806,7 +808,7 @@ function LockedRoundPanel({
         type="button"
         disabled={busy}
         onClick={() => void open()}
-        className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white transition disabled:opacity-50 md:max-w-sm"
+        className="league-btn-primary mt-4 w-full md:max-w-sm"
       >
         {busy ? t.hub.openingRound : t.hub.openRound(locked.price)}
       </button>
@@ -879,7 +881,7 @@ function GenerationBanner({
         type="button"
         disabled={busy}
         onClick={() => void retry()}
-        className="mt-2 rounded-full bg-white px-3 py-1.5 text-xs font-semibold text-amber-900 shadow-sm disabled:opacity-50"
+        className="league-btn-primary mt-2 bg-white text-amber-900"
       >
         {busy ? t.hub.openingRound : t.hub.retryGeneration}
       </button>
@@ -938,7 +940,7 @@ function DeclaredCountryForm({ onSaved }: { onSaved: () => void }) {
           type="button"
           disabled={busy}
           onClick={() => void save()}
-          className="rounded-xl bg-slate-900 px-3 text-xs font-semibold text-white disabled:opacity-50"
+          className="league-btn-primary"
         >
           {t.gating.registeredCountrySave}
         </button>
@@ -1070,17 +1072,16 @@ function instrumentLabel(
 }
 
 function categoryChipClass(tone: ColorBucket, selected: boolean): string {
-  const base = 'shrink-0 whitespace-nowrap rounded-full px-4 py-2.5 text-sm font-semibold transition min-h-[44px]'
   if (tone === 'green') {
-    return selected ? `${base} bg-emerald-600 text-white` : `${base} bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100`
+    return selected ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-800 ring-1 ring-emerald-200 hover:bg-emerald-100'
   }
   if (tone === 'yellow') {
-    return selected ? `${base} bg-amber-500 text-white` : `${base} bg-amber-50 text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100`
+    return selected ? 'bg-amber-500 text-white' : 'bg-amber-50 text-amber-900 ring-1 ring-amber-200 hover:bg-amber-100'
   }
-  return selected ? `${base} bg-rose-600 text-white` : `${base} bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100`
+  return selected ? 'bg-rose-600 text-white' : 'bg-rose-50 text-rose-800 ring-1 ring-rose-200 hover:bg-rose-100'
 }
 
-function LeaderboardPanel() {
+function LeaderboardPanel({ door }: { door: HubDoor }) {
   const { t } = useLeagueLocale()
   const [data, setData] = useState<LeaderboardData | null>(null)
   const [locked, setLocked] = useState<{ required: number } | null>(null)
@@ -1088,7 +1089,7 @@ function LeaderboardPanel() {
   const [buying, setBuying] = useState(false)
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/league/leaderboard', { credentials: 'include' })
+    const res = await fetch(`/api/league/leaderboard?door=${door}`, { credentials: 'include' })
     const body = (await res.json()) as LeaderboardData | { error: string }
     if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
     if (isLockedViewPayload(body)) {
@@ -1098,7 +1099,7 @@ function LeaderboardPanel() {
     }
     setLocked(null)
     setData(body as LeaderboardData)
-  }, [])
+  }, [door])
 
   useEffect(() => {
     let cancelled = false
@@ -1122,7 +1123,7 @@ function LeaderboardPanel() {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
-        body: '{}',
+        body: JSON.stringify({ door }),
       })
       const body = (await res.json()) as LeaderboardData | { error: string; required?: number; balance?: number }
       if (res.status === 402 && 'required' in body && 'balance' in body && body.required != null && body.balance != null) {
@@ -1137,7 +1138,7 @@ function LeaderboardPanel() {
     } finally {
       setBuying(false)
     }
-  }, [t.hub.genericError, t.leaderboard])
+  }, [door, t.hub.genericError, t.leaderboard])
 
   if (error && !locked && !data) return <PanelMessage text={error === 'load_failed' ? t.hub.genericError : error} tone="error" />
   if (locked) {
@@ -1156,7 +1157,7 @@ function LeaderboardPanel() {
   return <Leaderboard data={data} />
 }
 
-function RecordRoomPanel() {
+function RecordRoomPanel({ door }: { door: HubDoor }) {
   const { t } = useLeagueLocale()
   const [data, setData] = useState<RecordRoomPage | null>(null)
   const [locked, setLocked] = useState<{ required: number } | null>(null)
@@ -1164,7 +1165,7 @@ function RecordRoomPanel() {
   const [buying, setBuying] = useState(false)
 
   const load = useCallback(async () => {
-    const res = await fetch('/api/league/record-room?page=1&pageSize=20', { credentials: 'include' })
+    const res = await fetch(`/api/league/record-room?page=1&pageSize=20&door=${door}`, { credentials: 'include' })
     const body = (await res.json()) as RecordRoomPage | { error: string }
     if (!res.ok) throw new Error('error' in body ? body.error : `request failed (${res.status})`)
     if (isLockedViewPayload(body)) {
@@ -1174,7 +1175,7 @@ function RecordRoomPanel() {
     }
     setLocked(null)
     setData(body as RecordRoomPage)
-  }, [])
+  }, [door])
 
   useEffect(() => {
     let cancelled = false
@@ -1199,7 +1200,7 @@ function RecordRoomPanel() {
           method: 'POST',
           credentials: 'include',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ refresh }),
+          body: JSON.stringify({ refresh, door }),
         })
         const body = (await res.json()) as RecordRoomPage | { error: string; required?: number; balance?: number }
         if (res.status === 402 && 'required' in body && 'balance' in body && body.required != null && body.balance != null) {
@@ -1215,7 +1216,7 @@ function RecordRoomPanel() {
         setBuying(false)
       }
     },
-    [t.hub.genericError, t.recordRoom]
+    [door, t.hub.genericError, t.recordRoom]
   )
 
   if (error && !locked && !data) return <PanelMessage text={error === 'load_failed' ? t.hub.genericError : error} tone="error" />
@@ -1265,7 +1266,7 @@ function UnlockPanel({
         type="button"
         disabled={busy}
         onClick={onUnlock}
-        className="mt-4 w-full rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white disabled:opacity-50"
+        className="league-btn-primary mt-4 w-full"
       >
         {busy ? busyLabel : title}
       </button>

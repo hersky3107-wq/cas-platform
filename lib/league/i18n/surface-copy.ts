@@ -23,11 +23,16 @@ export type LeagueSurfaceCopy = {
     financeBody: string
     /** Korean lane only. Memecoin is blocked there, so the door must not name it. */
     financeBodyNoMemecoin?: string
-    financeHint: string
+    financeItems: string
+    financeItemsNoMemecoin?: string
     worldTitle: string
     worldBody: string
-    worldHint: string
-    showAll: string
+    worldItems: string
+    enter: string
+    backToDoors: string
+    previewAsUser: string
+    previewAsOperator: string
+    testBadge: string
   }
 }
 
@@ -83,13 +88,18 @@ const ko: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: '금융 예측',
-    financeBody: '주식·암호화폐·외환·금·지수/ETF·원자재·밈코인의 방향을 AI 40개가 예측합니다.',
-    financeBodyNoMemecoin: '주식·암호화폐·외환·금·지수/ETF·원자재의 방향을 AI 40개가 예측합니다.',
-    financeHint: '종목과 기간 선택',
+    financeBody: '시장 방향만 예측합니다. AI 40개가 같은 재료를 보고 서로 다른 결론을 냅니다.',
+    financeBodyNoMemecoin: '시장 방향만 예측합니다. AI 40개가 같은 재료를 보고 서로 다른 결론을 냅니다.',
+    financeItems: '주식 · 암호화폐 · 외환 · 금·귀금속 · 지수/ETF · 원자재·에너지 · 밈코인',
+    financeItemsNoMemecoin: '주식 · 암호화폐 · 외환 · 금·귀금속 · 지수/ETF · 원자재·에너지',
     worldTitle: '세상 예측',
-    worldBody: '정치·선거, 연예, 스포츠, 부동산, 테크·AI 순위를 예/아니오로 물어보세요.',
-    worldHint: '질문 입력',
-    showAll: '전체 보기',
+    worldBody: '세상일에 예/아니오로 물어보세요. 공개된 일정과 공식 발표로 채점합니다.',
+    worldItems: '정치·선거 · 엔터테인먼트 · 스포츠 · 부동산 · 테크·AI 순위',
+    enter: '들어가기',
+    backToDoors: '← 대문으로',
+    previewAsUser: '일반 사용자로 보기',
+    previewAsOperator: '운영자로 보기',
+    testBadge: '테스트',
   },
 }
 
@@ -145,12 +155,17 @@ const en: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: 'Finance',
-    financeBody: '40 AIs call the direction of stocks, crypto, FX, gold, index ETFs, commodities, and memecoins.',
-    financeHint: 'Pick a symbol and a horizon',
+    financeBody: 'Direction only. Forty AIs read the same brief and can still disagree.',
+    financeItems: 'Stocks · Crypto · FX · Gold & metals · Index / ETF · Commodities & energy · Memecoins',
+    financeItemsNoMemecoin: 'Stocks · Crypto · FX · Gold & metals · Index / ETF · Commodities & energy',
     worldTitle: 'The world',
-    worldBody: 'Ask yes or no about politics, entertainment, sports, housing, and tech rankings.',
-    worldHint: 'Type a question',
-    showAll: 'Show all',
+    worldBody: 'Ask yes or no about the world. Official calendars and publications grade the call.',
+    worldItems: 'Politics & elections · Entertainment · Sports · Housing · Tech & AI rankings',
+    enter: 'Enter',
+    backToDoors: '← Doors',
+    previewAsUser: 'View as a normal user',
+    previewAsOperator: 'View as operator',
+    testBadge: 'Test',
   },
 }
 
@@ -188,12 +203,17 @@ const ja: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: '金融予測',
-    financeBody: '株・暗号資産・為替・金・指数/ETF・コモディティ・ミームコインの方向をAI 40体が予測します。',
-    financeHint: '銘柄と期間を選ぶ',
+    financeBody: '方向だけを予測します。AI 40体が同じ材料を見ても結論は分かれます。',
+    financeItems: '株 · 暗号資産 · 為替 · 金・貴金属 · 指数/ETF · 商品・エネルギー · ミームコイン',
+    financeItemsNoMemecoin: '株 · 暗号資産 · 為替 · 金・貴金属 · 指数/ETF · 商品・エネルギー',
     worldTitle: '世界の予測',
-    worldBody: '政治・選挙、芸能、スポーツ、不動産、テック・AI順位をはい/いいえで聞いてください。',
-    worldHint: '質問を入力',
-    showAll: 'すべて見る',
+    worldBody: '世の中の出来事をはい/いいえで聞いてください。公式の日程と発表で採点します。',
+    worldItems: '政治・選挙 · エンタメ · スポーツ · 不動産 · テック・AI順位',
+    enter: '入る',
+    backToDoors: '← 玄関へ',
+    previewAsUser: '一般ユーザーとして見る',
+    previewAsOperator: '運営者として見る',
+    testBadge: 'テスト',
   },
 }
 
@@ -231,12 +251,17 @@ const zhTW: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: '金融預測',
-    financeBody: '40個AI預測股票、加密貨幣、外匯、黃金、指數/ETF、原物料、迷因幣的方向。',
-    financeHint: '選標的和期間',
+    financeBody: '只預測方向。40個AI看同一份材料，結論仍可能不同。',
+    financeItems: '股票 · 加密貨幣 · 外匯 · 黃金與金屬 · 指數/ETF · 原物料與能源 · 迷因幣',
+    financeItemsNoMemecoin: '股票 · 加密貨幣 · 外匯 · 黃金與金屬 · 指數/ETF · 原物料與能源',
     worldTitle: '世界預測',
-    worldBody: '用是／否問政治選舉、娛樂、運動、房地產、科技與AI排名。',
-    worldHint: '輸入問題',
-    showAll: '看全部',
+    worldBody: '用是／否問世上的事。公開行程與官方發布用來評分。',
+    worldItems: '政治與選舉 · 娛樂 · 運動 · 房地產 · 科技與AI排名',
+    enter: '進入',
+    backToDoors: '← 大門',
+    previewAsUser: '以一般使用者檢視',
+    previewAsOperator: '以營運者檢視',
+    testBadge: '測試',
   },
 }
 
@@ -274,12 +299,17 @@ const fr: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: 'Finance',
-    financeBody: '40 IA prédisent la direction des actions, cryptos, changes, de l’or, des indices/ETF, des matières et des memecoins.',
-    financeHint: 'Choisir un titre et une durée',
+    financeBody: 'La direction seulement. Quarante IA lisent le même dossier et peuvent encore diverger.',
+    financeItems: 'Actions · Crypto · Changes · Or et métaux · Indices / ETF · Matières et énergie · Memecoins',
+    financeItemsNoMemecoin: 'Actions · Crypto · Changes · Or et métaux · Indices / ETF · Matières et énergie',
     worldTitle: 'Le monde',
-    worldBody: 'Posez une question oui/non sur la politique, le spectacle, le sport, l’immobilier et les classements tech.',
-    worldHint: 'Écrire une question',
-    showAll: 'Tout voir',
+    worldBody: 'Posez une question oui/non sur le monde. Les calendriers et publications officiels notent l’appel.',
+    worldItems: 'Politique et élections · Divertissement · Sport · Immobilier · Tech et classements IA',
+    enter: 'Entrer',
+    backToDoors: '← Portes',
+    previewAsUser: 'Voir comme un utilisateur',
+    previewAsOperator: 'Voir comme opérateur',
+    testBadge: 'Test',
   },
 }
 
@@ -317,12 +347,17 @@ const es: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: 'Finanzas',
-    financeBody: '40 IA predicen la dirección de acciones, cripto, divisas, oro, índices/ETF, materias primas y memecoins.',
-    financeHint: 'Elige un activo y un plazo',
+    financeBody: 'Solo la dirección. Cuarenta IA leen el mismo briefing y aún pueden discrepar.',
+    financeItems: 'Acciones · Cripto · Divisas · Oro y metales · Índices / ETF · Materias y energía · Memecoins',
+    financeItemsNoMemecoin: 'Acciones · Cripto · Divisas · Oro y metales · Índices / ETF · Materias y energía',
     worldTitle: 'El mundo',
-    worldBody: 'Pregunta sí o no sobre política, espectáculo, deporte, vivienda y rankings de tecnología.',
-    worldHint: 'Escribe una pregunta',
-    showAll: 'Ver todo',
+    worldBody: 'Pregunta sí o no sobre el mundo. Los calendarios y publicaciones oficiales califican la llamada.',
+    worldItems: 'Política y elecciones · Entretenimiento · Deporte · Vivienda · Tech y rankings de IA',
+    enter: 'Entrar',
+    backToDoors: '← Puertas',
+    previewAsUser: 'Ver como usuario',
+    previewAsOperator: 'Ver como operador',
+    testBadge: 'Prueba',
   },
 }
 
@@ -360,12 +395,17 @@ const ar: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: 'توقعات المال',
-    financeBody: 'أربعون نموذجًا يتوقعون اتجاه الأسهم والعملات المشفرة والنقد والذهب والمؤشرات والسلع وعملات الميم.',
-    financeHint: 'اختر أصلًا ومدة',
+    financeBody: 'الاتجاه فقط. أربعون نموذجًا يقرأون المادة نفسها وقد يختلفون.',
+    financeItems: 'أسهم · عملات مشفرة · نقد · ذهب ومعادن · مؤشرات/صناديق · سلع وطاقة · عملات الميم',
+    financeItemsNoMemecoin: 'أسهم · عملات مشفرة · نقد · ذهب ومعادن · مؤشرات/صناديق · سلع وطاقة',
     worldTitle: 'توقعات العالم',
-    worldBody: 'اسأل بنعم أو لا عن السياسة والفن والرياضة والعقار وترتيب التقنية.',
-    worldHint: 'اكتب سؤالًا',
-    showAll: 'عرض الكل',
+    worldBody: 'اسأل بنعم أو لا عن العالم. الجداول والمنشورات الرسمية تقيّم النداء.',
+    worldItems: 'سياسة وانتخابات · ترفيه · رياضة · عقار · تقنية وترتيب الذكاء',
+    enter: 'دخول',
+    backToDoors: '← الأبواب',
+    previewAsUser: 'عرض كمستخدم عادي',
+    previewAsOperator: 'عرض كمشغّل',
+    testBadge: 'اختبار',
   },
 }
 
@@ -403,12 +443,17 @@ const pt: LeagueSurfaceCopy = {
   },
   doors: {
     financeTitle: 'Finanças',
-    financeBody: '40 IAs preveem a direção de ações, cripto, câmbio, ouro, índices/ETF, commodities e memecoins.',
-    financeHint: 'Escolha um ativo e um prazo',
+    financeBody: 'Só a direção. Quarenta IAs leem o mesmo briefing e ainda podem discordar.',
+    financeItems: 'Ações · Cripto · Câmbio · Ouro e metais · Índices / ETF · Commodities e energia · Memecoins',
+    financeItemsNoMemecoin: 'Ações · Cripto · Câmbio · Ouro e metais · Índices / ETF · Commodities e energia',
     worldTitle: 'O mundo',
-    worldBody: 'Pergunte sim ou não sobre política, entretenimento, esporte, imóveis e rankings de tecnologia.',
-    worldHint: 'Digite uma pergunta',
-    showAll: 'Ver tudo',
+    worldBody: 'Pergunte sim ou não sobre o mundo. Calendários e publicações oficiais pontuam a chamada.',
+    worldItems: 'Política e eleições · Entretenimento · Esporte · Imóveis · Tech e rankings de IA',
+    enter: 'Entrar',
+    backToDoors: '← Portas',
+    previewAsUser: 'Ver como usuário',
+    previewAsOperator: 'Ver como operador',
+    testBadge: 'Teste',
   },
 }
 

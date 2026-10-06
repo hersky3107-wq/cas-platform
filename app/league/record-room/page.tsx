@@ -1,6 +1,16 @@
-import { PublicLeagueHub } from '@/components/league/PublicLeagueHub'
+import { redirect } from 'next/navigation'
+import { doorForCategory, doorPath } from '@/lib/league/hub-doors'
 
-/** `/league/record-room` — same hub, record room tab preselected (shareable link). */
-export default function LeagueRecordRoomPage() {
-  return <PublicLeagueHub initialTab="recordRoom" />
+/** Old share link. A category goes to that door; otherwise the landing. */
+export default async function LeagueRecordRoomPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cat?: string }>
+}) {
+  const { cat } = await searchParams
+  const door = cat ? doorForCategory(cat) : null
+  if (door && cat) {
+    redirect(`${doorPath(door)}?tab=recordRoom&cat=${encodeURIComponent(cat)}`)
+  }
+  redirect('/league')
 }

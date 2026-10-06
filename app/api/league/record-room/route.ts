@@ -6,6 +6,7 @@ import {
   fetchRecordRoomPage,
   listRecentResolvedRoundIds,
 } from '@/lib/league/record-room'
+import { intersectDoorCategories, ledgerCategoriesForDoor, parseDoorParam, type HubDoor } from '@/lib/league/hub-doors'
 import { enforceRateLimit, resolveLeagueViewer } from '@/lib/league/public-access'
 import { purchaseLeagueView } from '@/lib/league/view-charge'
 import { latestRecordRoomWindow } from '@/lib/league/view-purchases'
@@ -35,6 +36,7 @@ export async function GET(req: Request) {
   const { viewer } = auth
 
   const { searchParams } = new URL(req.url)
+  const door = parseDoorParam(searchParams.get('door'))
   const query: ArchiveQuery = {
     page: parsePositiveInt(searchParams.get('page')) ?? 1,
     pageSize: parsePositiveInt(searchParams.get('pageSize')) ?? RECORD_ROOM_PURCHASED_PAGE_SIZE,
@@ -51,6 +53,7 @@ export async function GET(req: Request) {
         from: query.from,
         to: query.to,
         deep: true,
+        categories: doorCategories(viewer, door),
       })
       return NextResponse.json(data)
     }
@@ -59,7 +62,7 @@ export async function GET(req: Request) {
     if (!window) {
       return NextResponse.json(lockedViewPayload('record_room', creditsForLeagueRecordRoom()))
     }
-    const data = await loadPurchasedWindow(query, window, viewer.visibleCategories)
+    const data = await loadPurchasedWindow(query, window, doorCategories(viewer, door) ?? viewer.visibleCategories)
     return NextResponse.json(data)
   } catch (e: unknown) {
     return NextResponse.json(
@@ -93,8 +96,12 @@ export async function POST(req: Request) {
   }
 
   try {
+    const door = parseDoorParam(typeof body.door === 'string' ? body.door : null)
     if (viewer.isAdmin) {
-      const data = await fetchRecordRoomPage(1, RECORD_ROOM_DEFAULT_PAGE_SIZE, { deep: true })
+      const data = await fetchRecordRoomPage(1, RECORD_ROOM_DEFAULT_PAGE_SIZE, {
+        deep: true,
+        categories: doorCategories(viewer, door),
+      })
       return NextResponse.json(data)
     }
 
@@ -114,7 +121,7 @@ export async function POST(req: Request) {
     if (!window) {
       return NextResponse.json(lockedViewPayload('record_room', creditsForLeagueRecordRoom()))
     }
-    const data = await loadPurchasedWindow(query, window, viewer.visibleCategories)
+    const data = await loadPurchasedWindow(query, window, doorCategories(viewer, door) ?? viewer.visibleCategories)
     return NextResponse.json({ ...data, charged: bought.charged })
   } catch (e: unknown) {
     return NextResponse.json(
@@ -147,6 +154,14 @@ async function loadPurchasedWindow(
     windowRoundIds,
     window,
   })
+}
+
+function doorCategories(
+  viewer: { isAdmin: boolean; visibleCategories: readonly string[] },
+  door: HubDoor | null,
+): string[] | undefined {
+  if (!door) return viewer.isAdmin ? undefined : [...viewer.visibleCategories]
+  return viewer.isAdmin ? [...ledgerCategoriesForDoor(door)] : intersectDoorCategories(viewer.visibleCategories, door)
 }
 
 function parsePositiveInt(raw: string | null): number | null {

@@ -216,6 +216,7 @@ export type RoundGuardRow = {
   instrument: string
   category: string
   item_type: string | null
+  is_test?: boolean | null
 }
 
 /**
@@ -226,7 +227,7 @@ export type RoundGuardRow = {
 async function loadRoundGuard(roundId: string): Promise<RoundGuardRow | null> {
   const { data, error } = await supabaseAdmin
     .from('prediction_rounds')
-    .select('id, instrument, category, item_type')
+    .select('id, instrument, category, item_type, is_test')
     .eq('id', roundId)
     .maybeSingle()
   if (error || !data) return null
@@ -250,6 +251,7 @@ export async function latestRankedRoundId(instrument: string, horizon: UiHorizon
     .eq('instrument', instrument)
     .eq('horizon', horizon)
     .eq('item_type', 'ranked')
+    .eq('is_test', false)
     .order('created_at', { ascending: false })
     .limit(1)
     .maybeSingle()
@@ -284,6 +286,9 @@ export async function authorizeRoundForViewer(viewer: LeagueViewer, roundIdRaw: 
   }
 
   if (!viewer.isAdmin) {
+    if (round.is_test === true) {
+      return { ok: false, response: jsonError(404, 'Round not found', 'no_round') }
+    }
     if (round.item_type !== 'ranked' || !isPublicRankedInstrument(round.instrument)) {
       return { ok: false, response: forbiddenResponse('not_public') }
     }

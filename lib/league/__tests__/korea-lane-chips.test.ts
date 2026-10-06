@@ -89,7 +89,7 @@ describe('Korean-lane chip browser (UI contract)', () => {
     expect(browserSrc).toContain('row.market === \'US\' || isAdmin')
     expect(browserSrc).toContain('showHorizons={generatesOnSelect(selected)}')
     expect(browserSrc).toContain('onSelectUsInstrument(row.instrument, horizon)')
-    expect(hubSrc).toContain('isAdmin={viewerIsAdmin}')
+    expect(hubSrc).toContain('isAdmin={effectiveIsAdmin}')
     expect(hubSrc).toContain("instrument.startsWith('KRSTOCK:')")
     expect(hubSrc).toContain("JSON.stringify({ instrument, horizon, locale })")
     expect(hubSrc).toContain('/api/league/generate')

@@ -59,6 +59,8 @@ export type LeaderboardScope = {
    * the field entirely is the unfiltered admin view.
    */
   categories?: readonly string[]
+  /** Admin pages only. Public lists always hide pre-launch test rounds. */
+  includeTest?: boolean
 }
 
 
@@ -77,6 +79,7 @@ async function fetchRoundCoverage(scope?: LeaderboardScope): Promise<RoundCovera
   let query = supabaseAdmin
     .from('prediction_rounds')
     .select('resolves_at, actual_outcome, resolved_at, grading_busy_until, grading_attempted_at, unresolvable_reason')
+  if (!scope?.includeTest) query = query.eq('is_test', false)
   if (scope?.categories) query = query.in('category', scope.categories as string[])
 
   const { data, error } = await query
@@ -112,10 +115,11 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
   let query = supabaseAdmin
     .from('model_predictions')
     .select(
-      'seat_id, model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
+      'seat_id, model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type, is_test)'
     )
     .not('is_correct', 'is', null)
 
+  if (!scope?.includeTest) query = query.eq('prediction_rounds.is_test', false)
   if (scope?.categories) {
     query = query.in('prediction_rounds.category', scope.categories as string[])
   }
@@ -128,9 +132,10 @@ export async function fetchLeaderboardData(scope?: LeaderboardScope): Promise<Le
     const fallbackQuery = supabaseAdmin
       .from('model_predictions')
       .select(
-        'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type)'
+        'model_id, brand, camp, league_tier, is_correct, predicted_direction, round_id, prediction_rounds!inner(category, item_type, is_test)'
       )
       .not('is_correct', 'is', null)
+    if (!scope?.includeTest) fallbackQuery = fallbackQuery.eq('prediction_rounds.is_test', false)
     const fallbackRes = scope?.categories
       ? await fallbackQuery.in('prediction_rounds.category', scope.categories as string[])
       : await fallbackQuery

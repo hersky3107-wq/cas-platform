@@ -13,7 +13,7 @@ import { housingEvidenceFromInstrument } from '@/lib/league/real-estate/evidence
 import { storedIndexMetric } from '@/lib/league/real-estate/support'
 
 const QUEUE_COLUMNS =
-  'id, proposition_text, propositions, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status'
+  'id, proposition_text, propositions, resolution_rule, category, instrument, horizon, proposition_kind, subject_label, resolves_at, created_at, actual_outcome, grading_status, is_test'
 
 export async function countNeedsGrading(): Promise<number> {
   const { count, error } = await supabaseAdmin
@@ -90,6 +90,7 @@ export async function listNeedsGradingQueue(): Promise<ManualQueueItem[]> {
       null_seats: nullSeatsByRound.get(String(row.id)) ?? [],
       seat_counters: countersByRound.get(String(row.id)) ?? [],
       housing_evidence: housingEvidence.get(String(row.instrument ?? '')) ?? null,
+      is_test: row.is_test === true,
     }
   })
 }

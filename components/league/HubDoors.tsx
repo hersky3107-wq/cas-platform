@@ -1,119 +1,69 @@
 'use client'
 
-import type { PublicCategoryId } from '@/lib/league/catalog'
-import { chipsForDoor, type HubDoor, type HubDoorFilter } from '@/lib/league/hub-doors'
+import Link from 'next/link'
+import { admissionStockLane } from '@/lib/league/stock-lane'
+import { doorPath, type HubDoor } from '@/lib/league/hub-doors'
 import { leagueSurfaceCopy } from '@/lib/league/i18n/surface-copy'
-import type { LeagueLocale } from '@/lib/league/i18n/locales'
+import { useLeagueLocale } from '@/lib/league/i18n/use-league-locale'
+import { useLeagueRequestSignals } from '@/lib/league/use-league-request-signals'
 
-export function HubDoors({
-  categories,
-  door,
-  locale,
-  labelFor,
-  onChooseDoor,
-  onShowAll,
-  onSelectCategory,
-}: {
-  categories: readonly { id: PublicCategoryId }[]
-  door: HubDoorFilter
-  locale: LeagueLocale
-  labelFor: (id: PublicCategoryId) => string
-  onChooseDoor: (door: HubDoor) => void
-  onShowAll: () => void
-  onSelectCategory: (id: PublicCategoryId) => void
-}) {
+export function HubDoors({ omitMemecoin }: { omitMemecoin?: boolean } = {}) {
+  const { locale, dir } = useLeagueLocale()
+  const signals = useLeagueRequestSignals()
+  const koreaLane = admissionStockLane({
+    declaredCountry: signals.declaredCountry,
+    ipCountry: signals.ipCountry,
+  }) === 'korea'
+  const hideMemecoin = omitMemecoin ?? koreaLane
   const copy = leagueSurfaceCopy(locale).doors
-  const memecoinHidden = !categories.some((row) => row.id === 'memecoin')
+  const financeItems =
+    hideMemecoin && copy.financeItemsNoMemecoin ? copy.financeItemsNoMemecoin : copy.financeItems
   const financeBody =
-    memecoinHidden && copy.financeBodyNoMemecoin ? copy.financeBodyNoMemecoin : copy.financeBody
+    hideMemecoin && copy.financeBodyNoMemecoin ? copy.financeBodyNoMemecoin : copy.financeBody
+
   return (
-    <div className="flex flex-col gap-2">
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
-        <DoorCard
-          active={door === 'finance'}
-          title={copy.financeTitle}
-          body={financeBody}
-          hint={copy.financeHint}
-          testId="door-finance"
-          chips={chipsForDoor(categories, 'finance')}
-          labelFor={labelFor}
-          onOpen={() => onChooseDoor('finance')}
-          onSelectCategory={onSelectCategory}
-        />
-        <DoorCard
-          active={door === 'world'}
-          title={copy.worldTitle}
-          body={copy.worldBody}
-          hint={copy.worldHint}
-          testId="door-world"
-          chips={chipsForDoor(categories, 'world')}
-          labelFor={labelFor}
-          onOpen={() => onChooseDoor('world')}
-          onSelectCategory={onSelectCategory}
-        />
-      </div>
-      {door !== 'all' ? (
-        <button
-          type="button"
-          onClick={onShowAll}
-          className="self-start text-[11px] font-semibold text-league-accent-strong underline-offset-2 hover:underline"
-          data-testid="door-show-all"
-        >
-          {copy.showAll}
-        </button>
-      ) : null}
+    <div dir={dir} className="league-landing" data-testid="league-landing">
+      <DoorPanel
+        door="finance"
+        title={copy.financeTitle}
+        body={financeBody}
+        items={financeItems}
+        enter={copy.enter}
+      />
+      <DoorPanel
+        door="world"
+        title={copy.worldTitle}
+        body={copy.worldBody}
+        items={copy.worldItems}
+        enter={copy.enter}
+      />
     </div>
   )
 }
 
-function DoorCard({
-  active,
+function DoorPanel({
+  door,
   title,
   body,
-  hint,
-  testId,
-  chips,
-  labelFor,
-  onOpen,
-  onSelectCategory,
+  items,
+  enter,
 }: {
-  active: boolean
+  door: HubDoor
   title: string
   body: string
-  hint: string
-  testId: string
-  chips: readonly { id: PublicCategoryId }[]
-  labelFor: (id: PublicCategoryId) => string
-  onOpen: () => void
-  onSelectCategory: (id: PublicCategoryId) => void
+  items: string
+  enter: string
 }) {
   return (
-    <article
-      data-testid={testId}
-      data-active={active ? 'true' : 'false'}
-      className={`rounded-2xl border px-4 py-4 ${
-        active
-          ? 'border-league-accent bg-league-accent-soft'
-          : 'border-league-border bg-league-bg-elevated'
-      }`}
-    >
-      <button type="button" onClick={onOpen} className="w-full text-left">
-        <p className="text-lg font-bold text-league-fg md:text-xl">{title}</p>
-        <p className="mt-1 text-xs leading-relaxed text-league-fg-muted md:text-sm">{body}</p>
-        <p className="mt-2 text-[11px] font-semibold text-league-accent-strong">{hint}</p>
-      </button>
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        {chips.map((chip) => (
-          <button
-            key={chip.id}
-            type="button"
-            onClick={() => onSelectCategory(chip.id)}
-            className="rounded-full bg-league-bg px-2.5 py-1 text-[11px] font-semibold text-league-fg ring-1 ring-league-border"
-          >
-            {labelFor(chip.id)}
-          </button>
-        ))}
+    <article data-testid={`door-${door}`} className="league-door">
+      <div className="flex min-h-0 flex-1 flex-col">
+        <h1 className="text-3xl font-bold tracking-tight text-slate-900 md:text-4xl">{title}</h1>
+        <p className="mt-4 max-w-md text-base leading-relaxed text-slate-600 md:text-lg">{body}</p>
+        <p className="mt-6 text-sm font-medium leading-relaxed text-slate-800 md:text-base">{items}</p>
       </div>
+      <Link href={doorPath(door)} className="league-btn-primary mt-8 w-full text-center md:w-auto">
+        {enter}
+      </Link>
     </article>
   )
 }

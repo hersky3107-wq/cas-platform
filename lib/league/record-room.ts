@@ -58,6 +58,7 @@ export type RecordRoomScope = {
   /** When set, the listing is restricted to these ids (purchased window). */
   windowRoundIds?: readonly string[]
   window?: { asOf: string; roundLimit: number }
+  includeTest?: boolean
 }
 
 export async function fetchRecordRoomPage(
@@ -115,6 +116,7 @@ export async function fetchRecordRoomPage(
       .from('prediction_rounds')
       .select(columns, { count: 'exact' })
       .not('resolved_at', 'is', null)
+    if (!scope?.includeTest) roundsQuery = roundsQuery.eq('is_test', false)
 
     if (scope?.categories) roundsQuery = roundsQuery.in('category', scope.categories as string[])
     if (scope?.rankedOnly) roundsQuery = roundsQuery.eq('item_type', 'ranked')
@@ -163,6 +165,7 @@ export async function listRecentResolvedRoundIds(params: {
   asOf: string
   limit: number
   categories?: readonly string[]
+  includeTest?: boolean
 }): Promise<string[]> {
   if (params.categories && params.categories.length === 0) return []
   let query = supabaseAdmin
@@ -172,6 +175,7 @@ export async function listRecentResolvedRoundIds(params: {
     .lte('resolved_at', params.asOf)
     .order('resolved_at', { ascending: false })
     .limit(params.limit)
+  if (!params.includeTest) query = query.eq('is_test', false)
   if (params.categories) query = query.in('category', params.categories as string[])
   const { data, error } = await query
   if (error) throw new Error(`league record room: window ids failed (${error.message})`)

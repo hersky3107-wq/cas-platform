@@ -71,6 +71,7 @@ export type ManualQueueItem = {
   seat_counters: Array<{ model_id: string; strongest_counter: string }>
   /** Official index evidence for a housing round still in this queue. */
   housing_evidence?: string | null
+  is_test?: boolean
 }
 
 export type ManualSuggestion = {

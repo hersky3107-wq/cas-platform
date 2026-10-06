@@ -25,6 +25,7 @@ export async function loadConsensusTrackRecord(): Promise<TrackRecordCell[]> {
   const { data: rounds, error } = await supabaseAdmin
     .from('prediction_rounds')
     .select('id, category, horizon, actual_outcome, grading_status, consensus_is_correct')
+    .eq('is_test', false)
     .not('actual_outcome', 'is', null)
   if (error) {
     if (/consensus_is_correct/i.test(error.message) && /does not exist|schema cache/i.test(error.message)) {

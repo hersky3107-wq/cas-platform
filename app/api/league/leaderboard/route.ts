@@ -6,6 +6,7 @@ import { enforceRateLimit, resolveLeagueViewer } from '@/lib/league/public-acces
 import { purchaseLeagueView } from '@/lib/league/view-charge'
 import { hasLeaderboardAccess } from '@/lib/league/view-purchases'
 import { lockedViewPayload } from '@/lib/league/view-purchase-policy'
+import { intersectDoorCategories, ledgerCategoriesForDoor, parseDoorParam, type HubDoor } from '@/lib/league/hub-doors'
 
 /**
  * GET /api/league/leaderboard
@@ -20,8 +21,17 @@ import { lockedViewPayload } from '@/lib/league/view-purchase-policy'
  * update the board. Re-POST after purchase does not charge again.
  */
 
-async function loadBoard(categories: readonly string[] | undefined) {
-  return fetchLeaderboardData(categories ? { categories } : undefined)
+async function loadBoard(categories: readonly string[] | undefined, includeTest = false) {
+  return fetchLeaderboardData(categories ? { categories, includeTest } : includeTest ? { includeTest } : undefined)
+}
+
+function boardScope(viewer: { isAdmin: boolean; visibleCategories: readonly string[] }, door: HubDoor | null) {
+  if (door) {
+    return viewer.isAdmin
+      ? [...ledgerCategoriesForDoor(door)]
+      : intersectDoorCategories(viewer.visibleCategories, door)
+  }
+  return viewer.isAdmin ? undefined : viewer.visibleCategories
 }
 
 export async function GET(req: Request) {
@@ -36,7 +46,8 @@ export async function GET(req: Request) {
         return NextResponse.json(lockedViewPayload('leaderboard', creditsForLeagueLeaderboard()))
       }
     }
-    const data = await loadBoard(viewer.isAdmin ? undefined : viewer.visibleCategories)
+    const door = parseDoorParam(new URL(req.url).searchParams.get('door'))
+    const data = await loadBoard(boardScope(viewer, door), viewer.isAdmin && !door)
     return NextResponse.json(data)
   } catch (e: unknown) {
     return NextResponse.json(
@@ -67,7 +78,8 @@ export async function POST(req: Request) {
       const bought = await purchaseLeagueView({ userId: viewer.userId, product: 'leaderboard' })
       if (!bought.ok) return bought.response
     }
-    const data = await loadBoard(viewer.isAdmin ? undefined : viewer.visibleCategories)
+    const door = parseDoorParam(typeof body.door === 'string' ? body.door : null)
+    const data = await loadBoard(boardScope(viewer, door), viewer.isAdmin && !door)
     return NextResponse.json(data)
   } catch (e: unknown) {
     return NextResponse.json(

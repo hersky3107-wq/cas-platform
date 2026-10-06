@@ -37,6 +37,7 @@ export type FreeformRecentRow = {
   cache_key?: string | null
   horizon?: string | null
   propositions?: Record<string, string> | null
+  is_test?: boolean | null
 }
 
 export type FreeformRecentItem = {
@@ -89,6 +90,7 @@ export function selectRecentPublicFreeformRounds(
 ): FreeformRecentItem[] {
   const picked: FreeformRecentItem[] = []
   for (const row of rows) {
+    if (row.is_test === true) continue
     if (!jobRoundIds.has(row.id)) continue
     if (!isPublicGatewayFreeformInstrument(row.instrument)) continue
     if (!isPublicGatewayCacheKey(row.cache_key)) continue

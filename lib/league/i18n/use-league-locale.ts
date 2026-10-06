@@ -11,6 +11,7 @@ import {
   subscribeLeagueLocaleOverride,
 } from './locale-store'
 import { resolveLeagueLocale } from './resolve-locale'
+import { useAdminPreview } from '../admin-preview'
 import { shouldShowLeagueLanguageToggle } from '../korea-lane-features'
 
 export type UseLeagueLocaleResult = {
@@ -47,8 +48,9 @@ export function useLeagueLocale(devQuery?: string): UseLeagueLocaleResult {
     ipCountry: signals.ipCountry,
     declaredCountry: signals.declaredCountry,
   })
+  const preview = useAdminPreview()
   const showLanguageToggle = shouldShowLeagueLanguageToggle({
-    isAdmin: signals.isAdmin,
+    isAdmin: preview.isRealAdmin ? preview.effectiveIsAdmin : signals.isAdmin,
     jurisdiction: {
       declaredCountry: signals.declaredCountry,
       ipCountry: signals.ipCountry,

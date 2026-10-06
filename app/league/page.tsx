@@ -1,13 +1,20 @@
-import { PublicLeagueHub } from '@/components/league/PublicLeagueHub'
+import { redirect } from 'next/navigation'
+import { HubDoors } from '@/components/league/HubDoors'
+import { redirectForCategorySearch } from '@/lib/league/hub-doors'
 
 /**
- * `/league` — the public (logged-in) AI Prediction League.
- *
- * Signed-out visitors are redirected to `/auth?redirectTo=/league` by
- * `middleware.ts`; every API route this page calls independently enforces auth,
- * jurisdiction and (for the one paid action) credits, so the redirect is a
- * convenience and never the access control.
+ * `/league` — two doors only. `?cat=` deep links go to the matching door.
  */
-export default function LeaguePage() {
-  return <PublicLeagueHub initialTab="cards" />
+export default async function LeaguePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ cat?: string; tab?: string }>
+}) {
+  const params = await searchParams
+  const query = new URLSearchParams()
+  if (params.cat) query.set('cat', params.cat)
+  if (params.tab) query.set('tab', params.tab)
+  const target = redirectForCategorySearch(query.toString())
+  if (target) redirect(target)
+  return <HubDoors />
 }

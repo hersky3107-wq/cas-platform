@@ -186,47 +186,17 @@ describe('finance and world doors', () => {
     expect(parseStoredDoor('nope')).toBeNull()
   })
 
-  it('filters the rendered chips to the door and keeps the other door’s chips out', () => {
-    const t = getLeagueUiPack('ko')
-    const html = renderToStaticMarkup(
-      createElement(HubDoors, {
-        categories,
-        door: 'finance',
-        locale: 'ko',
-        labelFor: (id) => t.catalog.categories[id],
-        onChooseDoor: () => {},
-        onShowAll: () => {},
-        onSelectCategory: () => {},
-      }),
-    )
-    const finance = html.split('data-testid="door-world"')[0] ?? ''
-    const world = html.split('data-testid="door-world"')[1] ?? ''
-    expect(finance).toContain(t.catalog.categories.stocks)
-    expect(finance).not.toContain(t.catalog.categories.sports)
-    expect(finance).not.toContain('밈코인')
-    expect(world).toContain(t.catalog.categories.sports)
-    expect(html).toContain('금융 예측')
-    expect(html).toContain('종목과 기간 선택')
-    expect(html).toContain('세상 예측')
-    expect(html).toContain('질문 입력')
-    expect(html).toContain('data-testid="door-show-all"')
-    expect(html).toContain('전체 보기')
-  })
-
-  it('keeps 밈코인 in the Korean finance sentence when that chip is offered', () => {
-    const t = getLeagueUiPack('ko')
-    const html = renderToStaticMarkup(
-      createElement(HubDoors, {
-        categories: [...categories, { id: 'memecoin' as const }],
-        door: 'all',
-        locale: 'ko',
-        labelFor: (id) => t.catalog.categories[id],
-        onChooseDoor: () => {},
-        onShowAll: () => {},
-        onSelectCategory: () => {},
-      }),
-    )
-    expect(html).toContain('밈코인')
+  it('landing doors have no chips and the Korean finance list omits 밈코인', () => {
+    const html = renderToStaticMarkup(createElement(HubDoors, { omitMemecoin: true }))
+    const copy = leagueSurfaceCopy('en').doors
+    expect(html).toContain(copy.financeTitle)
+    expect(html).toContain(copy.worldTitle)
+    expect(html).toContain(copy.enter)
+    expect(html.split('data-testid="door-world"')[0]).not.toContain('Memecoins')
+    expect(html.split('data-testid="door-world"')[0]).not.toContain('밈코인')
+    expect(html).not.toContain('data-testid="door-show-all"')
+    expect(leagueSurfaceCopy('ko').doors.financeTitle).toBe('금융 예측')
+    expect(leagueSurfaceCopy('ko').doors.worldTitle).toBe('세상 예측')
   })
 })
 

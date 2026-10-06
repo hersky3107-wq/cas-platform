@@ -369,7 +369,14 @@ export default function LeagueManualGradePage() {
                   return (
                     <tr key={round.id}>
                       <td className="px-3 py-2 text-slate-100">
-                        <p>{round.proposition_ko || round.proposition_text}</p>
+                        <p>
+                          {round.is_test ? (
+                            <span data-testid="admin-test-badge" className="mr-1 rounded bg-amber-500/20 px-1.5 py-0.5 text-[10px] font-semibold text-amber-200">
+                              테스트
+                            </span>
+                          ) : null}
+                          {round.proposition_ko || round.proposition_text}
+                        </p>
                         {round.proposition_en && round.proposition_en !== (round.proposition_ko || round.proposition_text) ? (
                           <p className="mt-0.5 text-[11px] text-slate-500">{round.proposition_en}</p>
                         ) : null}

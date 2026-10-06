@@ -92,6 +92,7 @@ async function loadRound(lookup: CardLookup): Promise<RoundRow> {
     .from('prediction_rounds')
     .select(ROUND_COLUMNS)
     .eq('instrument', lookup.instrument)
+    .eq('is_test', false)
     .order('opened_at', { ascending: false })
 
   if (lookup.date) {
@@ -302,6 +303,7 @@ async function loadCrossRoundGrades(instrument: string): Promise<VerdictCrossRou
     .from('model_predictions')
     .select('model_id, round_id, is_correct, prediction_rounds!inner(instrument, resolved_at)')
     .eq('prediction_rounds.instrument', instrument)
+    .eq('prediction_rounds.is_test', false)
     .not('is_correct', 'is', null)
 
   if (error || !data) {
