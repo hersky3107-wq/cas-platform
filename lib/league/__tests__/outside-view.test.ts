@@ -124,10 +124,32 @@ describe('weak-confidence crowding badge', () => {
     expect(split).not.toContain('data-testid="weak-confidence-crowding"')
   })
 
-  it('translates the badge in every locale', () => {
+  it('shows the badge on a 40:0 headline at 63% and hides it at 70%', () => {
+    const show = htmlFor(40, 0, 63)
+    expect(show).toContain('약한 확신의 쏠림 — 박빙일 수 있음')
+    expect(show).toContain('data-testid="weak-confidence-crowding"')
+    expect(show).toContain('data-testid="weak-confidence-explain"')
+    expect(show).toContain('각 AI의 확신은 평균 63%입니다. 방향이 모여도 결과가 확실하다는 뜻은 아닙니다.')
+    const iron = htmlFor(40, 0, 70)
+    expect(iron).not.toContain('약한 확신의 쏠림')
+    expect(iron).not.toContain('weak-confidence-explain')
+  })
+
+  it('translates the badge and the one-line explanation in every locale', () => {
     expect(t.hero.weakConfidenceCrowding).toBe('약한 확신의 쏠림 — 박빙일 수 있음')
     for (const locale of LEAGUE_LOCALES) {
-      expect(getLeagueUiPack(locale).hero.weakConfidenceCrowding.trim().length).toBeGreaterThan(0)
+      const pack = getLeagueUiPack(locale)
+      expect(pack.hero.weakConfidenceCrowding.trim().length).toBeGreaterThan(0)
+      const explain = pack.hero.weakConfidenceExplain(63)
+      expect(explain).toContain('63')
+      const html = renderToStaticMarkup(
+        createElement(ConsensusHero, {
+          consensus: consensus(40, 0, 63),
+          horizon: '1w',
+          t: pack,
+        }),
+      )
+      expect(html).toContain(explain)
     }
   })
 })

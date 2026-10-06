@@ -10,6 +10,7 @@ import { entertainmentHeadlineLabel, entertainmentPropositionDisplay } from './e
 import { propertyInstrumentDisplay, propertyPropositionDisplay } from './real-estate-display'
 import { decodePropertyInstrument } from './gateway/adapters/real-estate-catalog'
 import { stockQuoteSymbol, decodeStockInstrument } from './gateway/adapters/stock-catalog'
+import { FINANCE_LEDGER_CATEGORIES } from './hub-doors'
 import { decodeKrStockInstrument } from './korea-equity-catalog'
 import { krStockPropositionDisplay, parseKrStockProposition } from './korea-stock-display'
 import { sportsPropositionDisplay, sportsVsLabel } from './sports-display'
@@ -118,6 +119,47 @@ export function electionInstrumentDisplay(instrument: string, locale: LeagueLoca
 
 export function showInstrumentDisplay(instrument: string, locale: LeagueLocale = 'en'): string | null {
   return entertainmentHeadlineLabel(instrument, locale)
+}
+
+const FINANCE_LEDGER = new Set<string>(FINANCE_LEDGER_CATEGORIES)
+
+export function financeInstrumentLabel(args: {
+  instrument: string
+  subjectLabel?: string | null
+  propositionText?: string | null
+}): string {
+  const kr = krStockCardTitle(args.instrument, args.subjectLabel, args.propositionText)
+  if (kr) return kr
+  const krParts = decodeKrStockInstrument(args.instrument)
+  if (krParts) return krParts.code
+  if (decodeStockInstrument(args.instrument)) {
+    const symbol = stockQuoteSymbol(args.instrument)
+    const name = args.subjectLabel?.replace(/[\r\n]/g, ' ').trim()
+    if (name && name.toUpperCase() !== symbol.toUpperCase()) return `${name}(${symbol})`
+    return symbol
+  }
+  const instrument = args.instrument.trim()
+  if (instrument.includes('/') || instrument.includes('-')) return instrument
+  const subject = args.subjectLabel?.replace(/[\r\n]/g, ' ').trim()
+  if (subject && /^[A-Za-z0-9.]{1,12}$/.test(instrument) && subject.toUpperCase() !== instrument.toUpperCase()) {
+    return `${subject}(${instrument})`
+  }
+  return subject || instrument
+}
+
+/** "{name}({code}) · {horizon}" for finance cards. Never a raw ledger category id. */
+export function financeCardSubhead(args: {
+  category: string
+  instrument: string
+  horizon: string
+  subjectLabel?: string | null
+  propositionText?: string | null
+  horizonLabel: string
+}): string | null {
+  if (!FINANCE_LEDGER.has(args.category.trim().toLowerCase())) return null
+  const name = financeInstrumentLabel(args)
+  const horizon = args.horizonLabel.trim() || args.horizon
+  return `${name} · ${horizon}`
 }
 
 function shownPriceInstrument(

@@ -948,7 +948,7 @@ async function runOneModel(
   // reasoning_snippet stays the one-line display rationale; this is the full text.
   const vendorFlags =
     category === 'ai_models' && instrument ? selfVendorFlags(entry, instrument) : null
-  const reasoningText = stripSelfVendorMarkers(contract.splitReasoning(raw.text))
+  const reasoningText = visibleLeagueText(category, stripSelfVendorMarkers(contract.splitReasoning(raw.text)))
   let probability = answer!.probability ?? null
   if (probability == null && jsonSupplement?.probability != null) probability = jsonSupplement.probability
   // LEDGER SHAPE: predicted_direction stores the contract-neutral side token

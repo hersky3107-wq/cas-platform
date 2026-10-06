@@ -4,12 +4,16 @@
  * whether the muted badge renders beside it.
  *
  * Majority share is max(side) / answered official seats (up + down).
- * Weighted confidence is `aggregateProbability` on a 0–100 scale, compared
- * as a fraction against WEAK_CONFIDENCE_CROWDING_MAX_WEIGHTED_CONFIDENCE.
+ * Weighted confidence is `aggregateProbability` on a 0–100 scale.
+ * The confidence ceiling matches the "철벽" rule (`IRON_MIN_CONFIDENCE_PCT`):
+ * agreement at or above 85% with confidence under 70% is crowded, not iron.
  */
 
+import { IRON_MIN_CONFIDENCE_PCT } from './sports-market'
+
 export const WEAK_CONFIDENCE_CROWDING_MAJORITY_SHARE = 0.85
-export const WEAK_CONFIDENCE_CROWDING_MAX_WEIGHTED_CONFIDENCE = 0.62
+/** Same cutoff as 철벽: confidence at or above this is not "weak". */
+export const WEAK_CONFIDENCE_CROWDING_MAX_WEIGHTED_CONFIDENCE = IRON_MIN_CONFIDENCE_PCT / 100
 
 export function isWeakConfidenceCrowding(input: {
   up: number
@@ -24,6 +28,6 @@ export function isWeakConfidenceCrowding(input: {
   const share = Math.max(input.up, input.down) / answered
   return (
     share >= WEAK_CONFIDENCE_CROWDING_MAJORITY_SHARE &&
-    input.weightedConfidencePct / 100 < WEAK_CONFIDENCE_CROWDING_MAX_WEIGHTED_CONFIDENCE
+    input.weightedConfidencePct < IRON_MIN_CONFIDENCE_PCT
   )
 }

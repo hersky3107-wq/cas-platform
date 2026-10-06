@@ -8,7 +8,7 @@ import { EQUITY_QUALITATIVE_GUIDANCE, scrubAnalystDisclosure, scrubsAnalystDiscl
 import { EQUITY_QUALITATIVE_GUIDANCE as CONTRACT_EQUITY_LINE, systemPromptFor, answerContractFor } from '../answer-contract'
 import { buildCardData, type PredictionRow, type RoundRow } from '../card-aggregate'
 import { buildDeepSnapshot } from '../deep-snapshot'
-import { buildConsensusSystemPrompt } from '../extra/consensus'
+import { buildConsensusSystemPrompt, consensusRationaleNeedsRetry, parseConsensusOutput } from '../extra/consensus'
 import { buildCrowSystemPrompt } from '../extra/crow'
 import { skipKoTranslationLlm } from '../rationale-display'
 import { visibleLeagueText } from '../visible-disclosure'
@@ -46,10 +46,30 @@ describe('equity display-layer scrub — leaked samples', () => {
     expect(out).toContain('기관 순매수')
   })
 
-  it('1.4M 컨센서스 목표가 drops the figure', () => {
-    const out = readable(scrubAnalystDisclosure('1.4M 컨센서스 목표가'))
-    expect(out).not.toMatch(/1\.4M|1\.4/)
-    expect(out).toContain('컨센서스 목표가')
+  it('1.4M 컨센서스 목표가 drops the figure and the target-consensus claim', () => {
+    const out = scrubAnalystDisclosure('1.4M 컨센서스 목표가')
+    expect(out ?? '').not.toMatch(/1\.4M|1\.4/)
+    expect(out ?? '').not.toContain('컨센서스 목표가')
+  })
+
+  it('strips the SK스퀘어 scout and extra leaks and keeps the filing', () => {
+    const leaks = [
+      'DB Securities의 목표 주가 상향',
+      '컨센서스 목표가',
+      '목표주가 컨센서스',
+      '증권사 리포트도 평균 목표가가 상향',
+    ]
+    for (const leak of leaks) {
+      const out = readable(scrubAnalystDisclosure(`실적 가이던스가 올랐다. ${leak}. 유상증자 공시는 유지.`))
+      expect(out, leak).not.toContain('DB Securities')
+      expect(out, leak).not.toContain('컨센서스 목표가')
+      expect(out, leak).not.toContain('목표주가 컨센서스')
+      expect(out, leak).not.toContain('증권사 리포트')
+      expect(out, leak).not.toContain('평균 목표가')
+      expect(out, leak).not.toContain('목표 주가 상향')
+      expect(out, leak).toContain('유상증자')
+    }
+    expect(scrubAnalystDisclosure('Goldman upgrades to buy')).not.toMatch(/Goldman|upgrades to buy/i)
   })
 
   it('JPMorgan과 Goldman의 매도(Sell) 의견 목표가 becomes 일부 증권사', () => {
@@ -141,14 +161,8 @@ describe('equity display-layer scrub — whole tokens, ranges, outlets, residue'
     expect(readable(scrubAnalystDisclosure('목표주가 19만~27만원'))).not.toMatch(/19|27/)
     expect(readable(scrubAnalystDisclosure('$190-270 target'))).not.toMatch(/190|270/)
 
-    const koUp = readable(scrubAnalystDisclosure('목표가 컨센서스가 현재가 대비 약 33% 상방'))
-    expect(koUp).not.toMatch(/%/)
-    expect(koUp).not.toMatch(/33/)
-    expect(koUp).toBe('목표가 컨센서스가 현재가보다 높음')
-    const enUp = readable(scrubAnalystDisclosure('consensus target implies 33% upside'))
-    expect(enUp).not.toMatch(/%/)
-    expect(enUp).not.toMatch(/33/)
-    expect(enUp).toBe('목표가 컨센서스가 현재가보다 높음')
+    expect(scrubAnalystDisclosure('목표가 컨센서스가 현재가 대비 약 33% 상방')).toBeNull()
+    expect(scrubAnalystDisclosure('consensus target implies 33% upside')).toBeNull()
 
     const mk = readable(scrubAnalystDisclosure('수급 과열 (MK 주식 시세 페이지)'))
     expect(mk).not.toMatch(/MK|시세 페이지/)
@@ -207,6 +221,21 @@ describe('equity qualitative prompt line', () => {
     }
     expect(buildCrowSystemPrompt('commodity')).not.toContain(EQUITY_QUALITATIVE_GUIDANCE)
     expect(buildConsensusSystemPrompt()).not.toContain(EQUITY_QUALITATIVE_GUIDANCE)
+    for (const instrument of ['KRSTOCK:KOSPI:402340', 'STOCK:NYSE:TSM']) {
+      const stock = buildConsensusSystemPrompt('stock', instrument)
+      expect(stock).toContain('시장 신호 없음')
+      expect(stock).not.toContain('기관 컨센서스 목표가를 검색')
+    }
+    expect(
+      parseConsensusOutput('{"direction":null,"found":false,"rationale":"컨센서스 목표가"}', {
+        category: 'stock',
+        instrument: 'KRSTOCK:KOSPI:402340',
+      }),
+    ).toEqual({ kind: 'abstain', rationale: '시장 신호 없음' })
+    expect(
+      parseConsensusOutput('{"direction":null,"found":false,"rationale":"no book"}', { category: 'gold_metal' }),
+    ).toMatchObject({ kind: 'abstain' })
+    expect(consensusRationaleNeedsRetry('증권사 리포트도 평균 목표가가 상향', 'stock')).toBe(true)
     expect(systemPromptFor({ league_tier: 'premier' }, answerContractFor('binary_subject_outcome'), 'sports')).not.toContain(
       EQUITY_QUALITATIVE_GUIDANCE,
     )
@@ -266,8 +295,8 @@ describe('display-layer wiring', () => {
     expect(snap.briefing).toContain('일부 증권사')
     expect(snap.analyses[0]?.content).toContain('기관 순매수')
     expect(snap.analyses[0]?.content).not.toMatch(/333/)
-    expect(snap.synthesis).not.toMatch(/1\.4M|kr\.investing/i)
-    expect(snap.synthesis).toContain('컨센서스 목표가')
+    expect(snap.synthesis ?? '').not.toMatch(/1\.4M|kr\.investing/i)
+    expect(snap.synthesis ?? '').not.toContain('컨센서스 목표가')
 
     const gold = buildDeepSnapshot('open', {
       category: 'crypto',
@@ -335,6 +364,32 @@ describe('leftover English is translated after a pre- and post-scrub', () => {
     const ko = result.translations['pred-short'] ?? ''
     expect(ko).not.toMatch(/14\.30|10\.28/)
     expect(ko).toMatch(/공매도 비중|short-ratio/i)
+  })
+
+  it('rejects a Korean "기준 금리" rendering when the source says base rate, and the prompt carries the glossary', async () => {
+    mocks.runSingleAiProvider.mockResolvedValue({
+      text: '[{"id":0,"text":"기준 금리가 과거보다 높다."}]',
+      promptTokens: 10,
+      completionTokens: 10,
+      costUsd: 0,
+      model: 'gemini-3.5-flash',
+    })
+    const { translateRoundRationales } = await import('../rationale-i18n')
+    const source = 'The base rate of up weeks in this window is 54%, and price is above SMA50.'
+    const result = await translateRoundRationales(
+      [{ predictionId: 'pred-base', text: source }],
+      'ko',
+      {
+        loadCached: async () => ({ rows: [], error: null }),
+        upsert: async () => ({ error: null }),
+      },
+      'stock',
+    )
+    expect(result.translations['pred-base']).toBeUndefined()
+    const system = String(mocks.runSingleAiProvider.mock.calls[0]?.[0]?.systemPrompt ?? '')
+    expect(system).toContain('기저율(과거 같은 기간 상승 비율)')
+    expect(system).toContain('이동평균선')
+    expect(system).toContain('기준 금리')
   })
 })
 

@@ -13,7 +13,7 @@
 export const EQUITY_DISPLAY_CATEGORIES = new Set(['stock', 'etf_index'])
 
 export const EQUITY_QUALITATIVE_GUIDANCE =
-  'Describe direction and qualitative magnitude only; never quote raw ratios, flow amounts, target prices, broker or source names.'
+  'Describe direction and qualitative magnitude only; never quote raw ratios, flow amounts, target prices, broker or source names. Never name a brokerage, an analyst target price, a target-price consensus, a 증권사 리포트, or a rating change (upgrade/downgrade). Company disclosures and filings stay.'
 
 export const BROKER_STANDIN = '일부 증권사'
 
@@ -40,7 +40,7 @@ const COMPANY_DISCLOSURE =
   /유상증자|자사주|자기주식|rights[\s-]?issues?|buybacks?|공개매수|수주(?:계약)?|계약\s*규모/gi
 
 const ANALYST_CTX =
-  /애널리스트|analyst|목표가|투자의견|리포트|price\s+targets?|\bPT\b|rating/gi
+  /애널리스트|analyst|목표\s*주?\s*가|투자의견|리포트|증권사|price\s+targets?|\bPT\b|rating/gi
 
 /**
  * Monetary amounts only (signed or unsigned). Requires a money unit or
@@ -66,6 +66,7 @@ const LATIN_BROKERS = [
   'Kyobo Securities',
   'Hyundai Motor Securities',
   'IBK Securities',
+  'DB\\s+Securities',
   'DB Financial Investment',
   'Eugene Investment(?:\\s+&\\s+Securities)?',
   'JPMorgan',
@@ -156,12 +157,9 @@ const RULES: Array<[RegExp, string]> = [
   [new RegExp(`(?:${LATIN_OUTLET}|${HANGUL_OUTLET}|${NAVER_OUTLET})`, 'gi'), ''],
   // Broker / bank names → one Korean stand-in (whole tokens only)
   [new RegExp(`(?:${LATIN_NAME}|${HANGUL_NAME})`, 'gi'), BROKER_STANDIN],
-  // Target expressed as % upside vs the current price
-  [
-    /목표가\s*컨센서스가\s*현재가\s*대비\s*약?\s*\d[\d.,]*\s*%\s*상방(?:이다|임)?/g,
-    TARGET_UPSIDE_STANDIN,
-  ],
-  [/\bconsensus\s+target\s+implies\s+\d[\d.,]*\s*%\s+upside\b/gi, TARGET_UPSIDE_STANDIN],
+  // Target expressed as % upside vs the current price — drop the consensus claim
+  [/목표가\s*컨센서스가\s*현재가\s*대비\s*약?\s*\d[\d.,]*\s*%\s*상방(?:이다|임)?/g, ''],
+  [/\bconsensus\s+target\s+implies\s+\d[\d.,]*\s*%\s+upside\b/gi, ''],
   // Target-price ranges and abbreviations
   [new RegExp(String.raw`(목표\s?주?가|PT)\s*\(\s*${RANGE}\s*\)`, 'gi'), '$1'],
   [new RegExp(String.raw`\bPT\s+${RANGE}`, 'gi'), 'PT'],
@@ -171,6 +169,14 @@ const RULES: Array<[RegExp, string]> = [
   [new RegExp(String.raw`\b(?:hi(?:gh)?|median|lo(?:w)?|avg|average|mean)\s*:?\s*${NUM}(?:\s*/\s*(?:hi(?:gh)?|median|lo(?:w)?|avg|average|mean)\s*:?\s*${NUM})+`, 'gi'), 'analyst range'],
   // Prefix amounts on Korean consensus targets: "1.4M 컨센서스 목표가"
   [new RegExp(String.raw`\d[\d,]*(?:\.\d+)?\s*(?:[MBT]|mn|million|bn|billion|tn|trillion|억|조|만)?\s*((?:컨센서스\s*)?목표가|consensus(?:\s+price)?\s*targets?)`, 'gi'), '$1'],
+  // Brokerage reports, target-price consensus, and rating changes (KR + US equity).
+  // After the amount prefix is peeled, so "1.4M 컨센서스 목표가" does not leave "1.4M".
+  [/증권사\s*리포트(?:도|를|은|는|가|의|에서)?/g, ''],
+  [/평균\s*목표\s*주?\s*가가?\s*(?:도\s*)?(?:상향|하향|유지)?(?:됐다|했다|했습니다|하였다)?/g, ''],
+  [/컨센서스\s*목표\s*주?\s*가|목표주가\s*컨센서스|목표\s*주?\s*가\s*컨센서스/g, ''],
+  [/목표\s*주\s*가\s*(?:상향|하향|유지)(?:\s*조정)?/g, ''],
+  [/(?:투자의견|rating)\s*(?:을|를|이|가)?\s*(?:상향|하향|유지|upgrade|downgrade)/gi, ''],
+  [/\b(?:upgrades?|downgrades?)\s+(?:to\s+)?(?:buy|sell|hold|neutral|outperform|underperform)\b/gi, ''],
   // "price target of $315", "target $315", "목표가 315달러", "목표가 35만원", "PT 240"
   [new RegExp(String.raw`((?:consensus\s+|street\s+|analyst\s+|median\s+|average\s+|mean\s+)?(?:price\s+)?targets?|목표\s?주?가|PT)(\s*(?:는|은|이|가)?\s*(?:of|at|is|near|around|~|≈|=|:)?\s*)${ANALYST_AMT}(?:\s*만원)?`, 'gi'), '$1'],
   // Consensus OP / 영업이익 ranges

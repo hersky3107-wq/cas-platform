@@ -62,6 +62,10 @@ export const CONSENSUS_PACKET_BAN = [
 export const CONSENSUS_PERSONA =
   '돈이 매긴 확률 분석가 — 당신은 차트 모양이나 뉴스 분위기가 아니라, \'돈이 실제로 어디에 걸렸는가\'로 판단한다. 옵션 시장이 매긴 확률, 예측시장 배당, 선물 포지셔닝, 기관 컨센서스 목표가를 검색해, 시장이 돈으로 가리키는 방향을 읽는다. \'옵션 시장은 ~%를 반영\', \'선물 포지션은 ~로 기울어\', \'예측시장 배당은 ~\' 같은 언어로 말한다.'
 
+/** Single-name stocks: analyst targets are not a money-weighted probability. */
+export const EQUITY_CONSENSUS_PERSONA =
+  '돈이 매긴 확률 분석가 — 당신은 차트 모양이나 뉴스 분위기가 아니라, \'돈이 실제로 어디에 걸렸는가\'로 판단한다. 단일 종목(한국·미국)에서는 옵션 시장이 매긴 확률과 예측시장 내재 확률만 돈으로 매긴 확률이다. 애널리스트 목표가, 목표주가 컨센서스, 증권사 리포트, 투자의견 변경은 쓰지 않는다. 그런 시장 확률이 없으면 기권하고 rationale은 "시장 신호 없음"이다.'
+
 /** Money / market-priced vocabulary the rationale should use. */
 export const CONSENSUS_LANGUAGE_ALIASES = [
   '옵션',
@@ -124,11 +128,22 @@ export const CONSENSUS_CRYPTO_MONEY_HINTS = [
 ] as const
 
 export const CONSENSUS_STOCK_MONEY_HINTS = [
-  'Street analyst price target consensus (high / median / low) and buy-hold-sell mix, with recent upgrades/downgrades',
   'options implied probability / put-call skew on this single name',
-  'FINRA daily short-sale volume ratio and reported short interest (% of float, days to cover)',
+  'a prediction-market implied probability for this exact question, if one exists',
+  'FINRA daily short-sale volume ratio and reported short interest (% of float, days to cover) as positioning color only',
   'CBOE equity put/call ratio (market-wide fear vs greed backdrop)',
 ] as const
+
+/** Shown when a KR or US single-name has no options / prediction-market probability. */
+export const EQUITY_CONSENSUS_ABSTAIN = '시장 신호 없음'
+
+export function equityOmitsAnalystTargets(category?: string | null, instrument?: string | null): boolean {
+  if (typeof instrument === 'string' && (instrument.startsWith('KRSTOCK:') || instrument.startsWith('STOCK:'))) {
+    return true
+  }
+  const key = (category ?? '').trim().toLowerCase()
+  return key === 'stock' || key === 'stocks'
+}
 
 export const CONSENSUS_INDEX_MONEY_HINTS = [
   'index-futures COT positioning (YM for DIA, ES for SPY, NQ for QQQ)',
@@ -142,7 +157,7 @@ export const CONSENSUS_SPORTS_MONEY_HINTS = [
   'statistical divergence vs that baseline',
 ] as const
 
-export function consensusMoneySearchHints(category: string): string {
+export function consensusMoneySearchHints(category: string, instrument?: string | null): string {
   const key = category.trim().toLowerCase()
   if (isPoliticsLedgerCategory(key)) {
     return [
@@ -187,11 +202,13 @@ export function consensusMoneySearchHints(category: string): string {
       ...CONSENSUS_CRYPTO_MONEY_HINTS.map((hint) => `- ${hint}`),
     ].join('\n')
   }
-  if (key === 'stock' || key === 'stocks') {
+  if (key === 'stock' || key === 'stocks' || equityOmitsAnalystTargets(key, instrument)) {
     return [
-      'For this US-listed stock (or ADR), the money signal is Street consensus PLUS options and short positioning. Search THESE; do not abstain just because one is missing:',
+      'For this single-name stock (KR listing or US listing), the money signal is a MARKET probability only: options implied probability or a prediction-market implied probability.',
+      'Do NOT use analyst target prices, target-price consensus, brokerage reports, or rating changes as a money-weighted probability.',
+      'If no market probability exists, ABSTAIN. The rationale must be exactly: 시장 신호 없음',
       ...CONSENSUS_STOCK_MONEY_HINTS.map((hint) => `- ${hint}`),
-      'Speak as 목표가 컨센서스 / 옵션 시장은 ~%를 반영 / 공매도 비중. Informational only — never 매수하세요 or brokerage advice.',
+      'Speak as 옵션 시장은 ~%를 반영 / 예측시장 내재 확률. Informational only — never 매수하세요, never a brokerage name, never 목표가.',
     ].join('\n')
   }
   if (key === 'etf_index') {
@@ -334,9 +351,10 @@ export function assertConsensusInputShape(input: object): asserts input is Conse
   }
 }
 
-export function buildConsensusSystemPrompt(category?: string | null): string {
+export function buildConsensusSystemPrompt(category?: string | null, instrument?: string | null): string {
+  const equity = equityOmitsAnalystTargets(category, instrument)
   return [
-    CONSENSUS_PERSONA,
+    equity ? EQUITY_CONSENSUS_PERSONA : CONSENSUS_PERSONA,
     '',
     'You are the 💰 돈이 매긴 확률 extra seat in a prediction league. You answer ALONE.',
     'Use your built-in web search to FIND money-positioning signals for this subject. No prediction-market API is attached — search the public web.',
@@ -358,8 +376,12 @@ export function buildConsensusSystemPrompt(category?: string | null): string {
     '',
     'If search finds no money-positioning data for THIS category after searching the category-appropriate signals, do NOT invent odds. Abstain.',
     'A market existing is not enough. If no venue market is accepted AND search does not quote an explicit implied probability for THIS exact question, abstain (direction null). Never pick a side from "a market exists" alone.',
-    'Do not abstain just because equity analyst targets or CFTC COT are missing — those are not the money signals for crypto or index ETFs.',
-    'Abstain JSON (last line): {"direction":null,"found":false,"probability":null,"rationale":"시장이 돈으로 매긴 확률 신호를 찾지 못했습니다."}',
+    equity
+      ? 'For single-name stocks, analyst targets are not a money signal. If there is no options or prediction-market implied probability, abstain with rationale "시장 신호 없음".'
+      : 'Do not abstain just because equity analyst targets or CFTC COT are missing — those are not the money signals for crypto or index ETFs.',
+    equity
+      ? 'Abstain JSON (last line): {"direction":null,"found":false,"probability":null,"rationale":"시장 신호 없음"}'
+      : 'Abstain JSON (last line): {"direction":null,"found":false,"probability":null,"rationale":"시장이 돈으로 매긴 확률 신호를 찾지 못했습니다."}',
     '',
     'When you DO have a signal, last line MUST be:',
     '{"direction":"up"|"down","probability":0-100,"rationale":"..."}',
@@ -378,7 +400,7 @@ export function buildConsensusUserPrompt(input: ConsensusLeagueInput): string {
     `HORIZON: ${input.horizon}`,
     `CATEGORY: ${input.category}`,
     '',
-    consensusMoneySearchHints(input.category),
+    consensusMoneySearchHints(input.category, input.instrument),
     'Judge what money has priced. No charts, no news-mood, no packet macro.',
     'If nothing is priced for this asset after those category-specific searches, abstain — do not invent odds.',
   ].join('\n')
@@ -409,6 +431,14 @@ export function consensusRetryInstruction(category?: string): string {
       'Use only 시장 기준선 / market baseline / the betting-market-implied probability. Never name a bookmaker. Never 토토, 배당, 핸디캡, 픽, 베팅, 오버언더.',
       'Do not name chart patterns. Do not write 분위기/여론/루머.',
       'If there is no market-implied baseline after search, output found:false and direction null.',
+      'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
+    ].join(' ')
+  }
+  if (equityOmitsAnalystTargets(category)) {
+    return [
+      'RETRY: Rewrite as the 돈이 매긴 확률 seat for this single-name stock.',
+      'Use only an options or prediction-market implied probability. Do NOT use analyst target prices, target-price consensus, brokerage reports, or rating changes.',
+      'If no market probability exists, output found:false and rationale "시장 신호 없음".',
       'Otherwise last line: {"direction":"up"|"down","probability":0-100,"rationale":"..."}.',
     ].join(' ')
   }
@@ -475,6 +505,9 @@ function parseFoundFlag(text: string): boolean | null {
 
 export function consensusRationaleNeedsRetry(rationale: string | null, category?: string): boolean {
   if (!rationale) return true
+  if (equityOmitsAnalystTargets(category) && /목표가|목표\s*주가|목표주가|price\s+targets?|증권사\s*리포트/i.test(rationale)) {
+    return true
+  }
   if (isPoliticsLedgerCategory(category) && /지지율|베팅|토토|배당/.test(rationale)) return true
   if (findConsensusChartLeak(rationale)) return true
   if (findConsensusNewsMoodLeak(rationale)) return true
@@ -492,7 +525,10 @@ export function hasExplicitImpliedProbability(text: string | null | undefined): 
   )
 }
 
-export function parseConsensusOutput(text: string | null): ConsensusEngineOutput | null {
+export function parseConsensusOutput(
+  text: string | null,
+  opts?: { category?: string | null; instrument?: string | null },
+): ConsensusEngineOutput | null {
   if (!text) return null
   const found = parseFoundFlag(text)
   const parsed = parsePrediction(text)
@@ -500,10 +536,11 @@ export function parseConsensusOutput(text: string | null): ConsensusEngineOutput
     parsed?.rationale ??
     sanitizeRationale(text.match(/"rationale"\s*:\s*"([^"]+)"/i)?.[1] ?? null)
 
+  const equity = equityOmitsAnalystTargets(opts?.category, opts?.instrument)
   if (found === false || isConsensusNoSignalText(rationale) || isConsensusNoSignalText(text)) {
     return {
       kind: 'abstain',
-      rationale: rationale || CONSENSUS_NO_SIGNAL_REASON,
+      rationale: equity ? EQUITY_CONSENSUS_ABSTAIN : rationale || CONSENSUS_NO_SIGNAL_REASON,
     }
   }
 
@@ -512,7 +549,7 @@ export function parseConsensusOutput(text: string | null): ConsensusEngineOutput
   if (!hasExplicitImpliedProbability(rationale) && !hasExplicitImpliedProbability(text)) {
     return {
       kind: 'abstain',
-      rationale: CONSENSUS_NO_SIGNAL_REASON,
+      rationale: equity ? EQUITY_CONSENSUS_ABSTAIN : rationale || CONSENSUS_NO_SIGNAL_REASON,
     }
   }
   return {

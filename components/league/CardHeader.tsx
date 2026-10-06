@@ -3,6 +3,7 @@ import { cardStatusCopy, cardStatusKind } from '@/lib/league/card-status'
 import {
   formatInstrumentPrice,
   formatRoundOpenedDate,
+  financeCardSubhead,
   headerHeadline,
   headerWindow,
 } from '@/lib/league/card-header-copy'
@@ -86,9 +87,20 @@ export function CardHeader({
           <div className="min-w-0">
             <p className="text-sm font-bold leading-snug text-league-fg md:text-lg">{headline}</p>
             {round.category === 'ai_models' ? null : (
-              <p className="mt-0.5 text-[11px] text-league-fg-muted">
+              <p className="mt-0.5 text-[11px] text-league-fg-muted" data-testid="card-subhead">
                 {techSubhead(round, locale, t) ??
                   (round.category === 'sports' ? sportsCardHeaderLine(round.instrument, locale) : null) ??
+                  financeCardSubhead({
+                    category: round.category,
+                    instrument: round.instrument,
+                    horizon: round.horizon,
+                    subjectLabel: round.subject_label,
+                    propositionText: round.proposition_text,
+                    horizonLabel:
+                      propertyHorizon ??
+                      t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ??
+                      round.horizon,
+                  }) ??
                   `${propertyHorizon ?? t.catalog.horizons[round.horizon as '1d' | '1w' | '1m' | '3m'] ?? round.horizon} · ${formatCategory(round.category)}`}
               </p>
             )}

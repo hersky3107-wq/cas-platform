@@ -5,6 +5,7 @@ import { CardHeader } from '../../../components/league/CardHeader'
 import { encodePoliticsInstrument } from '../gateway/adapters/politics-catalog'
 import {
   electionInstrumentDisplay,
+  financeCardSubhead,
   formatInstrumentPrice,
   formatRoundOpenedDate,
   formatSessionDate,
@@ -14,6 +15,7 @@ import {
   rankedPropositionDisplay,
 } from '../card-header-copy'
 import { LEAGUE_UI } from '../i18n/dictionary'
+import { LEAGUE_LOCALES } from '../i18n/locales'
 import { toneFor } from '../tone'
 import type { CardRoundMeta, HitRateSummary } from '../card-types'
 
@@ -336,6 +338,61 @@ describe('header honesty', () => {
     expect(html).toContain('276,000원')
     expect(html).toContain('280,000원')
     expect(html).not.toContain('₩')
+    expect(html).toContain('삼성전자(005930) · 1일')
+    expect(html).not.toContain('· stock')
+  })
+
+  it('SK스퀘어 1w header is name(code) · horizon, never a raw category id', () => {
+    const html = renderToStaticMarkup(
+      createElement(CardHeader, {
+        round: roundMeta({
+          instrument: 'KRSTOCK:KOSPI:402340',
+          category: 'stock',
+          horizon: '1w',
+          subject_label: 'SK스퀘어',
+          proposition_text: 'Will SK스퀘어 (402340) close higher?',
+          anchorPrice: 1162000,
+          livePrice: 1162000,
+        }),
+        hitRate,
+        tone,
+        t: ko,
+        locale: 'ko',
+      }),
+    )
+    expect(html).toContain('SK스퀘어(402340) · 1주')
+    expect(html).not.toContain('1주 · stock')
+    expect(html).not.toContain('· stock')
+
+    const rawIds = ['stock', 'fx', 'crypto_spot', 'crypto_perps', 'gold_metal', 'gold metal', 'etf_index', 'commodity_energy', 'memecoin']
+    const samples = [
+      { category: 'stock', instrument: 'KRSTOCK:KOSPI:402340', subjectLabel: 'SK스퀘어', name: 'SK스퀘어(402340)' },
+      { category: 'stock', instrument: 'STOCK:NASDAQ:AAPL', subjectLabel: 'Apple', name: 'Apple(AAPL)' },
+      { category: 'fx', instrument: 'EUR/USD', subjectLabel: null, name: 'EUR/USD' },
+      { category: 'gold_metal', instrument: 'XAU/USD', subjectLabel: 'Gold', name: 'XAU/USD' },
+      { category: 'crypto_spot', instrument: 'BTC/USD', subjectLabel: 'Bitcoin', name: 'BTC/USD' },
+      { category: 'crypto_perps', instrument: 'BTC-PERP', subjectLabel: null, name: 'BTC-PERP' },
+      { category: 'etf_index', instrument: 'SPY', subjectLabel: 'SPY', name: 'SPY' },
+      { category: 'commodity_energy', instrument: 'CL', subjectLabel: 'Crude', name: 'Crude(CL)' },
+      { category: 'memecoin', instrument: 'DOGE/USD', subjectLabel: 'Dogecoin', name: 'DOGE/USD' },
+    ]
+    for (const locale of LEAGUE_LOCALES) {
+      const horizon = LEAGUE_UI[locale].catalog.horizons['1w']
+      for (const sample of samples) {
+        const sub = financeCardSubhead({
+          category: sample.category,
+          instrument: sample.instrument,
+          horizon: '1w',
+          subjectLabel: sample.subjectLabel,
+          horizonLabel: horizon,
+        })
+        expect(sub, `${locale} ${sample.category}`).toBe(`${sample.name} · ${horizon}`)
+        const lower = (sub ?? '').toLowerCase()
+        for (const id of rawIds) expect(lower.includes(id), `${locale} ${id}`).toBe(false)
+      }
+    }
+    expect(financeCardSubhead({ category: 'sports', instrument: 'X', horizon: '1w', horizonLabel: '1주' })).toBeNull()
+    expect(financeCardSubhead({ category: 'real_estate', instrument: 'X', horizon: '1w', horizonLabel: '1주' })).toBeNull()
   })
 
   it('ai_models cards show the localized LMArena attribution line', () => {

@@ -67,6 +67,8 @@ import {
 import {
   CONSENSUS_ENGINE_MODEL_ID,
   CONSENSUS_NO_SIGNAL_REASON,
+  EQUITY_CONSENSUS_ABSTAIN,
+  equityOmitsAnalystTargets,
   assertConsensusInputShape,
   buildConsensusInput,
   buildConsensusSystemPrompt,
@@ -1012,7 +1014,7 @@ async function callConsensusOnce(
   const userPrompt = retry
     ? `${buildConsensusUserPrompt(input)}\n\n${consensusRetryInstruction(input.category)}`
     : buildConsensusUserPrompt(input)
-  return call({ systemPrompt: buildConsensusSystemPrompt(input.category), userPrompt })
+  return call({ systemPrompt: buildConsensusSystemPrompt(input.category, input.instrument), userPrompt })
 }
 
 async function persistConsensusAbstain(
@@ -1139,7 +1141,7 @@ async function runConsensusSeat(
   try {
     let raw = await callConsensusOnce(call, input, false)
     if (raw.error) throw new Error(raw.error)
-    let parsed = parseConsensusOutput(raw.text)
+    let parsed = parseConsensusOutput(raw.text, { category: round.category, instrument: round.instrument })
 
     const needsRetry =
       !parsed ||
@@ -1155,7 +1157,10 @@ async function runConsensusSeat(
           costUsd: (raw.costUsd ?? 0) + (retryRaw.costUsd ?? 0),
           costIsEstimated: raw.costIsEstimated && retryRaw.costIsEstimated,
         }
-        const retryParsed = parseConsensusOutput(retryRaw.text)
+        const retryParsed = parseConsensusOutput(retryRaw.text, {
+          category: round.category,
+          instrument: round.instrument,
+        })
         if (retryParsed) parsed = retryParsed
       }
     }
@@ -1180,7 +1185,10 @@ async function runConsensusSeat(
       return persistConsensusAbstain(round.id, round.category, seat.brand, parsed.rationale, cost)
     }
     if (consensusRationaleNeedsRetry(parsed.rationale, round.category)) {
-      return persistConsensusAbstain(round.id, round.category, seat.brand, CONSENSUS_NO_SIGNAL_REASON, cost)
+      const reason = equityOmitsAnalystTargets(round.category, round.instrument)
+        ? EQUITY_CONSENSUS_ABSTAIN
+        : CONSENSUS_NO_SIGNAL_REASON
+      return persistConsensusAbstain(round.id, round.category, seat.brand, reason, cost)
     }
 
     const direction = leagueSideFromConsensus(parsed.verdict, round.proposition_kind)

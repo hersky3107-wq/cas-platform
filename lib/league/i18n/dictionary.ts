@@ -175,6 +175,11 @@ export type LeagueUiPack = {
      * is high and the weighted confidence is low. Never replaces that line.
      */
     weakConfidenceCrowding: string
+    /**
+     * One line under the direction bar when the weak-confidence badge shows.
+     * `{x}` is the weighted average confidence, 0–100.
+     */
+    weakConfidenceExplain: (confidencePct: number) => string
   }
   /** e.g. "US: 3 up · 1 down · 1 no call" — `label` (e.g. "US"/"Premier") is passed through untranslated (a proper-noun-ish group name). */
   groupTallyLine: (label: string, tally: DirectionTally) => string
@@ -890,6 +895,8 @@ const en: LeagueUiPack = {
       `So far ${answered} replies \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Still tallying \u00b7 the call locks in when every seat has answered',
     weakConfidenceCrowding: 'Crowded on weak confidence — this may be close',
+    weakConfidenceExplain: (confidencePct) =>
+      `Average confidence across the AIs is ${confidencePct}%. Agreeing on a direction does not mean the outcome is certain.`,
   },
   sides: {
     subjectOutcome: {
@@ -1536,6 +1543,8 @@ const ko: LeagueUiPack = {
       `현재 ${answered}개 응답 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '집계 대기 중 \u00b7 응답 수집 후 확정',
     weakConfidenceCrowding: '약한 확신의 쏠림 — 박빙일 수 있음',
+    weakConfidenceExplain: (confidencePct) =>
+      `각 AI의 확신은 평균 ${confidencePct}%입니다. 방향이 모여도 결과가 확실하다는 뜻은 아닙니다.`,
   },
   sides: {
     subjectOutcome: {
@@ -2174,6 +2183,8 @@ const ja: LeagueUiPack = {
       `現在 ${answered}件が応答 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '集計待ち \u00b7 全席の応答後に確定します',
     weakConfidenceCrowding: '弱い確信への偏り — 接戦の可能性があります',
+    weakConfidenceExplain: (confidencePct) =>
+      `各AIの確信は平均${confidencePct}%です。方向が揃っても、結果が確実だという意味ではありません。`,
   },
   sides: {
     subjectOutcome: {
@@ -2809,6 +2820,8 @@ const zhTW: LeagueUiPack = {
       `目前 ${answered} 則回覆 \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: '統計中 \u00b7 收齊回覆後才會確定',
     weakConfidenceCrowding: '弱信心的一邊倒 — 可能是五五波',
+    weakConfidenceExplain: (confidencePct) =>
+      `各AI的信心平均為${confidencePct}%。方向一致不代表結果已經確定。`,
   },
   sides: {
     subjectOutcome: {
@@ -3442,6 +3455,8 @@ const fr: LeagueUiPack = {
       `${answered} réponses pour l\u2019instant \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Décompte en cours \u00b7 l\u2019appel se fige quand tous les sièges ont répondu',
     weakConfidenceCrowding: 'Foule à faible confiance — l\u2019issue peut être serrée',
+    weakConfidenceExplain: (confidencePct) =>
+      `La confiance moyenne des IA est de ${confidencePct} %. Être d’accord sur un sens ne veut pas dire que le résultat est certain.`,
   },
   sides: {
     subjectOutcome: {
@@ -4095,6 +4110,8 @@ const es: LeagueUiPack = {
       `De momento ${answered} respuestas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Recuento en curso \u00b7 la conclusión se fija cuando respondan todos los asientos',
     weakConfidenceCrowding: 'Aglomeración con poca confianza — puede estar reñido',
+    weakConfidenceExplain: (confidencePct) =>
+      `La confianza media de las IA es del ${confidencePct}%. Coincidir en una dirección no significa que el resultado sea seguro.`,
   },
   sides: {
     subjectOutcome: {
@@ -4748,6 +4765,8 @@ const ar: LeagueUiPack = {
       `حتى الآن ${answered} ردود \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'ما زال العد جاريًا \u00b7 تُثبَّت الخلاصة بعد اكتمال كل المقاعد',
     weakConfidenceCrowding: 'تزاحم بثقة ضعيفة — قد تكون النتيجة متقاربة',
+    weakConfidenceExplain: (confidencePct) =>
+      `متوسط ثقة النماذج ${confidencePct}%. الاتفاق على اتجاه لا يعني أن النتيجة مؤكدة.`,
   },
   sides: {
     subjectOutcome: {
@@ -5391,6 +5410,8 @@ const pt: LeagueUiPack = {
       `Até agora ${answered} respostas \u00b7 ${upWord} ${upCount} \u00b7 ${downWord} ${downCount}`,
     conclusionPending: 'Contagem em andamento \u00b7 a conclusão trava quando todos os assentos responderem',
     weakConfidenceCrowding: 'Aglomeração com pouca confiança — pode ser apertado',
+    weakConfidenceExplain: (confidencePct) =>
+      `A confiança média das IAs é ${confidencePct}%. Concordar na direção não significa que o resultado seja certo.`,
   },
   sides: {
     subjectOutcome: {

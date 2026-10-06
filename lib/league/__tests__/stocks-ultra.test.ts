@@ -229,7 +229,7 @@ describe('extra seats on the Ultra packet', () => {
     expect(brief).not.toMatch(/target|Twelve Data|analyst/i)
   })
 
-  it('consensus seat searches analyst targets + options + FINRA short + CBOE put/call for stocks', () => {
+  it('consensus seat searches options and market probability, not analyst targets, for stocks', () => {
     const user = buildConsensusUserPrompt(
       buildConsensusInput({
         proposition_text: 'Will TSM close higher by 2026-09-04 than its last close?',
@@ -240,7 +240,8 @@ describe('extra seats on the Ultra packet', () => {
         proposition_kind: 'binary_close_higher',
       }),
     )
-    expect(user).toMatch(/price target consensus/)
+    expect(user).not.toMatch(/price target consensus/)
+    expect(user).toMatch(/시장 신호 없음/)
     expect(user).toMatch(/put-call skew/)
     expect(user).toMatch(/FINRA/)
     expect(user).toMatch(/CBOE equity put\/call/)

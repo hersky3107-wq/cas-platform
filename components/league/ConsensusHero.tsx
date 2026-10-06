@@ -101,6 +101,11 @@ export function ConsensusHero({
               labels={sl}
               t={t}
               heading={barHeading}
+              confidenceExplain={
+                weakCrowding && consensus.aggregateProbability != null
+                  ? t.hero.weakConfidenceExplain(Math.round(consensus.aggregateProbability))
+                  : null
+              }
             />
           </>
         ) : null}
@@ -143,6 +148,11 @@ export function ConsensusHero({
         labels={sl}
         t={t}
         heading={barHeading}
+        confidenceExplain={
+          weakCrowding && hero.confidencePct != null
+            ? t.hero.weakConfidenceExplain(hero.confidencePct)
+            : null
+        }
       />
       <div className="mt-3">
         <div
@@ -232,6 +242,7 @@ function DirectionRatioBar({
   labels,
   t,
   heading,
+  confidenceExplain = null,
 }: {
   up: number
   down: number
@@ -241,6 +252,7 @@ function DirectionRatioBar({
   labels: SideLabels
   t: LeagueUiPack
   heading: string
+  confidenceExplain?: string | null
 }) {
   const total = up + down + none
   if (total <= 0) return null
@@ -280,6 +292,11 @@ function DirectionRatioBar({
       {none > 0 ? (
         <p className="mt-1 text-[10px] text-slate-600">
           {none}– <span className="sr-only">{t.verdict.distributionNoDirection}</span>
+        </p>
+      ) : null}
+      {confidenceExplain ? (
+        <p className="mt-1.5 text-[11px] font-medium leading-snug text-league-fg-muted" data-testid="weak-confidence-explain">
+          {confidenceExplain}
         </p>
       ) : null}
     </div>
