@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin/require-admin'
+import { refreshLeaderboardCacheQuietly } from '@/lib/league/boards/cache.server'
 import { gradeAllDueRounds } from '@/lib/prediction/reconciliation'
 
 /** One sweep can grade many rounds; give it room without being unbounded. */
@@ -48,5 +49,6 @@ export async function POST(req: Request) {
   }
 
   const report = await gradeAllDueRounds()
+  if (report.graded + report.unresolvable > 0) after(() => refreshLeaderboardCacheQuietly('admin reconcile'))
   return NextResponse.json({ ok: true, report })
 }

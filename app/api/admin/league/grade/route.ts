@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server'
+import { after, NextResponse } from 'next/server'
 import { requireAdmin, requireAdminUser } from '@/lib/admin/require-admin'
+import { refreshLeaderboardCacheQuietly } from '@/lib/league/boards/cache.server'
 import { applyManualGrade, applyManualGradesBulk, countNeedsGrading, listNeedsGradingQueue } from '@/lib/league/manual-grade'
 import { readApiFootballUsageToday } from '@/lib/league/sports/api-football'
 import { isManualVerdict, type BulkGradeItem } from '@/lib/league/manual-grade/types'
@@ -58,6 +59,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'items must contain at least one yes/no/void row' }, { status: 400 })
     }
     const result = await applyManualGradesBulk(items, admin.userId)
+    after(() => refreshLeaderboardCacheQuietly('manual grade batch'))
     return NextResponse.json(result)
   }
 
@@ -77,5 +79,6 @@ export async function POST(req: Request) {
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: result.status })
   }
+  after(() => refreshLeaderboardCacheQuietly('manual grade'))
   return NextResponse.json(result)
 }

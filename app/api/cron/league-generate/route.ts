@@ -25,6 +25,7 @@ import { dispatchKrElectionAlerts } from '@/lib/league/politics/kr-election-aler
 import { supabaseKrElectionAlertStore } from '@/lib/league/politics/kr-election-store'
 import { gradeAllDueRounds } from '@/lib/prediction/reconciliation'
 import { shouldRunHourlyGradingSweep } from '@/lib/prediction/hourly-sweep'
+import { BOARD_CACHE_MAX_AGE_MS, refreshLeaderboardCache } from '@/lib/league/boards/cache.server'
 
 export const runtime = 'nodejs'
 export const maxDuration = 300
@@ -68,8 +69,18 @@ export async function GET(req: Request) {
             return { skipped: true as const, reason: 'error' as const, error: e instanceof Error ? e.message : 'error' }
           })
       : { skipped: true as const, reason: 'not_hourly_window' as const }
+    const gradedSomething = !grading.skipped && grading.report.graded + grading.report.unresolvable > 0
+    const boards = gradingDue
+      ? await refreshLeaderboardCache({ maxAgeMs: gradedSomething ? undefined : BOARD_CACHE_MAX_AGE_MS }).catch((e: unknown) => {
+          console.log('[league-generate] leaderboard-cache skipped reason=error')
+          return { ok: false as const, reason: 'error' as const, error: e instanceof Error ? e.message : 'error' }
+        })
+      : { ok: false as const, reason: 'not_hourly_window' as const }
 
-    return NextResponse.json({ ok: true, summary: { generation, deep, electionAlerts, krxRefresh, aiLeaderboard, airankTable, grading } })
+    return NextResponse.json({
+      ok: true,
+      summary: { generation, deep, electionAlerts, krxRefresh, aiLeaderboard, airankTable, grading, boards },
+    })
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : 'Unknown error'
     return NextResponse.json({ error: msg }, { status: 500 })
