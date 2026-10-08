@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import type { NormalizedMetric, NormalizedSignal } from './types'
+import type { NormalizedForecast, NormalizedMetric, NormalizedSignal } from './types'
 
 export const UPSERT_BATCH = 500
 
@@ -20,6 +20,15 @@ export async function upsertSignals(client: SupabaseClient, rows: NormalizedSign
   return chunked(rows, async (batch) => {
     const { error } = await client.from('crisis_raw_signals').upsert(batch, { onConflict: 'dedupe_key' })
     if (error) throw new Error(`crisis_raw_signals upsert: ${error.message}`)
+  })
+}
+
+export async function upsertForecasts(client: SupabaseClient, rows: NormalizedForecast[]): Promise<number> {
+  return chunked(rows, async (batch) => {
+    const { error } = await client
+      .from('crisis_region_forecasts')
+      .upsert(batch, { onConflict: 'region_id,source,issued_date' })
+    if (error) throw new Error(`crisis_region_forecasts upsert: ${error.message}`)
   })
 }
 

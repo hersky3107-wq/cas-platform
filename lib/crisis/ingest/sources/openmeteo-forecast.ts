@@ -1,29 +1,20 @@
 import {
-  billedCallsToday,
   estimateBilledCalls,
   OPENMETEO_BATCH_SIZE,
   OPENMETEO_COORD_DECIMALS,
-  OPENMETEO_DAILY_BILLED_CAP,
   OPENMETEO_MAX_URL_CHARS,
   OPENMETEO_MINUTE_BILLED_CAP,
   recordBilledCalls,
-  remainingBudget,
   sleepMsForMinuteBudget,
   wouldExceedBudget,
 } from '../budget'
 import { asArray, asRecord, finiteNumber, politeFetch } from '../fetch'
-import { loadForecastRegions, loadStateSafe } from '../regions'
-import type { CrisisSource, ForecastRegion, IngestContext, IngestFetchResult, NormalizedMetric } from '../types'
+import { addBilled, extrapolateCount, loadProviderQuota, providerAllowance, saveProviderQuota } from '../quota'
+import { loadForecastRegions } from '../regions'
+import type { CrisisSource, ForecastRegion, IngestContext, IngestFetchResult, NormalizedForecast } from '../types'
 
 const DAILY = 'precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max'
 const GAP_MS = 2_000
-
-const METRICS = [
-  { field: 'precipitation_sum', metric: 'precipitation_sum', unit: 'mm' },
-  { field: 'temperature_2m_max', metric: 'temperature_2m_max', unit: 'C' },
-  { field: 'temperature_2m_min', metric: 'temperature_2m_min', unit: 'C' },
-  { field: 'wind_speed_10m_max', metric: 'wind_speed_10m_max', unit: 'km/h' },
-] as const
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms))
@@ -40,7 +31,11 @@ export function gridUrl(base: string, extra: string, regions: ForecastRegion[]):
 }
 
 export function forecastUrl(regions: ForecastRegion[]): string {
-  return gridUrl('https://api.open-meteo.com/v1/forecast', `daily=${DAILY}&forecast_days=7&timezone=UTC`, regions)
+  return gridUrl(
+    'https://api.open-meteo.com/v1/forecast',
+    `daily=${DAILY}&forecast_days=7&timezone=UTC&wind_speed_unit=ms`,
+    regions,
+  )
 }
 
 /** Shrink a batch until the GET URL is under the length cap (414 guard). */
@@ -56,36 +51,43 @@ export function trimBatchToUrlLimit(
   return batch
 }
 
-export function normalizeOpenMeteoForecast(
+function dayStamp(raw: string): string {
+  return raw.slice(0, 10)
+}
+
+export function buildOpenMeteoForecasts(
   payload: unknown,
   regions: ForecastRegion[],
   issuedAt: string,
-): NormalizedMetric[] {
+): NormalizedForecast[] {
   const rows = Array.isArray(payload) ? payload : payload ? [payload] : []
-  const out: NormalizedMetric[] = []
+  const issuedDate = issuedAt.slice(0, 10)
+  const out: NormalizedForecast[] = []
   rows.forEach((item, index) => {
     const body = asRecord(item)
     const daily = asRecord(body?.daily)
-    if (!daily) return
-    const times = asArray(daily.time).map(String)
     const region = regions[index]
-    if (!region) return
-    for (let i = 0; i < times.length; i += 1) {
-      const valid = times[i].includes('T') ? new Date(times[i]).toISOString() : `${times[i]}T00:00:00.000Z`
-      for (const spec of METRICS) {
-        const value = finiteNumber(asArray(daily[spec.field])[i])
-        if (value == null) continue
-        out.push({
-          region_id: region.id,
-          metric: spec.metric,
-          valid_time: valid,
-          issued_at: issuedAt,
-          value,
-          unit: spec.unit,
-          source: 'openmeteo_forecast',
-        })
-      }
-    }
+    if (!daily || !region) return
+    const dates = asArray(daily.time).map((value) => dayStamp(String(value)))
+    const precip = asArray(daily.precipitation_sum).map((value) => finiteNumber(value))
+    const tmax = asArray(daily.temperature_2m_max).map((value) => finiteNumber(value))
+    const tmin = asArray(daily.temperature_2m_min).map((value) => finiteNumber(value))
+    const wind = asArray(daily.wind_speed_10m_max).map((value) => finiteNumber(value))
+    if (!dates.length) return
+    out.push({
+      region_id: region.id,
+      source: 'openmeteo_forecast',
+      issued_date: issuedDate,
+      issued_at: issuedAt,
+      horizon_days: dates.length,
+      series: {
+        dates,
+        precip_mm: precip,
+        tmax_c: tmax,
+        tmin_c: tmin,
+        wind_max_ms: wind,
+      },
+    })
   })
   return out
 }
@@ -94,14 +96,13 @@ export const openmeteoForecastSource: CrisisSource = {
   key: 'openmeteo_forecast',
   department: 'hydro_weather',
   scheduleMinutes: 1440,
-  writes: 'metrics',
+  writes: 'forecasts',
   async fetch(ctx): Promise<IngestFetchResult> {
     return fetchOpenMeteoGrid(ctx, {
       key: 'openmeteo_forecast',
-      cap: OPENMETEO_DAILY_BILLED_CAP,
       loadRegions: loadForecastRegions,
       url: forecastUrl,
-      normalize: normalizeOpenMeteoForecast,
+      normalize: buildOpenMeteoForecasts,
     })
   },
 }
@@ -110,11 +111,9 @@ export async function fetchOpenMeteoGrid(
   ctx: IngestContext,
   opts: {
     key: 'openmeteo_forecast' | 'glofas'
-    cap: number
     loadRegions: (client: IngestContext['client']) => Promise<ForecastRegion[]>
     url: (regions: ForecastRegion[]) => string
-    normalize: (payload: unknown, regions: ForecastRegion[], issuedAt: string) => NormalizedMetric[]
-    extra?: (metrics: NormalizedMetric[], ctx: IngestContext, regions: ForecastRegion[]) => Promise<NormalizedMetric[]>
+    normalize: (payload: unknown, regions: ForecastRegion[], issuedAt: string) => NormalizedForecast[]
     emptyNote?: string
   },
 ): Promise<IngestFetchResult> {
@@ -123,10 +122,22 @@ export async function fetchOpenMeteoGrid(
     return { httpCalls: 0, skipped: opts.emptyNote ?? 'no forecast regions (load crisis_regions first)' }
   }
 
-  const state = await loadStateSafe(ctx.client, opts.key)
-  let used = billedCallsToday(state?.cursor ?? null, ctx.now)
+  const loaded = await loadProviderQuota(ctx.client, ctx.now)
+  let ledger = loaded.ledger
+  if (loaded.seeded) await saveProviderQuota(ctx.client, ledger)
+
+  const allowance = providerAllowance(opts.key, ledger.billed_today)
+  if (allowance <= 0) {
+    return {
+      httpCalls: 0,
+      billedCalls: 0,
+      skipped: `open-meteo combined daily cap reached (billed_today=${ledger.billed_today})`,
+      quotaNote: `skipped; billed_today=${ledger.billed_today} date_utc=${ledger.date_utc}`,
+    }
+  }
+
   const issuedAt = ctx.now.toISOString()
-  const metrics: NormalizedMetric[] = []
+  const forecasts: NormalizedForecast[] = []
   let httpCalls = 0
   let billed = 0
   const notes: string[] = []
@@ -134,19 +145,23 @@ export async function fetchOpenMeteoGrid(
   let batchSize = OPENMETEO_BATCH_SIZE
   let partial = false
   let i = 0
+  const locationBudget = ctx.dryRun ? Math.min(OPENMETEO_BATCH_SIZE, allowance, regions.length) : regions.length
 
-  while (i < regions.length) {
-    const remaining = remainingBudget(used, opts.cap)
+  while (i < locationBudget) {
+    const remaining = allowance - billed
     if (remaining <= 0) {
-      notes.push(`daily billed-call cap ${opts.cap} reached; stopped at ${i}/${regions.length} locations`)
+      notes.push(`provider allowance exhausted at ${i}/${regions.length}`)
       partial = true
       break
     }
-    let batch = trimBatchToUrlLimit(regions.slice(i, i + Math.min(batchSize, remaining, regions.length - i)), opts.url)
+    let batch = trimBatchToUrlLimit(
+      regions.slice(i, i + Math.min(batchSize, remaining, locationBudget - i)),
+      opts.url,
+    )
     if (!batch.length) break
     const add = estimateBilledCalls(batch.length)
-    if (wouldExceedBudget(used, add, opts.cap)) {
-      notes.push(`next batch of ${batch.length} would exceed cap ${opts.cap} (used ${used})`)
+    if (wouldExceedBudget(billed, add, allowance)) {
+      notes.push(`next batch of ${batch.length} would exceed allowance ${allowance}`)
       partial = true
       break
     }
@@ -168,8 +183,7 @@ export async function fetchOpenMeteoGrid(
       if (res.status === 414) batchSize = Math.min(batchSize, batch.length)
       notes.push(`HTTP ${res.status}; retry once with n=${batch.length}`)
       if (res.status === 429) await sleep(10_000)
-      const retryAdd = estimateBilledCalls(batch.length)
-      const retryWait = sleepMsForMinuteBudget(minuteStamps, retryAdd)
+      const retryWait = sleepMsForMinuteBudget(minuteStamps, estimateBilledCalls(batch.length))
       if (retryWait > 0) await sleep(retryWait)
       url = opts.url(batch)
       ctx.log(`[${opts.key}] retry n=${batch.length} url_len=${url.length}`)
@@ -180,32 +194,50 @@ export async function fetchOpenMeteoGrid(
 
     if (!res.ok) {
       notes.push(res.error ?? `HTTP ${res.status}`)
+      ledger = addBilled(ledger, billed)
+      await saveProviderQuota(ctx.client, ledger)
       return {
         httpCalls,
         billedCalls: billed,
-        metrics,
+        forecasts,
         error: res.error ?? `HTTP ${res.status}`,
         quotaNote: notes.join('; ') || undefined,
       }
     }
 
     const usedAdd = estimateBilledCalls(batch.length)
-    metrics.push(...opts.normalize(res.data, batch, issuedAt))
-    used += usedAdd
+    forecasts.push(...opts.normalize(res.data, batch, issuedAt))
     billed += usedAdd
     minuteStamps = recordBilledCalls(minuteStamps, usedAdd)
     i += batch.length
+    if (ctx.dryRun) break
   }
 
-  const extra = opts.extra ? await opts.extra(metrics, ctx, regions) : []
-  if (partial && i < regions.length && !notes.some((n) => /cap|HTTP/.test(n))) {
-    notes.push(`partial: wrote through ${i}/${regions.length} locations`)
+  ledger = addBilled(ledger, billed)
+  await saveProviderQuota(ctx.client, ledger)
+
+  if (ctx.dryRun) {
+    const extrapolated = extrapolateCount(forecasts.length, i, regions.length)
+    ctx.log('dry-run sampled 1 batch')
+    notes.unshift(`dry-run sampled 1 batch; sample_rows=${forecasts.length}; extrapolated_rows=${extrapolated}; billed_sample=${billed}`)
+    return {
+      httpCalls,
+      billedCalls: billed,
+      forecasts: [],
+      reportedRows: extrapolated,
+      quotaNote: notes.join('; '),
+    }
+  }
+
+  if (i < regions.length) {
+    partial = true
+    notes.push(`stopped at ${i}/${regions.length} locations`)
   }
 
   return {
     httpCalls,
     billedCalls: billed,
-    metrics: metrics.concat(extra),
+    forecasts,
     quotaNote: notes.join('; ') || (partial ? 'partial' : undefined),
   }
 }

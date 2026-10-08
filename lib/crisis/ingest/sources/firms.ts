@@ -2,18 +2,35 @@ import { buildDedupeKey } from '../dedupe'
 import { finiteNumber, isoTime, politeFetch } from '../fetch'
 import type { CrisisSource, IngestFetchResult, NormalizedSignal } from '../types'
 
-export const FIRMS_ROW_CAP = 5000
+export const FIRMS_ROW_CAP = 20_000
+export const FIRMS_AREA = 'world'
+export const FIRMS_DAY_RANGE = 1
+/** NOAA-20 first: the 2026-10-08 SNPP world/1 call returned a header and zero detections. */
+export const FIRMS_SOURCES = ['VIIRS_NOAA20_NRT', 'VIIRS_NOAA21_NRT', 'VIIRS_SNPP_NRT', 'MODIS_NRT'] as const
 
-const HIGH_NOMINAL = new Set(['high', 'nominal', 'h', 'n'])
+const VIIRS_KEEP = new Set(['h', 'n', 'high', 'nominal'])
 
-export function firmsUrl(mapKey: string): string {
-  return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${mapKey}/VIIRS_SNPP_NRT/world/1`
+export function firmsUrl(mapKey: string, source: string = FIRMS_SOURCES[0]): string {
+  return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/${mapKey}/${source}/${FIRMS_AREA}/${FIRMS_DAY_RANGE}`
+}
+
+export function firmsUrlRedacted(source: string): string {
+  return `https://firms.modaps.eosdis.nasa.gov/api/area/csv/MAP_KEY/${source}/${FIRMS_AREA}/${FIRMS_DAY_RANGE}`
+}
+
+/** VIIRS letters h/n (and the words). MODIS confidence is 0–100; keep nominal/high (>= 30). */
+export function firmsConfidenceKeep(raw: string | null | undefined): boolean {
+  const value = (raw ?? '').trim().toLowerCase()
+  if (VIIRS_KEEP.has(value)) return true
+  if (value === 'l' || value === 'low') return false
+  const numeric = Number(value)
+  return Number.isFinite(numeric) && numeric >= 30 && numeric <= 100
 }
 
 function parseCsv(text: string): Array<Record<string, string>> {
   const lines = text.replace(/^\uFEFF/, '').split(/\r?\n/).filter((line) => line.trim())
   if (lines.length < 2) return []
-  const headers = lines[0].split(',').map((h) => h.trim())
+  const headers = lines[0].split(',').map((header) => header.trim().toLowerCase())
   const rows: Array<Record<string, string>> = []
   for (const line of lines.slice(1)) {
     const cols = line.split(',')
@@ -26,13 +43,19 @@ function parseCsv(text: string): Array<Record<string, string>> {
   return rows
 }
 
-export function normalizeFirmsCsv(csv: string, cap = FIRMS_ROW_CAP): NormalizedSignal[] {
+export function countFirmsCsv(csv: string): { before: number; after: number } {
   const rows = parseCsv(csv)
-    .filter((row) => HIGH_NOMINAL.has((row.confidence ?? '').toLowerCase()))
-    .sort((a, b) => (finiteNumber(b.frp) ?? 0) - (finiteNumber(a.frp) ?? 0))
-    .slice(0, cap)
+  return { before: rows.length, after: rows.filter((row) => firmsConfidenceKeep(row.confidence)).length }
+}
 
-  return rows.map((row) => {
+export function normalizeFirmsCsv(csv: string, cap = FIRMS_ROW_CAP): { signals: NormalizedSignal[]; before: number; capped: boolean } {
+  const parsed = parseCsv(csv)
+  const kept = parsed
+    .filter((row) => firmsConfidenceKeep(row.confidence))
+    .sort((a, b) => (finiteNumber(b.frp) ?? 0) - (finiteNumber(a.frp) ?? 0))
+  const capped = kept.length > cap
+  const rows = kept.slice(0, cap)
+  const signals = rows.map((row) => {
     const lat = finiteNumber(row.latitude)
     const lon = finiteNumber(row.longitude)
     const acq = row.acq_date && row.acq_time
@@ -53,6 +76,7 @@ export function normalizeFirmsCsv(csv: string, cap = FIRMS_ROW_CAP): NormalizedS
         frp: finiteNumber(row.frp),
         bright_ti4: finiteNumber(row.bright_ti4),
         satellite: row.satellite ?? null,
+        instrument: row.instrument ?? null,
         daynight: row.daynight ?? null,
       },
       unit_raw: 'MW',
@@ -61,6 +85,7 @@ export function normalizeFirmsCsv(csv: string, cap = FIRMS_ROW_CAP): NormalizedS
       dedupe_key: buildDedupeKey({ source: 'firms', signalType: 'active_fire', id, lat, lon, eventTime: acq }),
     }
   })
+  return { signals, before: parsed.length, capped }
 }
 
 export const firmsSource: CrisisSource = {
@@ -71,16 +96,43 @@ export const firmsSource: CrisisSource = {
   requiredEnv: ['FIRMS_MAP_KEY'],
   async fetch(ctx): Promise<IngestFetchResult> {
     const key = ctx.env.FIRMS_MAP_KEY!.trim()
-    const res = await politeFetch(firmsUrl(key), { sourceKey: 'firms', minIntervalMs: 15_000, as: 'text' })
-    if (!res.ok) return { httpCalls: 1, error: res.error ?? `HTTP ${res.status}` }
-    if (/invalid api call|invalid.*key|unauthorized/i.test(res.text)) {
-      return { httpCalls: 1, error: 'FIRMS rejected MAP_KEY' }
+    let httpCalls = 0
+    const notes: string[] = []
+    for (const sensor of FIRMS_SOURCES) {
+      const res = await politeFetch(firmsUrl(key, sensor), {
+        sourceKey: 'firms',
+        minIntervalMs: 5_000,
+        timeoutMs: 90_000,
+        as: 'text',
+      })
+      httpCalls += 1
+      ctx.log(`[firms] ${firmsUrlRedacted(sensor)} http=${res.status}`)
+      if (!res.ok) {
+        notes.push(`${sensor} HTTP ${res.status}`)
+        continue
+      }
+      if (/invalid api call|invalid.*key|unauthorized/i.test(res.text)) {
+        return { httpCalls, error: 'FIRMS rejected MAP_KEY' }
+      }
+      const { signals, before, capped } = normalizeFirmsCsv(res.text)
+      ctx.log(`[firms] ${sensor} rows_before=${before} rows_after=${signals.length}${capped ? ' capped' : ''}`)
+      if (before === 0) {
+        notes.push(`${sensor} header only`)
+        continue
+      }
+      if (capped) ctx.log(`[firms] capped at ${FIRMS_ROW_CAP} (after filter would exceed cap)`)
+      return {
+        httpCalls,
+        signals,
+        quotaNote: [capped ? `capped at ${FIRMS_ROW_CAP}` : null, `sensor=${sensor}`, `before=${before}`, `after=${signals.length}`]
+          .filter(Boolean)
+          .join('; '),
+      }
     }
-    const signals = normalizeFirmsCsv(res.text)
     return {
-      httpCalls: 1,
-      signals,
-      quotaNote: signals.length >= FIRMS_ROW_CAP ? `capped at ${FIRMS_ROW_CAP} high/nominal rows` : null,
+      httpCalls,
+      signals: [],
+      quotaNote: notes.join('; ') || 'no FIRMS rows',
     }
   },
 }

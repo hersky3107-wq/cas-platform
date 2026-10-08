@@ -1,81 +1,66 @@
-import { GLOFAS_DAILY_BILLED_CAP } from '../budget'
 import { asArray, asRecord, finiteNumber } from '../fetch'
 import { loadDischargeMeans, loadHighInformRegions } from '../regions'
-import type { CrisisSource, ForecastRegion, IngestFetchResult, NormalizedMetric } from '../types'
+import type { CrisisSource, ForecastRegion, IngestFetchResult, NormalizedForecast } from '../types'
 import { fetchOpenMeteoGrid, gridUrl } from './openmeteo-forecast'
 
 export function glofasUrl(regions: ForecastRegion[]): string {
   return gridUrl('https://flood-api.open-meteo.com/v1/flood', 'daily=river_discharge&forecast_days=7', regions)
 }
 
-export function normalizeGlofas(payload: unknown, regions: ForecastRegion[], issuedAt: string): NormalizedMetric[] {
+export function dischargeRatios(values: Array<number | null>, mean: number | null | undefined): Array<number | null> {
+  if (mean == null || !Number.isFinite(mean) || mean === 0) return values.map(() => null)
+  return values.map((value) => (value == null ? null : value / mean))
+}
+
+export function buildGlofasForecasts(
+  payload: unknown,
+  regions: ForecastRegion[],
+  issuedAt: string,
+  means: Map<number, number> = new Map(),
+): NormalizedForecast[] {
   const rows = Array.isArray(payload) ? payload : payload ? [payload] : []
-  const out: NormalizedMetric[] = []
+  const issuedDate = issuedAt.slice(0, 10)
+  const out: NormalizedForecast[] = []
   rows.forEach((item, index) => {
     const body = asRecord(item)
     const daily = asRecord(body?.daily)
-    if (!daily) return
-    const times = asArray(daily.time).map(String)
-    const values = asArray(daily.river_discharge)
     const region = regions[index]
-    if (!region) return
-    for (let i = 0; i < times.length; i += 1) {
-      const value = finiteNumber(values[i])
-      if (value == null) continue
-      const valid = times[i].includes('T') ? new Date(times[i]).toISOString() : `${times[i]}T00:00:00.000Z`
-      out.push({
-        region_id: region.id,
-        metric: 'river_discharge',
-        valid_time: valid,
-        issued_at: issuedAt,
-        value,
-        unit: 'm3/s',
-        source: 'glofas',
-      })
-    }
+    if (!daily || !region) return
+    const dates = asArray(daily.time).map((value) => String(value).slice(0, 10))
+    const discharge = asArray(daily.river_discharge).map((value) => finiteNumber(value))
+    if (!dates.length) return
+    out.push({
+      region_id: region.id,
+      source: 'glofas',
+      issued_date: issuedDate,
+      issued_at: issuedAt,
+      horizon_days: dates.length,
+      series: {
+        dates,
+        discharge_m3s: discharge,
+        ratio_to_30d_mean: dischargeRatios(discharge, means.get(region.id)),
+      },
+    })
   })
   return out
-}
-
-export function withDischargeRatio(
-  metrics: NormalizedMetric[],
-  means: Map<number, number>,
-): NormalizedMetric[] {
-  const extra: NormalizedMetric[] = []
-  for (const row of metrics) {
-    if (row.metric !== 'river_discharge') continue
-    const mean = means.get(row.region_id)
-    if (mean == null || mean === 0 || !Number.isFinite(mean)) continue
-    extra.push({
-      ...row,
-      metric: 'river_discharge_vs_30d_mean',
-      value: row.value / mean,
-      unit: 'ratio',
-    })
-  }
-  return extra
 }
 
 export const glofasSource: CrisisSource = {
   key: 'glofas',
   department: 'hydro_weather',
   scheduleMinutes: 1440,
-  writes: 'metrics',
+  writes: 'forecasts',
   async fetch(ctx): Promise<IngestFetchResult> {
     const highInform = await loadHighInformRegions(ctx.client, 0.5)
     if (!highInform.length) {
       return { httpCalls: 0, skipped: 'no INFORM risk scores — run inform / backfill-inform first' }
     }
+    const means = await loadDischargeMeans(ctx.client)
     return fetchOpenMeteoGrid(ctx, {
       key: 'glofas',
-      cap: GLOFAS_DAILY_BILLED_CAP,
       loadRegions: async () => highInform,
       url: glofasUrl,
-      normalize: normalizeGlofas,
-      extra: async (metrics) => {
-        const means = await loadDischargeMeans(ctx.client)
-        return withDischargeRatio(metrics, means)
-      },
+      normalize: (payload, regions, issuedAt) => buildGlofasForecasts(payload, regions, issuedAt, means),
     })
   },
 }

@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { nextBudgetCursor } from './budget'
 import { missingEnv, redactSecrets } from './fetch'
 import type { CrisisSource, IngestContext, IngestStateRow, IngestStatus } from './types'
-import { upsertMetrics, upsertSignals } from './upsert'
+import { upsertForecasts, upsertMetrics, upsertSignals } from './upsert'
 
 const inflight = new Set<string>()
 
@@ -92,12 +92,14 @@ export async function runSource(
     const result = await source.fetch(ctx)
     const signals = result.signals ?? []
     const metrics = result.metrics ?? []
-    const rowsIn = signals.length + metrics.length
+    const forecasts = result.forecasts ?? []
+    const rowsIn = result.reportedRows ?? signals.length + metrics.length + forecasts.length
     let rowsWritten = 0
 
     if (!dryRun) {
       if (source.writes === 'signals' && signals.length) rowsWritten = await upsertSignals(client, signals)
       if (source.writes === 'metrics' && metrics.length) rowsWritten = await upsertMetrics(client, metrics)
+      if (source.writes === 'forecasts' && forecasts.length) rowsWritten = await upsertForecasts(client, forecasts)
     }
 
     let status: IngestStatus = 'ok'

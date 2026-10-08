@@ -17,12 +17,21 @@ import { buildDedupeKey } from '../dedupe'
 import { normalizeEmsc } from '../sources/emsc'
 import { EONET_CAP, EONET_KEEP, normalizeEonet } from '../sources/eonet'
 import { normalizeFewsnetRows } from '../sources/fewsnet'
-import { FIRMS_ROW_CAP, normalizeFirmsCsv } from '../sources/firms'
+import { FIRMS_ROW_CAP, firmsConfidenceKeep, normalizeFirmsCsv } from '../sources/firms'
 import { normalizeGdacsRss } from '../sources/gdacs'
-import { normalizeGlofas, withDischargeRatio } from '../sources/glofas'
+import { buildGlofasForecasts } from '../sources/glofas'
 import { normalizeInformScores } from '../sources/inform'
 import { normalizeNhcStorms } from '../sources/nhc-jtwc'
-import { forecastUrl, formatCoord, normalizeOpenMeteoForecast, trimBatchToUrlLimit } from '../sources/openmeteo-forecast'
+import { buildOpenMeteoForecasts, forecastUrl, formatCoord, trimBatchToUrlLimit } from '../sources/openmeteo-forecast'
+import {
+  OPENMETEO_COMBINED_DAILY_CAP,
+  OPENMETEO_SEED_BILLED,
+  OPENMETEO_SEED_DATE_UTC,
+  addBilled,
+  extrapolateCount,
+  providerAllowance,
+  resolveQuotaLedger,
+} from '../quota'
 import { glofasUrl } from '../sources/glofas'
 import { normalizeTsunamiAtom } from '../sources/tsunami'
 import { normalizeUsgs } from '../sources/usgs'
@@ -137,32 +146,77 @@ describe('USGS HANS volcano fixture', () => {
 })
 
 describe('FIRMS VIIRS CSV fixture', () => {
-  it('keeps high/nominal only and respects the cap', () => {
-    const rows = normalizeFirmsCsv(read('firms.csv'))
-    expect(rows).toHaveLength(2)
-    expect(rows.every((row) => ['high', 'nominal'].includes(String(row.value_raw?.confidence)))).toBe(true)
-    expect(FIRMS_ROW_CAP).toBe(5000)
+  it('keeps high/nominal and VIIRS h/n, drops l, keeps MODIS >= 30', () => {
+    const parsed = normalizeFirmsCsv(read('firms.csv'))
+    expect(parsed.signals).toHaveLength(2)
+    expect(parsed.before).toBe(3)
+    expect(firmsConfidenceKeep('h')).toBe(true)
+    expect(firmsConfidenceKeep('n')).toBe(true)
+    expect(firmsConfidenceKeep('l')).toBe(false)
+    expect(firmsConfidenceKeep('80')).toBe(true)
+    expect(firmsConfidenceKeep('10')).toBe(false)
+    const letters = normalizeFirmsCsv(
+      'latitude,longitude,confidence,frp,acq_date,acq_time,satellite\n1,2,h,3,2026-10-08,0100,N\n1,3,l,1,2026-10-08,0100,N\n1,4,85,9,2026-10-08,0100,T\n',
+    )
+    expect(letters.signals).toHaveLength(2)
+    expect(letters.signals.map((row) => row.value_raw?.confidence)).toEqual(['85', 'h'])
+    expect(FIRMS_ROW_CAP).toBe(20000)
   })
 })
 
-describe('Open-Meteo daily forecast', () => {
-  it('emits one metric row per day and field', () => {
+describe('Open-Meteo compact forecast', () => {
+  it('emits one row per region with the series blob', () => {
     const region: ForecastRegion = { ...afar, id: 1, iso3: 'NPL', name: 'Bagmati', lat: 27.7172, lon: 85.324 }
-    const rows = normalizeOpenMeteoForecast(readJson('openmeteo.json'), [region], '2026-10-08T00:00:00.000Z')
-    expect(rows).toHaveLength(8)
-    expect(rows.filter((row) => row.metric === 'precipitation_sum')).toHaveLength(2)
+    const rows = buildOpenMeteoForecasts(readJson('openmeteo.json'), [region], '2026-10-08T00:00:00.000Z')
+    expect(rows).toHaveLength(1)
+    expect(rows[0].source).toBe('openmeteo_forecast')
+    expect(rows[0].issued_date).toBe('2026-10-08')
+    expect(rows[0].horizon_days).toBe(2)
+    const series = rows[0].series
+    expect(series.dates).toEqual(['2026-10-08', '2026-10-09'])
+    expect(series.precip_mm).toEqual([2.1, 0.4])
+    expect(series.tmax_c).toEqual([22.1, 21])
+    expect(series.tmin_c).toEqual([12, 11.5])
+    expect(series.wind_max_ms).toEqual([8.2, 9.1])
   })
 })
 
-describe('GloFAS discharge + 30-day ratio', () => {
-  it('stores discharge and ratio when a mean exists', () => {
+describe('GloFAS compact forecast', () => {
+  it('stores discharge and the 30-day ratio in one series', () => {
     const region: ForecastRegion = { ...afar, id: 9, iso3: 'NPL', name: 'Bagmati', lat: 27.7172, lon: 85.324 }
-    const rows = normalizeGlofas(readJson('glofas.json'), [region], '2026-10-08T00:00:00.000Z')
-    expect(rows[0].metric).toBe('river_discharge')
-    expect(rows[0].value).toBeCloseTo(120.5)
-    const extra = withDischargeRatio(rows, new Map([[9, 100]]))
-    expect(extra[0].metric).toBe('river_discharge_vs_30d_mean')
-    expect(extra[0].value).toBeCloseTo(1.205)
+    const rows = buildGlofasForecasts(readJson('glofas.json'), [region], '2026-10-08T00:00:00.000Z', new Map([[9, 100]]))
+    expect(rows).toHaveLength(1)
+    expect(rows[0].source).toBe('glofas')
+    expect(rows[0].series.discharge_m3s).toEqual([120.5, 130])
+    expect(rows[0].series.ratio_to_30d_mean).toEqual([1.205, 1.3])
+  })
+})
+
+describe('Open-Meteo quota ledger', () => {
+  const today = new Date('2026-10-08T12:00:00.000Z')
+
+  it('seeds 4586 when today has no billed_today', () => {
+    const resolved = resolveQuotaLedger(null, today)
+    expect(resolved.seeded).toBe(true)
+    expect(resolved.ledger).toEqual({ date_utc: OPENMETEO_SEED_DATE_UTC, billed_today: OPENMETEO_SEED_BILLED })
+    expect(addBilled(resolved.ledger, 100).billed_today).toBe(4686)
+  })
+
+  it('does not reseed once today is recorded, and resets on the next UTC day', () => {
+    const kept = resolveQuotaLedger({ date_utc: '2026-10-08', billed_today: 4700 }, today)
+    expect(kept.seeded).toBe(false)
+    expect(kept.ledger.billed_today).toBe(4700)
+    const next = resolveQuotaLedger({ date_utc: '2026-10-08', billed_today: 4700 }, new Date('2026-10-09T00:00:00.000Z'))
+    expect(next.ledger).toEqual({ date_utc: '2026-10-09', billed_today: 0 })
+  })
+
+  it('gives forecast priority up to 5000 and glofas the remainder of 9000', () => {
+    expect(providerAllowance('openmeteo_forecast', 4586)).toBe(414)
+    expect(providerAllowance('glofas', 4586)).toBe(4000)
+    expect(providerAllowance('openmeteo_forecast', 4586) + providerAllowance('glofas', 4586)).toBe(OPENMETEO_COMBINED_DAILY_CAP - 4586)
+    expect(providerAllowance('openmeteo_forecast', 9000)).toBe(0)
+    expect(providerAllowance('glofas', 9000)).toBe(0)
+    expect(extrapolateCount(100, 100, 4600)).toBe(4600)
   })
 })
 
@@ -235,6 +289,7 @@ describe('Open-Meteo batching', () => {
     const url = forecastUrl(many)
     expect(url.length).toBeLessThanOrEqual(OPENMETEO_MAX_URL_CHARS)
     expect(url).toContain('latitude=-7.776')
+    expect(url).toContain('wind_speed_unit=ms')
     const flood = glofasUrl(many)
     expect(flood.length).toBeLessThanOrEqual(OPENMETEO_MAX_URL_CHARS)
     const trimmed = trimBatchToUrlLimit(many, forecastUrl, 800)

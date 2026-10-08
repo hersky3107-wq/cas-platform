@@ -126,23 +126,42 @@ export async function loadHighInformRegions(client: SupabaseClient, fraction = 0
 }
 
 export async function loadDischargeMeans(client: SupabaseClient): Promise<Map<number, number>> {
-  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString()
-  const { data, error } = await client
-    .from('crisis_region_metrics')
-    .select('region_id, value')
-    .eq('metric', 'river_discharge')
-    .gte('valid_time', since)
-    .limit(20000)
-  if (error) throw new Error(`river_discharge mean: ${error.message}`)
+  const since = new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString().slice(0, 10)
   const sums = new Map<number, { sum: number; n: number }>()
-  for (const row of data ?? []) {
-    if (typeof row.value !== 'number' || !Number.isFinite(row.value)) continue
-    const id = Number(row.region_id)
+  const add = (id: number, value: number) => {
     const cur = sums.get(id) ?? { sum: 0, n: 0 }
-    cur.sum += row.value
+    cur.sum += value
     cur.n += 1
     sums.set(id, cur)
   }
+
+  const forecasts = await client
+    .from('crisis_region_forecasts')
+    .select('region_id, series')
+    .eq('source', 'glofas')
+    .gte('issued_date', since)
+    .limit(20000)
+  if (!forecasts.error) {
+    for (const row of forecasts.data ?? []) {
+      const series = row.series as { discharge_m3s?: unknown[] } | null
+      for (const value of series?.discharge_m3s ?? []) {
+        if (typeof value === 'number' && Number.isFinite(value)) add(Number(row.region_id), value)
+      }
+    }
+  }
+
+  const legacy = await client
+    .from('crisis_region_metrics')
+    .select('region_id, value')
+    .eq('metric', 'river_discharge')
+    .gte('valid_time', new Date(Date.now() - 30 * 24 * 3600 * 1000).toISOString())
+    .limit(20000)
+  if (!legacy.error) {
+    for (const row of legacy.data ?? []) {
+      if (typeof row.value === 'number' && Number.isFinite(row.value)) add(Number(row.region_id), row.value)
+    }
+  }
+
   const means = new Map<number, number>()
   for (const [id, cur] of sums) {
     if (cur.n > 0) means.set(id, cur.sum / cur.n)
