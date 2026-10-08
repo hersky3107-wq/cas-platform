@@ -16,6 +16,8 @@
  * batches of 100. Dry-run never opens a database connection, so the size
  * estimate matches the payload --apply would send.
  */
+import { existsSync } from 'node:fs'
+import path from 'node:path'
 import type { SupabaseClient } from '@supabase/supabase-js'
 
 const ADMIN0_URLS = [
@@ -60,6 +62,13 @@ interface RegionRow {
   parent_iso3: string | null
   wkt: string
   vertices: number
+}
+
+function requireEnvLocal(): void {
+  const envPath = path.resolve(process.cwd(), '.env.local')
+  if (!existsSync(envPath)) {
+    throw new Error('Copy cas-platform/.env.local into cas-platform-crisis first')
+  }
 }
 
 function argValue(flag: string): string | null {
@@ -187,11 +196,67 @@ function toMultiPolygonWkt(polygons: Polygon[]): string {
   return `SRID=4326;MULTIPOLYGON(${body})`
 }
 
+function rawText(properties: Record<string, unknown> | null, ...keys: string[]): string | null {
+  if (!properties) return null
+  const entries = Object.entries(properties)
+  for (const key of keys) {
+    const wanted = key.toLowerCase()
+    const found = entries.find(([name]) => name.toLowerCase() === wanted)
+    if (!found || found[1] == null) continue
+    const text = String(found[1]).trim()
+    if (text) return text
+  }
+  return null
+}
+
 function iso3Of(properties: Record<string, unknown> | null): string | null {
   const iso = prop(properties, 'ISO_A3', 'ADM0_A3', 'iso_a3', 'adm0_a3', 'SOV_A3')
   if (!iso) return null
   const code = iso.toUpperCase()
   return /^[A-Z]{3}$/.test(code) ? code : null
+}
+
+function hasCountryPrefix(code: string): boolean {
+  return /^[A-Za-z]{2,3}-.+$/.test(code)
+}
+
+function isPlaceholderCode(code: string | null): boolean {
+  if (code == null) return true
+  const text = code.trim()
+  return text === '' || text === '-99' || text === '-1'
+}
+
+function isValidMergeCode(code: string | null): boolean {
+  return !isPlaceholderCode(code) && hasCountryPrefix(code as string)
+}
+
+function oldAdmin1Code(
+  properties: Record<string, unknown> | null,
+  iso3: string,
+  name: string | null,
+): string {
+  return (
+    prop(properties, 'iso_3166_2', 'ISO_3166_2') ??
+    prop(properties, 'adm1_code', 'ADM1_CODE') ??
+    prop(properties, 'gn_a1_code') ??
+    `${iso3}-${(name ?? 'unnamed').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
+  )
+}
+
+function candidateMergeCode(properties: Record<string, unknown> | null): string | null {
+  return (
+    rawText(properties, 'iso_3166_2', 'ISO_3166_2') ??
+    rawText(properties, 'adm1_code', 'ADM1_CODE') ??
+    rawText(properties, 'gn_a1_code')
+  )
+}
+
+function normalizeName(name: string | null): string {
+  return (name ?? '')
+    .normalize('NFKD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '')
 }
 
 function countryRows(collection: FeatureCollection): RegionRow[] {
@@ -226,11 +291,26 @@ function countryRows(collection: FeatureCollection): RegionRow[] {
   return [...byKey.values()]
 }
 
+interface Admin1Draft {
+  index: number
+  iso3: string
+  isoA3: string | null
+  adm0A3: string | null
+  name: string | null
+  nameLocal: string | null
+  oldCode: string
+  candidate: string | null
+  adm1Code: string | null
+  neId: string | null
+  wkt: string
+  vertices: number
+}
+
 function admin1Rows(collection: FeatureCollection): RegionRow[] {
-  const byKey = new Map<string, RegionRow>()
+  const drafts: Admin1Draft[] = []
   let skipped = 0
-  let replaced = 0
-  for (const feature of collection.features) {
+  for (let index = 0; index < collection.features.length; index += 1) {
+    const feature = collection.features[index]
     const iso3 = iso3Of(feature.properties)
     const polygons = simplifyPolygons(asPolygons(feature.geometry), tolerance())
     if (!iso3 || polygons.length === 0) {
@@ -238,34 +318,124 @@ function admin1Rows(collection: FeatureCollection): RegionRow[] {
       continue
     }
     const name = prop(feature.properties, 'name', 'NAME', 'name_en')
-    const code =
-      prop(feature.properties, 'iso_3166_2', 'ISO_3166_2') ??
-      prop(feature.properties, 'adm1_code', 'ADM1_CODE') ??
-      prop(feature.properties, 'gn_a1_code') ??
-      `${iso3}-${(name ?? 'unnamed').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`
-    const row: RegionRow = {
-      level: 1,
+    drafts.push({
+      index,
       iso3,
-      admin1_code: code,
+      isoA3: rawText(feature.properties, 'iso_a3', 'ISO_A3'),
+      adm0A3: rawText(feature.properties, 'adm0_a3', 'ADM0_A3'),
       name,
-      name_local: prop(feature.properties, 'name_local', 'name_nl', 'gn_name'),
-      parent_iso3: iso3,
+      nameLocal: prop(feature.properties, 'name_local', 'name_nl', 'gn_name'),
+      oldCode: oldAdmin1Code(feature.properties, iso3, name),
+      candidate: candidateMergeCode(feature.properties),
+      adm1Code: rawText(feature.properties, 'adm1_code', 'ADM1_CODE'),
+      neId: rawText(feature.properties, 'ne_id', 'NE_ID'),
       wkt: toMultiPolygonWkt(polygons),
       vertices: countVertices(polygons),
+    })
+  }
+
+  const oldGroups = new Map<string, Admin1Draft[]>()
+  for (const draft of drafts) {
+    const key = `${draft.iso3}|${draft.oldCode}`
+    const group = oldGroups.get(key)
+    if (group) group.push(draft)
+    else oldGroups.set(key, [draft])
+  }
+  const oldCollisions = [...oldGroups.entries()].filter(([, group]) => group.length > 1)
+  const oldMergedCount = oldCollisions.reduce((sum, [, group]) => sum + group.length - 1, 0)
+  console.log(`  previous merge collisions: ${oldCollisions.length} codes, ${oldMergedCount} extra features`)
+  for (const [key, group] of oldCollisions) {
+    console.log(`  MERGE-CANDIDATE ${key} (${group.length} features)`)
+    for (const draft of group) {
+      console.log(
+        `    iso_a3=${draft.isoA3 ?? ''} adm0_a3=${draft.adm0A3 ?? ''} name=${draft.name ?? ''} code=${draft.oldCode}`,
+      )
     }
-    const key = `${iso3}|${code}`
+  }
+
+  const countriesByCode = new Map<string, Set<string>>()
+  for (const draft of drafts) {
+    if (!draft.candidate) continue
+    const set = countriesByCode.get(draft.candidate) ?? new Set<string>()
+    set.add(draft.iso3)
+    countriesByCode.set(draft.candidate, set)
+  }
+  const crossCountryCodes = new Set<string>()
+  for (const [code, countries] of countriesByCode) {
+    if (countries.size > 1) crossCountryCodes.add(code)
+  }
+
+  const usedKeys = new Set<string>()
+  const byKey = new Map<string, RegionRow>()
+  let fallbackCount = 0
+  const legitimateMerged = new Map<string, number>()
+
+  const draftsByCountryCode = new Map<string, Admin1Draft[]>()
+  for (const draft of drafts) {
+    const groupKey = `${draft.iso3}|${draft.candidate ?? ''}`
+    const group = draftsByCountryCode.get(groupKey)
+    if (group) group.push(draft)
+    else draftsByCountryCode.set(groupKey, [draft])
+  }
+
+  function takeFallback(draft: Admin1Draft): string {
+    fallbackCount += 1
+    const options = [draft.adm1Code, draft.neId ? `ne:${draft.neId}` : null, `${draft.iso3}-${draft.index}`]
+    for (const option of options) {
+      if (!option) continue
+      if (option === draft.adm1Code && !isValidMergeCode(option)) continue
+      const key = `${draft.iso3}|${option}`
+      if (!usedKeys.has(key)) return option
+    }
+    return `${draft.iso3}-${draft.index}`
+  }
+
+  function sameNameGroup(group: Admin1Draft[]): boolean {
+    const names = new Set(group.map((item) => normalizeName(item.name)))
+    return names.size === 1 && Boolean([...names][0])
+  }
+
+  for (const draft of drafts) {
+    const code = draft.candidate
+    const group = draftsByCountryCode.get(`${draft.iso3}|${code ?? ''}`) ?? [draft]
+    const sameCountryOnly = Boolean(code && (countriesByCode.get(code)?.size ?? 0) === 1)
+    const canMerge =
+      isValidMergeCode(code) &&
+      sameCountryOnly &&
+      !crossCountryCodes.has(code as string) &&
+      sameNameGroup(group)
+    const admin1Code = canMerge ? (code as string) : takeFallback(draft)
+    const key = `${draft.iso3}|${admin1Code}`
+    const row: RegionRow = {
+      level: 1,
+      iso3: draft.iso3,
+      admin1_code: admin1Code,
+      name: draft.name,
+      name_local: draft.nameLocal,
+      parent_iso3: draft.iso3,
+      wkt: draft.wkt,
+      vertices: draft.vertices,
+    }
     const existing = byKey.get(key)
-    if (existing) {
-      replaced += 1
+    if (existing && canMerge) {
       existing.wkt = mergeWkt(existing.wkt, row.wkt)
       existing.vertices += row.vertices
       if (!existing.name && row.name) existing.name = row.name
       if (!existing.name_local && row.name_local) existing.name_local = row.name_local
+      legitimateMerged.set(admin1Code, (legitimateMerged.get(admin1Code) ?? 1) + 1)
     } else {
       byKey.set(key, row)
+      usedKeys.add(key)
     }
   }
-  console.log(`  admin1 kept ${byKey.size}, skipped ${skipped}, duplicate keys merged ${replaced}`)
+
+  const legitCodes = [...legitimateMerged.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+  console.log(`  admin1 kept ${byKey.size}, skipped ${skipped}`)
+  console.log(`  legitimate merges: ${legitCodes.length} codes, extra features ${legitCodes.reduce((sum, [, n]) => sum + n - 1, 0)}`)
+  if (legitCodes.length > 0) {
+    console.log(`  legitimately merged codes: ${legitCodes.map(([code, n]) => `${code}×${n}`).join(', ')}`)
+  }
+  console.log(`  fallback unique keys: ${fallbackCount}`)
   return [...byKey.values()]
 }
 
@@ -399,6 +569,7 @@ async function sanity(client: SupabaseClient): Promise<void> {
 }
 
 async function main(): Promise<void> {
+  requireEnvLocal()
   const apply = process.argv.includes('--apply')
   const toleranceArg = argValue('--tolerance')
   if (toleranceArg) {

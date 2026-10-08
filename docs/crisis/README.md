@@ -45,7 +45,7 @@ The production database is a very small compute tier. Simplifying polygons and a
    npx tsx --env-file=.env.local scripts/crisis/verify-schema.ts
    ```
 
-`verify-schema` inserts one signal from `../crisis-probe/out/normalized.json`, prints the assigned region, and deletes that signal. It also inserts a hypothesis titled `GENESIS TEST ENTRY`. Update and delete of that row must fail. The row stays; the ledger is append-only.
+`verify-schema` inserts one signal from `../crisis-probe/out/normalized.json`, prints the assigned region, and deletes that signal. It also inserts the genesis hypothesis `Ledger genesis — CrisisWatch proof ledger initialized`. Update and delete of that row must fail. The row stays; the ledger is append-only. Both this script and `load-regions` exit if `.env.local` is missing from the current folder.
 
 ## Env names
 

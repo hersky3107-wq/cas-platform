@@ -6,11 +6,18 @@
  *
  *   npx tsx --env-file=.env.local scripts/crisis/verify-schema.ts
  *
- * The hypothesis row titled GENESIS TEST ENTRY cannot be deleted. Leave it.
+ * The genesis hypothesis row cannot be deleted. Leave it.
  */
-import { readFileSync } from 'node:fs'
+import { existsSync, readFileSync } from 'node:fs'
 import path from 'node:path'
 import { createClient } from '@supabase/supabase-js'
+
+function requireEnvLocal(): void {
+  const envPath = path.resolve(process.cwd(), '.env.local')
+  if (!existsSync(envPath)) {
+    throw new Error('Copy cas-platform/.env.local into cas-platform-crisis first')
+  }
+}
 
 interface ProbeRecord {
   department: string
@@ -38,6 +45,7 @@ function valueNum(value: unknown): number | null {
 }
 
 async function main(): Promise<void> {
+  requireEnvLocal()
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY
   if (!url || !key) {
@@ -97,18 +105,29 @@ async function main(): Promise<void> {
   if (deleteError) throw new Error(`signal delete failed: ${deleteError.message}`)
   console.log(`deleted signal id=${inserted.id}`)
 
+  // region_ids is bigint[] NOT NULL with no min-length check, so [] is allowed.
+  // If a later constraint rejects empty, use the Natural Earth country row for KOR.
+  let regionIds: number[] = []
+  const { data: kor } = await client
+    .from('crisis_regions')
+    .select('id')
+    .eq('level', 0)
+    .eq('iso3', 'KOR')
+    .maybeSingle()
+  if (kor?.id != null) regionIds = [Number(kor.id)]
+
   const { data: hypothesis, error: hypothesisError } = await client
     .from('crisis_hypotheses')
     .insert({
-      region_ids: [],
+      region_ids: regionIds,
       stage: 1,
       confidence: 'low',
       novelty: 'unknown',
-      title: 'GENESIS TEST ENTRY',
-      body: 'Schema verification row. Append-only. Do not try to delete it.',
+      title: 'Ledger genesis — CrisisWatch proof ledger initialized',
+      body: 'First entry of the append-only, hash-chained CrisisWatch hypothesis ledger. Every later entry links to this one.',
       evidence_signal_ids: [],
-      evidence_snapshot: { probe_file: file, sample_title: sample.title },
-      ai_roster: { models: [] },
+      evidence_snapshot: { type: 'genesis' },
+      ai_roster: { type: 'none' },
     })
     .select('id, prev_hash, content_hash')
     .single()
@@ -130,7 +149,7 @@ async function main(): Promise<void> {
   if (!updateRejected || !deleteRejected) {
     throw new Error('append-only guard did not reject both UPDATE and DELETE')
   }
-  console.log('verify-schema passed. GENESIS TEST ENTRY remains in crisis_hypotheses.')
+  console.log('verify-schema passed. Ledger genesis remains in crisis_hypotheses.')
 }
 
 main().catch((error: unknown) => {
