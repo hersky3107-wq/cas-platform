@@ -13,6 +13,28 @@ import { supabaseAdmin } from '../../lib/supabase/server'
 
 const LOOP_MS = 60_000
 
+const CRISIS_ENV_NAMES = [
+  'FIRMS_MAP_KEY',
+  'EARTHDATA_USERNAME',
+  'EARTHDATA_PASSWORD',
+  'EIA_API_KEY',
+  'METACULUS_TOKEN',
+  'GFW_TOKEN',
+  'CLOUDFLARE_RADAR_TOKEN',
+  'OPENSKY_CLIENT_ID',
+  'OPENSKY_CLIENT_SECRET',
+  'UCDP_TOKEN',
+  'RELIEFWEB_APPNAME',
+  'ACLED_EMAIL',
+  'ACLED_PASSWORD',
+] as const
+
+function logCrisisEnvPresence(env: NodeJS.ProcessEnv): void {
+  const present = CRISIS_ENV_NAMES.filter((name) => Boolean(env[name]?.trim()))
+  const missing = CRISIS_ENV_NAMES.filter((name) => !env[name]?.trim())
+  console.log(`crisis env present=${present.join(',') || '(none)'} missing=${missing.join(',') || '(none)'}`)
+}
+
 function requireEnvLocal(): void {
   const envPath = path.resolve(process.cwd(), '.env.local')
   if (!existsSync(envPath)) {
@@ -63,6 +85,7 @@ async function main(): Promise<void> {
   if (!process.env.NEXT_PUBLIC_SUPABASE_URL || !process.env.SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error('NEXT_PUBLIC_SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required')
   }
+  logCrisisEnvPresence(process.env)
   const dryRun = hasFlag('--dry-run')
   const once = hasFlag('--once')
   const only = argValue('--only')

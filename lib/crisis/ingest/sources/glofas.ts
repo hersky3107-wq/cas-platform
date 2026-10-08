@@ -2,12 +2,10 @@ import { GLOFAS_DAILY_BILLED_CAP } from '../budget'
 import { asArray, asRecord, finiteNumber } from '../fetch'
 import { loadDischargeMeans, loadHighInformRegions } from '../regions'
 import type { CrisisSource, ForecastRegion, IngestFetchResult, NormalizedMetric } from '../types'
-import { fetchOpenMeteoGrid } from './openmeteo-forecast'
+import { fetchOpenMeteoGrid, gridUrl } from './openmeteo-forecast'
 
 export function glofasUrl(regions: ForecastRegion[]): string {
-  const lats = regions.map((r) => r.lat.toFixed(4)).join(',')
-  const lons = regions.map((r) => r.lon.toFixed(4)).join(',')
-  return `https://flood-api.open-meteo.com/v1/flood?latitude=${lats}&longitude=${lons}&daily=river_discharge&forecast_days=7`
+  return gridUrl('https://flood-api.open-meteo.com/v1/flood', 'daily=river_discharge&forecast_days=7', regions)
 }
 
 export function normalizeGlofas(payload: unknown, regions: ForecastRegion[], issuedAt: string): NormalizedMetric[] {

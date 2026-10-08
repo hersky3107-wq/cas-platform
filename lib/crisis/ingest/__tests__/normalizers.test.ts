@@ -4,20 +4,26 @@ import { describe, expect, it } from 'vitest'
 import {
   billedCallsToday,
   estimateBilledCalls,
+  OPENMETEO_BATCH_SIZE,
+  OPENMETEO_COORD_DECIMALS,
   OPENMETEO_DAILY_BILLED_CAP,
+  OPENMETEO_MAX_URL_CHARS,
+  OPENMETEO_MINUTE_BILLED_CAP,
   remainingBudget,
+  sleepMsForMinuteBudget,
   wouldExceedBudget,
 } from '../budget'
 import { buildDedupeKey } from '../dedupe'
 import { normalizeEmsc } from '../sources/emsc'
-import { normalizeEonet } from '../sources/eonet'
+import { EONET_CAP, EONET_KEEP, normalizeEonet } from '../sources/eonet'
 import { normalizeFewsnetRows } from '../sources/fewsnet'
 import { FIRMS_ROW_CAP, normalizeFirmsCsv } from '../sources/firms'
 import { normalizeGdacsRss } from '../sources/gdacs'
 import { normalizeGlofas, withDischargeRatio } from '../sources/glofas'
 import { normalizeInformScores } from '../sources/inform'
 import { normalizeNhcStorms } from '../sources/nhc-jtwc'
-import { normalizeOpenMeteoForecast } from '../sources/openmeteo-forecast'
+import { forecastUrl, formatCoord, normalizeOpenMeteoForecast, trimBatchToUrlLimit } from '../sources/openmeteo-forecast'
+import { glofasUrl } from '../sources/glofas'
 import { normalizeTsunamiAtom } from '../sources/tsunami'
 import { normalizeUsgs } from '../sources/usgs'
 import { normalizeHans } from '../sources/volcano'
@@ -77,11 +83,29 @@ describe('GDACS RSS fixture', () => {
 })
 
 describe('EONET open events fixture', () => {
-  it('uses the latest geometry point', () => {
-    const rows = normalizeEonet(readJson('eonet.json'))
-    expect(rows[0].title).toBe('Tropical Storm Isaias')
-    expect(rows[0].signal_type).toBe('severeStorms')
-    expect(rows[0].value_num).toBe(35)
+  it('keeps storms, drops wildfires, uses the latest geometry point', () => {
+    const { signals, beforeCap, capped } = normalizeEonet(readJson('eonet.json'))
+    expect(signals).toHaveLength(1)
+    expect(signals[0].title).toBe('Tropical Storm Isaias')
+    expect(signals[0].signal_type).toBe('severeStorms')
+    expect(signals[0].value_num).toBe(35)
+    expect(signals.some((row) => row.signal_type === 'wildfires')).toBe(false)
+    expect(EONET_KEEP.has('wildfires')).toBe(false)
+    expect(beforeCap).toBe(1)
+    expect(capped).toBe(false)
+  })
+
+  it('caps at 500 and reports the overflow', () => {
+    const events = Array.from({ length: 520 }, (_, i) => ({
+      id: `EONET_${i}`,
+      title: `Storm ${i}`,
+      categories: [{ id: 'severeStorms' }],
+      geometry: [{ date: '2026-10-07T09:00:00Z', type: 'Point', coordinates: [i, 10] }],
+    }))
+    const { signals, capped, beforeCap } = normalizeEonet({ events }, EONET_CAP)
+    expect(beforeCap).toBe(520)
+    expect(signals).toHaveLength(500)
+    expect(capped).toBe(true)
   })
 })
 
@@ -187,5 +211,34 @@ describe('budget guard math', () => {
     expect(remainingBudget(4500, 5000)).toBe(500)
     expect(billedCallsToday({ billed_date: '2026-10-07', billed_calls: 4000 }, new Date('2026-10-08T00:00:00Z'))).toBe(0)
     expect(billedCallsToday({ billed_date: '2026-10-08', billed_calls: 4000 }, new Date('2026-10-08T12:00:00Z'))).toBe(4000)
+  })
+
+  it('sleeps when a rolling minute would exceed 500 billed calls', () => {
+    const now = 1_000_000
+    const stamps = Array.from({ length: 450 }, (_, i) => now - 10_000 + i)
+    expect(sleepMsForMinuteBudget(stamps, 40, now, OPENMETEO_MINUTE_BILLED_CAP)).toBe(0)
+    expect(sleepMsForMinuteBudget(stamps, 60, now, OPENMETEO_MINUTE_BILLED_CAP)).toBeGreaterThan(0)
+  })
+})
+
+describe('Open-Meteo batching', () => {
+  it('uses 100-location batches, 3-decimal coords, and stays under 7000 chars', () => {
+    expect(OPENMETEO_BATCH_SIZE).toBe(100)
+    expect(OPENMETEO_COORD_DECIMALS).toBe(3)
+    expect(formatCoord(-7.7761)).toBe('-7.776')
+    const many: ForecastRegion[] = Array.from({ length: 100 }, (_, i) => ({
+      ...afar,
+      id: i + 1,
+      lat: -7.7761 + i * 0.01,
+      lon: 120.5395 + i * 0.01,
+    }))
+    const url = forecastUrl(many)
+    expect(url.length).toBeLessThanOrEqual(OPENMETEO_MAX_URL_CHARS)
+    expect(url).toContain('latitude=-7.776')
+    const flood = glofasUrl(many)
+    expect(flood.length).toBeLessThanOrEqual(OPENMETEO_MAX_URL_CHARS)
+    const trimmed = trimBatchToUrlLimit(many, forecastUrl, 800)
+    expect(trimmed.length).toBeLessThan(100)
+    expect(forecastUrl(trimmed).length).toBeLessThanOrEqual(800)
   })
 })

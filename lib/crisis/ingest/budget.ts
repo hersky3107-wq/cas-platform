@@ -3,6 +3,32 @@ export const OPEN_METEO_FORECAST_7D_WEIGHT = 1
 
 export const OPENMETEO_DAILY_BILLED_CAP = 5000
 export const GLOFAS_DAILY_BILLED_CAP = 4000
+export const OPENMETEO_MINUTE_BILLED_CAP = 500
+export const OPENMETEO_BATCH_SIZE = 100
+export const OPENMETEO_MAX_URL_CHARS = 7000
+export const OPENMETEO_COORD_DECIMALS = 3
+
+/** Milliseconds to sleep so `additional` billed calls stay under the rolling 60s cap. */
+export function sleepMsForMinuteBudget(
+  timestamps: number[],
+  additional: number,
+  now = Date.now(),
+  cap = OPENMETEO_MINUTE_BILLED_CAP,
+): number {
+  if (additional <= 0) return 0
+  if (additional > cap) return 60_000
+  const window = timestamps.filter((t) => now - t < 60_000).sort((a, b) => a - b)
+  if (window.length + additional <= cap) return 0
+  const overflow = window.length + additional - cap
+  const expireAt = window[overflow - 1] + 60_000
+  return Math.max(0, expireAt - now)
+}
+
+export function recordBilledCalls(timestamps: number[], count: number, now = Date.now()): number[] {
+  const next = timestamps.filter((t) => now - t < 60_000)
+  for (let i = 0; i < count; i += 1) next.push(now)
+  return next
+}
 
 export function utcDayKey(now: Date): string {
   return now.toISOString().slice(0, 10)

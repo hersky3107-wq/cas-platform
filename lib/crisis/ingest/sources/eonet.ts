@@ -2,23 +2,43 @@ import { buildDedupeKey } from '../dedupe'
 import { asArray, asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import type { CrisisSource, IngestFetchResult, NormalizedSignal } from '../types'
 
-export const EONET_OPEN = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open'
+export const EONET_OPEN = 'https://eonet.gsfc.nasa.gov/api/v3/events?status=open&days=30'
+export const EONET_CAP = 500
 
-export function normalizeEonet(payload: unknown): NormalizedSignal[] {
+/** FIRMS owns fires. Keep the remaining EONET natural-hazard categories. */
+export const EONET_KEEP = new Set([
+  'severeStorms',
+  'volcanoes',
+  'floods',
+  'landslides',
+  'seaLakeIce',
+  'dustHaze',
+  'drought',
+  'snow',
+  'earthquakes',
+  'tempExtremes',
+])
+
+export function eonetCategoryId(ev: Record<string, unknown>): string | null {
+  const cats = asArray(ev.categories)
+  const cat = asRecord(cats[0] ?? null)
+  return typeof cat?.id === 'string' ? cat.id : null
+}
+
+export function normalizeEonet(payload: unknown, cap = EONET_CAP): { signals: NormalizedSignal[]; capped: boolean; beforeCap: number } {
   const root = asRecord(payload)
   const events = asArray(root?.events)
   const out: NormalizedSignal[] = []
   for (const item of events) {
     const ev = asRecord(item)
     if (!ev) continue
+    const signalType = eonetCategoryId(ev) ?? 'natural_event'
+    if (!EONET_KEEP.has(signalType)) continue
     const geometries = asArray(ev.geometry)
     const geom = asRecord(geometries[geometries.length - 1] ?? null)
     const coords = asArray(geom?.coordinates)
     const lon = finiteNumber(coords[0])
     const lat = finiteNumber(coords[1])
-    const cats = asArray(ev.categories)
-    const cat = asRecord(cats[0] ?? null)
-    const signalType = typeof cat?.id === 'string' ? cat.id : 'natural_event'
     const id = typeof ev.id === 'string' ? ev.id : null
     const eventTime = isoTime(geom?.date)
     const sources = asArray(ev.sources)
@@ -33,7 +53,7 @@ export function normalizeEonet(payload: unknown): NormalizedSignal[] {
       country_iso3: null,
       value_num: finiteNumber(geom?.magnitudeValue),
       value_raw: {
-        category: cat?.id ?? null,
+        category: signalType,
         magnitudeValue: geom?.magnitudeValue ?? null,
         magnitudeUnit: geom?.magnitudeUnit ?? null,
         closed: ev.closed ?? null,
@@ -44,7 +64,9 @@ export function normalizeEonet(payload: unknown): NormalizedSignal[] {
       dedupe_key: buildDedupeKey({ source: 'eonet', signalType, id, lat, lon, eventTime }),
     })
   }
-  return out
+  const beforeCap = out.length
+  const signals = out.slice(0, cap)
+  return { signals, capped: beforeCap > cap, beforeCap }
 }
 
 export const eonetSource: CrisisSource = {
@@ -52,9 +74,16 @@ export const eonetSource: CrisisSource = {
   department: 'geology',
   scheduleMinutes: 60,
   writes: 'signals',
-  async fetch(): Promise<IngestFetchResult> {
+  async fetch(ctx): Promise<IngestFetchResult> {
     const res = await politeFetch(EONET_OPEN, { sourceKey: 'eonet', minIntervalMs: 10_000 })
     if (!res.ok) return { httpCalls: 1, error: res.error ?? `HTTP ${res.status}` }
-    return { httpCalls: 1, signals: normalizeEonet(res.data) }
+    const { signals, capped, beforeCap } = normalizeEonet(res.data)
+    if (capped) ctx.log(`[eonet] capped at ${EONET_CAP} (filtered events=${beforeCap})`)
+    ctx.log(`[eonet] rows=${signals.length} filtered=${beforeCap} capped=${capped}`)
+    return {
+      httpCalls: 1,
+      signals,
+      quotaNote: capped ? `capped at ${EONET_CAP} of ${beforeCap} filtered events` : `rows=${signals.length}`,
+    }
   },
 }

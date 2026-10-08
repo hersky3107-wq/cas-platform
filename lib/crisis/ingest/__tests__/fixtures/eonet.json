@@ -14,6 +14,13 @@
           "magnitudeUnit": "kts"
         }
       ]
+    },
+    {
+      "id": "EONET_FIRE",
+      "title": "Wildfire noise",
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_FIRE",
+      "categories": [{ "id": "wildfires", "title": "Wildfires" }],
+      "geometry": [{ "date": "2026-10-07T09:00:00Z", "type": "Point", "coordinates": [120, -8] }]
     }
   ]
 }
