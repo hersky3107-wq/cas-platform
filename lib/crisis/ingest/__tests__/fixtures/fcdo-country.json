@@ -1,0 +1,9 @@
+{
+  "title": "Afghanistan travel advice",
+  "updated_at": "2026-10-01T00:00:00Z",
+  "base_path": "/foreign-travel-advice/afghanistan",
+  "details": {
+    "alert_status": ["avoid_all_travel"],
+    "country": { "id": "AF", "slug": "afghanistan", "name": "Afghanistan" }
+  }
+}

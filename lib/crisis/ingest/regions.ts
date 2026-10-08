@@ -82,6 +82,21 @@ export async function loadForecastRegions(client: SupabaseClient): Promise<Forec
   return forecastRegionsFromRows(await loadAllRegions(client))
 }
 
+export async function loadCountryIdByIso3(client: SupabaseClient): Promise<Map<string, number>> {
+  const { data, error } = await client
+    .from('crisis_regions')
+    .select('id, iso3')
+    .eq('level', 0)
+    .not('iso3', 'is', null)
+    .limit(400)
+  if (error) throw new Error(`crisis_regions countries: ${error.message}`)
+  const map = new Map<string, number>()
+  for (const row of data ?? []) {
+    if (typeof row.iso3 === 'string') map.set(row.iso3.toUpperCase(), Number(row.id))
+  }
+  return map
+}
+
 export async function loadHighInformRegions(client: SupabaseClient, fraction = 0.5): Promise<ForecastRegion[]> {
   const regions = await loadForecastRegions(client)
   const { data, error } = await client

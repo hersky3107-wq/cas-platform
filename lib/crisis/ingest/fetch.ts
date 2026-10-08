@@ -8,7 +8,7 @@ export interface PoliteFetchOptions {
   minIntervalMs?: number
   timeoutMs?: number
   headers?: Record<string, string>
-  as?: 'json' | 'text'
+  as?: 'json' | 'text' | 'bytes'
 }
 
 export interface PoliteFetchResult {
@@ -59,6 +59,17 @@ export async function politeFetch(url: string, options: PoliteFetchOptions): Pro
         },
       })
       lastStatus = response.status
+      if (options.as === 'bytes') {
+        if (response.status === 429 || response.status >= 500) {
+          lastError = `HTTP ${response.status}`
+          continue
+        }
+        if (!response.ok) {
+          return { ok: false, status: response.status, data: null, text: '', error: `HTTP ${response.status}` }
+        }
+        const buf = await response.arrayBuffer()
+        return { ok: true, status: response.status, data: buf, text: '', error: null }
+      }
       lastText = await response.text()
       if (response.status === 429 || response.status >= 500) {
         lastError = `HTTP ${response.status}`

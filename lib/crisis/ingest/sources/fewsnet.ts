@@ -2,6 +2,7 @@ import { buildRegionIndex, loadForecastRegions, matchRegion } from '../regions'
 import { asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import { toIso3 } from '../iso'
 import type { CrisisSource, ForecastRegion, IngestFetchResult, NormalizedMetric } from '../types'
+import { collapseMetricsByPk } from '../upsert'
 
 const ROOT = 'https://fdw.fews.net/api/ipcphase/'
 
@@ -57,6 +58,12 @@ export function normalizeFewsnetRows(
       unmatched.push(`${iso3 ?? props.country_code ?? '?'} ${names.filter(Boolean).join(' / ') || props.fnid || 'row'}`)
       continue
     }
+    const unitName =
+      typeof props.geographic_unit_name === 'string'
+        ? props.geographic_unit_name
+        : typeof props.geographic_unit_full_name === 'string'
+          ? props.geographic_unit_full_name
+          : null
     metrics.push({
       region_id: region.id,
       metric,
@@ -65,10 +72,11 @@ export function normalizeFewsnetRows(
       value,
       unit: 'ipc_phase',
       source: 'fewsnet',
+      detail: unitName ? { units: [unitName] } : { units: [] },
     })
   }
 
-  return { metrics, unmatched }
+  return { metrics: collapseMetricsByPk(metrics), unmatched }
 }
 
 export const fewsnetSource: CrisisSource = {

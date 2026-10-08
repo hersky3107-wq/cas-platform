@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "project": "en.wikipedia",
+      "access": "all-access",
+      "year": "2026",
+      "month": "10",
+      "day": "07",
+      "articles": [
+        { "article": "Main_Page", "views": 9000000, "rank": 1 },
+        { "article": "Special:Search", "views": 800000, "rank": 2 },
+        { "article": "2026_Kerala_floods", "views": 125000, "rank": 12 },
+        { "article": "Cholera", "views": 44000, "rank": 80 }
+      ]
+    }
+  ]
+}

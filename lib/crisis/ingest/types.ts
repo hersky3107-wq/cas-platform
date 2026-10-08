@@ -1,6 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 
-export type IngestWrites = 'signals' | 'metrics' | 'forecasts'
+export type IngestWrites = 'signals' | 'metrics' | 'forecasts' | 'daily' | 'advisories' | 'mixed'
 export type IngestStatus = 'ok' | 'partial' | 'error' | 'skipped'
 export type LicenseClass = 'open' | 'attribution' | 'noncommercial' | 'unclear'
 
@@ -28,6 +28,32 @@ export interface NormalizedMetric {
   value: number
   unit: string | null
   source: string
+  detail?: Record<string, unknown> | null
+}
+
+export interface NormalizedDaily {
+  region_id: number
+  day: string
+  source: string
+  stats: Record<string, unknown>
+}
+
+export interface NormalizedAdvisory {
+  country_iso3: string
+  source: string
+  level: number
+  level_text: string
+  updated_at: string
+  fetched_at: string
+}
+
+export interface NormalizedAdvisoryHistory {
+  country_iso3: string
+  source: string
+  level: number
+  level_text: string
+  changed_at: string
+  previous_level: number | null
 }
 
 export interface NormalizedForecast {
@@ -43,6 +69,10 @@ export interface IngestFetchResult {
   signals?: NormalizedSignal[]
   metrics?: NormalizedMetric[]
   forecasts?: NormalizedForecast[]
+  daily?: NormalizedDaily[]
+  advisories?: NormalizedAdvisory[]
+  advisoryHistory?: NormalizedAdvisoryHistory[]
+  cursor?: Record<string, unknown>
   /** When set (dry-run extrapolation), this is the row count the sweep reports. */
   reportedRows?: number
   httpCalls: number

@@ -1,0 +1,21 @@
+{
+  "type": "success",
+  "data": [
+    {
+      "entity": { "code": "MW", "type": "country", "name": "Malawi" },
+      "datasource": "bgp",
+      "from": 1728388800,
+      "until": 1728392400,
+      "level": "critical",
+      "score": 18
+    },
+    {
+      "entityCode": "UA-32",
+      "entityType": "region",
+      "entityName": "Kyiv Oblast",
+      "score": 9,
+      "from": 1728389000,
+      "datasource": "ping-slash24"
+    }
+  ]
+}

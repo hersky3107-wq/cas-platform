@@ -226,6 +226,7 @@ describe('FEWS NET name match', () => {
     expect(metrics).toHaveLength(1)
     expect(metrics[0].region_id).toBe(11)
     expect(metrics[0].metric).toBe('ipc_ml1')
+    expect(metrics[0].detail?.units).toEqual(['Afar'])
     expect(unmatched.some((row) => /Unknown District/.test(row))).toBe(true)
   })
 })

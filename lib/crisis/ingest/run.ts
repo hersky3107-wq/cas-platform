@@ -2,7 +2,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { nextBudgetCursor } from './budget'
 import { missingEnv, redactSecrets } from './fetch'
 import type { CrisisSource, IngestContext, IngestStateRow, IngestStatus } from './types'
-import { upsertForecasts, upsertMetrics, upsertSignals } from './upsert'
+import { insertAdvisoryHistory, upsertAdvisories, upsertDaily, upsertForecasts, upsertMetrics, upsertSignals } from './upsert'
 
 const inflight = new Set<string>()
 
@@ -93,13 +93,20 @@ export async function runSource(
     const signals = result.signals ?? []
     const metrics = result.metrics ?? []
     const forecasts = result.forecasts ?? []
-    const rowsIn = result.reportedRows ?? signals.length + metrics.length + forecasts.length
+    const daily = result.daily ?? []
+    const advisories = result.advisories ?? []
+    const advisoryHistory = result.advisoryHistory ?? []
+    const rowsIn = result.reportedRows
+      ?? signals.length + metrics.length + forecasts.length + daily.length + advisories.length + advisoryHistory.length
     let rowsWritten = 0
 
     if (!dryRun) {
-      if (source.writes === 'signals' && signals.length) rowsWritten = await upsertSignals(client, signals)
-      if (source.writes === 'metrics' && metrics.length) rowsWritten = await upsertMetrics(client, metrics)
-      if (source.writes === 'forecasts' && forecasts.length) rowsWritten = await upsertForecasts(client, forecasts)
+      if (signals.length) rowsWritten += await upsertSignals(client, signals)
+      if (metrics.length) rowsWritten += await upsertMetrics(client, metrics)
+      if (forecasts.length) rowsWritten += await upsertForecasts(client, forecasts)
+      if (daily.length) rowsWritten += await upsertDaily(client, daily)
+      if (advisories.length) rowsWritten += await upsertAdvisories(client, advisories)
+      if (advisoryHistory.length) rowsWritten += await insertAdvisoryHistory(client, advisoryHistory)
     }
 
     let status: IngestStatus = 'ok'
@@ -130,7 +137,7 @@ export async function runSource(
     }
 
     const budget = nextBudgetCursor(state?.cursor ?? null, now, summary.billedCalls)
-    const cursor = { ...(state?.cursor ?? {}), ...budget }
+    const cursor = { ...(state?.cursor ?? {}), ...budget, ...(result.cursor ?? {}) }
     await finishRun(client, source, summary, now, cursor, runId, started)
     return summary
   } catch (error) {
