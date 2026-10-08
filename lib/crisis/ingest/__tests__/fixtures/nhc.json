@@ -1,0 +1,17 @@
+{
+  "activeStorms": [
+    {
+      "id": "al142026",
+      "name": "SIMON",
+      "classification": "Hurricane",
+      "intensity": "75",
+      "latitudeNumeric": 15.6,
+      "longitudeNumeric": -102.5,
+      "lastUpdate": "2026-10-07T15:00:00Z",
+      "forecast": [
+        { "lat": 16.1, "lon": -103.2, "validTime": "2026-10-08T00:00:00Z", "intensity": 80 },
+        { "lat": 17.0, "lon": -104.0, "validTime": "2026-10-08T12:00:00Z", "intensity": 70 }
+      ]
+    }
+  ]
+}

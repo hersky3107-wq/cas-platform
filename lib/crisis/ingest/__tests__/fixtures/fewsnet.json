@@ -1,0 +1,20 @@
+[
+  {
+    "country": "Ethiopia",
+    "country_code": "ET",
+    "geographic_unit_name": "Afar",
+    "geographic_unit_full_name": "Abaala, Kilbati, Afar, Ethiopia",
+    "fnid": "ET2023C1020203",
+    "scenario": "ML1",
+    "value": 3,
+    "reporting_date": "2026-06-01"
+  },
+  {
+    "country": "Nowhere",
+    "country_code": "ZZ",
+    "geographic_unit_name": "Unknown District",
+    "scenario": "ML2",
+    "value": 4,
+    "reporting_date": "2026-06-01"
+  }
+]

@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<rss><channel>
+<item>
+  <title>Orange notification for tropical cyclone SIMON-26</title>
+  <link>https://www.gdacs.org/report.aspx?eventtype=TC&amp;eventid=1001335</link>
+  <pubDate>Wed, 07 Oct 2026 15:33:28 GMT</pubDate>
+  <geo:lat>15.6</geo:lat>
+  <geo:long>-102.5</geo:long>
+  <gdacs:iso3>MEX</gdacs:iso3>
+  <gdacs:country>Mexico</gdacs:country>
+  <gdacs:alertlevel>Orange</gdacs:alertlevel>
+  <gdacs:eventtype>TC</gdacs:eventtype>
+  <gdacs:eventid>1001335</gdacs:eventid>
+  <gdacs:severity value="203.7024" unit="km/h"/>
+</item>
+</channel></rss>

@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "id": "us6000u0wa",
+      "properties": {
+        "mag": 5,
+        "place": "92 km N of Ruteng, Indonesia",
+        "time": 1791434939943,
+        "url": "https://earthquake.usgs.gov/earthquakes/eventpage/us6000u0wa",
+        "tsunami": 0,
+        "magType": "mb",
+        "title": "M 5.0 - 92 km N of Ruteng, Indonesia"
+      },
+      "geometry": { "type": "Point", "coordinates": [120.5395, -7.7761, 10] }
+    }
+  ]
+}

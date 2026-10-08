@@ -1,0 +1,11 @@
+[
+  {
+    "volcano_name": "Kilauea",
+    "volcano_id": "332010",
+    "latitude": 19.421,
+    "longitude": -155.287,
+    "alert_level": "WATCH",
+    "color_code": "ORANGE",
+    "sent": "2026-10-08T00:00:00Z"
+  }
+]

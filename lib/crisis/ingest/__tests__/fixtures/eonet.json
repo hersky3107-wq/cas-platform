@@ -1,0 +1,19 @@
+{
+  "events": [
+    {
+      "id": "EONET_25063",
+      "title": "Tropical Storm Isaias",
+      "link": "https://eonet.gsfc.nasa.gov/api/v3/events/EONET_25063",
+      "categories": [{ "id": "severeStorms", "title": "Severe Storms" }],
+      "geometry": [
+        {
+          "date": "2026-10-07T09:00:00Z",
+          "type": "Point",
+          "coordinates": [-94.1, 22],
+          "magnitudeValue": 35,
+          "magnitudeUnit": "kts"
+        }
+      ]
+    }
+  ]
+}

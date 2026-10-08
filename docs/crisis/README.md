@@ -11,7 +11,7 @@ This slice is storage and geography only:
 - `crisis_sources` — license and attribution registry
 - `crisis_hypotheses` and `crisis_hypothesis_outcomes` — append-only proof ledger
 
-No ingestion workers, model calls, API routes, or UI are part of this slice.
+2B-1 adds natural-hazard ingestion under `lib/crisis/ingest` and `scripts/crisis`. Paste `docs/crisis/APPLY_2B1.md` after the core migration. Do not use `supabase db push`. Run the local sweep (`npm run crisis:sweep -- --once --dry-run`) instead of a Vercel cron.
 
 ## Isolation
 
@@ -45,8 +45,15 @@ The production database is a very small compute tier. Simplifying polygons and a
    npx tsx --env-file=.env.local scripts/crisis/verify-schema.ts
    ```
 
+6. After regions are loaded, paste `docs/crisis/APPLY_2B1.md`, then:
+
+   ```
+   npx tsx --env-file=.env.local scripts/crisis/verify-2b1.ts
+   npx tsx --env-file=.env.local scripts/crisis/sweep.ts --once --dry-run
+   ```
+
 `verify-schema` inserts one signal from `../crisis-probe/out/normalized.json`, prints the assigned region, and deletes that signal. It also inserts the genesis hypothesis `Ledger genesis — CrisisWatch proof ledger initialized`. Update and delete of that row must fail. The row stays; the ledger is append-only. Both this script and `load-regions` exit if `.env.local` is missing from the current folder.
 
 ## Env names
 
-Supabase uses the existing `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Source tokens are listed under `# crisis module` in `.env.example`. None of them are read by this slice.
+Supabase uses the existing `NEXT_PUBLIC_SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`. Source tokens are listed under `# crisis module` in `.env.example`. 2B-1 reads `FIRMS_MAP_KEY` (FIRMS). Other listed tokens are reserved for later departments.
