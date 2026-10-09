@@ -4,6 +4,7 @@ import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { buildAnomalyCard } from './card'
 import { finalizeScore } from './compute'
 import { damsNear, geographicKinds, nuclearNear, upstreamDamAdd } from './fragility'
+import { naturalTitlesForCoast } from './basins'
 import { amplifyFired } from './wiki-amplifier'
 import { vectorDiseaseContext } from './vector-watch'
 import { printTop30 } from './print'
@@ -54,6 +55,7 @@ export async function runLayer1Score(
   const day = snap.day
 
   const triggerByRegion = new Map<number, ReturnType<typeof rainComponent>[]>()
+  const naturalTitleByRegion = new Map<number, string>()
   const linked = linkEvents(snap.observations, now)
   const burn = await loadSlowBurn(client, now, snap.regions, snap.neighbors)
   log(`slow-burn source=${burn.source} countries=${burn.countries.length} dyads=${burn.dyads.length}`)
@@ -62,6 +64,8 @@ export async function runLayer1Score(
     const input = snap.inputs.get(region.id)
     if (!input) continue
     const wiki = region.iso3 ? snap.wikiByIso.get(region.iso3) : undefined
+    const naturalTitles = naturalTitlesForCoast(wiki?.natural ?? [], region.lat, region.lon)
+    if (naturalTitles[0]) naturalTitleByRegion.set(region.id, naturalTitles[0])
     let components = [
       rainComponent(input.precip),
       riverComponent({
@@ -98,7 +102,7 @@ export async function runLayer1Score(
       COMPONENT_FAMILY[row.key] === 'human' && row.value > 0 && row.key !== 'health_attention' && row.key !== 'slow_burn',
     )
     components = amplifyFired(components, {
-      natural: Boolean(wiki?.natural.length),
+      natural: naturalTitles.length > 0,
       human: Boolean(wiki?.human.length) && humanFired,
     })
     if (region.level === 0 && wiki?.health.length) {
@@ -134,7 +138,8 @@ export async function runLayer1Score(
     const wiki = region.iso3 ? snap.wikiByIso.get(region.iso3) : undefined
     const context: string[] = []
     const naturalAmp = components.some((row) => COMPONENT_FAMILY[row.key] === 'natural' && row.raw.wiki_amplify)
-    if (naturalAmp && wiki?.natural[0]) context.push(`wiki: ${wiki.natural[0]}`)
+    const naturalTitle = naturalTitleByRegion.get(region.id)
+    if (naturalAmp && naturalTitle) context.push(`wiki: ${naturalTitle}`)
     const humanAmp = components.some((row) => COMPONENT_FAMILY[row.key] === 'human' && row.raw.wiki_amplify)
     if (humanAmp && wiki?.human[0]) context.push(`wiki: ${wiki.human[0]}`)
     if (region.level === 0 && wiki?.health[0]) context.push(`wiki: ${wiki.health[0]}`)
@@ -175,7 +180,7 @@ export async function runLayer1Score(
       context,
       extra_items: extra,
     })
-    rows.push(scored)
+    rows.push({ ...scored, lat: region.lat, lon: region.lon, level: region.level })
   }
 
   const top30 = printTop30(rows)

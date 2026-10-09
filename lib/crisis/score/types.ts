@@ -56,6 +56,9 @@ export interface RegionScore {
   urban_centres: UrbanCentre[]
   bonus: { compound: number; cascade: number }
   context: string[]
+  lat?: number
+  lon?: number
+  level?: number
 }
 
 export interface AnomalyCard {
