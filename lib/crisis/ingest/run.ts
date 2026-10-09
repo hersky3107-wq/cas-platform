@@ -3,7 +3,7 @@ import { nextBudgetCursor } from './budget'
 import { missingEnv, redactSecrets } from './fetch'
 import { isFixedScheduleDue, nextDueAt } from './schedule'
 import type { CrisisSource, IngestContext, IngestStateRow, IngestStatus } from './types'
-import { insertAdvisoryHistory, upsertAdvisories, upsertDaily, upsertForecasts, upsertGlobalMetrics, upsertMetrics, upsertSignals } from './upsert'
+import { insertAdvisoryHistory, upsertAdvisories, upsertCountryDaily, upsertDaily, upsertDyadDaily, upsertForecasts, upsertGlobalMetrics, upsertMetrics, upsertSignals } from './upsert'
 
 const inflight = new Set<string>()
 
@@ -101,8 +101,10 @@ export async function runSource(
     const advisories = result.advisories ?? []
     const advisoryHistory = result.advisoryHistory ?? []
     const globalMetrics = result.globalMetrics ?? []
+    const dyads = result.dyads ?? []
+    const countries = result.countries ?? []
     const rowsIn = result.reportedRows
-      ?? signals.length + metrics.length + forecasts.length + daily.length + advisories.length + advisoryHistory.length + globalMetrics.length
+      ?? signals.length + metrics.length + forecasts.length + daily.length + advisories.length + advisoryHistory.length + globalMetrics.length + dyads.length + countries.length
     let rowsWritten = 0
 
     if (!dryRun) {
@@ -114,6 +116,16 @@ export async function runSource(
       if (advisoryHistory.length) rowsWritten += await insertAdvisoryHistory(client, advisoryHistory)
       if (globalMetrics.length) {
         const saved = await upsertGlobalMetrics(client, globalMetrics)
+        rowsWritten += saved.written
+        if (saved.skipped) result.quotaNote = [result.quotaNote, saved.skipped].filter(Boolean).join('; ')
+      }
+      if (dyads.length) {
+        const saved = await upsertDyadDaily(client, dyads)
+        rowsWritten += saved.written
+        if (saved.skipped) result.quotaNote = [result.quotaNote, saved.skipped].filter(Boolean).join('; ')
+      }
+      if (countries.length) {
+        const saved = await upsertCountryDaily(client, countries)
         rowsWritten += saved.written
         if (saved.skipped) result.quotaNote = [result.quotaNote, saved.skipped].filter(Boolean).join('; ')
       }

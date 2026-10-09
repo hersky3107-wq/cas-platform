@@ -81,6 +81,8 @@ export interface IngestFetchResult {
   metrics?: NormalizedMetric[]
   forecasts?: NormalizedForecast[]
   daily?: NormalizedDaily[]
+  dyads?: Array<{ actor1_country: string; actor2_country: string; day: string; stats: Record<string, unknown> }>
+  countries?: Array<{ country_iso3: string; day: string; stats: Record<string, unknown> }>
   advisories?: NormalizedAdvisory[]
   advisoryHistory?: NormalizedAdvisoryHistory[]
   globalMetrics?: NormalizedGlobalMetric[]

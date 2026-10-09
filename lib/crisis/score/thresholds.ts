@@ -214,6 +214,7 @@ export const COMPONENT_FAMILY: Record<string, 'natural' | 'human' | 'media'> = {
   food: 'human',
   wiki: 'media',
   health_attention: 'human',
+  slow_burn: 'human',
 }
 
 export const CARD_MAX_BYTES = 1800
@@ -234,6 +235,7 @@ export const COMPONENT_DEPARTMENT: Record<string, string> = {
   food: 'food',
   health_attention: 'health',
   escalation: 'escalation',
+  slow_burn: 'conflict',
   cyclone_formation: 'natural',
 }
 
@@ -262,6 +264,22 @@ export const CASCADE_TRIGGER_COMPONENTS: Record<string, string[]> = {
   maritime_attack: [],
   nuclear_hazard: ['quake', 'rain', 'river'],
   vector_disease: ['rain'],
+}
+
+export const SLOW_BURN = {
+  quietRise: 0.4,
+  dyadFocus: 0.6,
+  escalationSpread: 0.7,
+  minIndicators: 3,
+  minPoints: 8,
+  minEvents: 20,
+  windowDays: 28,
+  baselineDays: 90,
+  agreeFraction: 0.6,
+  spikeRatio: 3,
+  advisoryDays: 60,
+  recentDays: 14,
+  priorDays: 14,
 }
 
 export const SCORE_SOURCE = 'score'

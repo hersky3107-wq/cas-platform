@@ -16,6 +16,7 @@ import type { SupabaseClient } from '@supabase/supabase-js'
 import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { loadAllRegions } from '../ingest/regions'
 import { isHealthWikiConcept } from '../config/wiki-health'
+import { wikiTitleRole } from './wiki-roles'
 import type { EventPoint } from '../events/link'
 import { politeFetch } from '../ingest/fetch'
 import { advisoryPairDiverges } from './advisory'
@@ -83,7 +84,7 @@ export interface ScoreSnapshot {
   advisoryDiverge: string[]
   wikiKept: string[]
   wikiDropped: string[]
-  wikiByIso: Map<string, { amplify: string[]; health: string[] }>
+  wikiByIso: Map<string, { natural: string[]; human: string[]; health: string[] }>
   enso: { status: string; anomaly: number | null } | null
   observations: EventPoint[]
   rainDays: Map<number, string[]>
@@ -415,7 +416,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
   const wikiKept: string[] = []
   const wikiDropped: string[] = []
   const wikiSeen = new Set<string>()
-  const wikiPending: Array<{ title: string; term: string; iso3: string | null }> = []
+  const wikiPending: Array<{ title: string; term: string; concept: string; iso3: string | null }> = []
   let enso: ScoreSnapshot['enso'] = null
   const quakes: QuakeEvent[] = []
   const cyclones: PointEvent[] = []
@@ -465,6 +466,8 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         value: finite(row.value_num) ?? 0,
         unit: row.signal_type === 'cyclone_formation' ? 'percent' : 'kt',
         region_id: row.region_id == null ? null : Number(row.region_id),
+        lat: row.lat,
+        lon: row.lon,
         source: row.source,
         ref: storm,
       })
@@ -506,7 +509,14 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       const tag = `${title} [${verdict.reason ?? 'keep'}]`
       if (!wikiSeen.has(title)) {
         wikiSeen.add(title)
-        if (verdict.keep) wikiPending.push({ title, term, iso3: row.country_iso3 })
+        if (verdict.keep) {
+          wikiPending.push({
+            title,
+            term,
+            concept: typeof raw.concept === 'string' ? raw.concept : '',
+            iso3: row.country_iso3,
+          })
+        }
         else wikiDropped.push(tag)
       }
     } else if (row.signal_type === 'FL' && row.region_id != null) {
@@ -526,7 +536,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     }
   }
 
-  const wikiByIso = new Map<string, { amplify: string[]; health: string[] }>()
+  const wikiByIso = new Map<string, { natural: string[]; human: string[]; health: string[] }>()
   const yearCache = loadWikiYearCache()
   let yearCacheDirty = false
   for (const row of wikiPending) {
@@ -549,9 +559,13 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     }
     wikiKept.push(row.title)
     if (!row.iso3) continue
-    const bag = wikiByIso.get(row.iso3) ?? { amplify: [], health: [] }
+    const bag = wikiByIso.get(row.iso3) ?? { natural: [], human: [], health: [] }
     if (isHealthWikiConcept(row.title, row.term)) bag.health.push(row.title)
-    else bag.amplify.push(row.title)
+    else {
+      const role = wikiTitleRole(row.title, row.term, row.concept)
+      if (role === 'natural') bag.natural.push(row.title)
+      else if (role === 'human') bag.human.push(row.title)
+    }
     wikiByIso.set(row.iso3, bag)
   }
   if (yearCacheDirty) {

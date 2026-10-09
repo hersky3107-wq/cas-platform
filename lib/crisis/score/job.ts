@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { escalationValue, linkEvents } from '../events/link'
+import { cycloneCoversRegion, escalationValue, linkEvents } from '../events/link'
 import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { buildAnomalyCard } from './card'
 import { finalizeScore } from './compute'
@@ -8,8 +8,9 @@ import { amplifyFired } from './wiki-amplifier'
 import { vectorDiseaseContext } from './vector-watch'
 import { printTop30 } from './print'
 import { calibrationReport } from './report'
+import { loadSlowBurn } from './slowburn-load'
 import { loadScoreSnapshot, watchlistIso3 } from './snapshot'
-import { SCORE_SCHEDULE_MINUTES, SCORE_SOURCE } from './thresholds'
+import { COMPONENT_FAMILY, CYCLONE, SCORE_SCHEDULE_MINUTES, SCORE_SOURCE } from './thresholds'
 import {
   advisoryComponent,
   conflictAbsCut,
@@ -27,6 +28,7 @@ import {
   volcanoComponent,
   escalationComponent,
   healthAttentionComponent,
+  slowBurnComponent,
 } from './trigger'
 import type { RegionScore } from './types'
 
@@ -53,6 +55,8 @@ export async function runLayer1Score(
 
   const triggerByRegion = new Map<number, ReturnType<typeof rainComponent>[]>()
   const linked = linkEvents(snap.observations, now)
+  const burn = await loadSlowBurn(client, now, snap.regions, snap.neighbors)
+  log(`slow-burn source=${burn.source} countries=${burn.countries.length} dyads=${burn.dyads.length}`)
 
   for (const region of snap.regions) {
     const input = snap.inputs.get(region.id)
@@ -90,19 +94,29 @@ export async function runLayer1Score(
       advisoryComponent({ changed: input.advisoryChange, diverge: input.advisoryDiverge }),
       foodComponent(input.ipc),
     ]
-    const alreadyFired = components.some((row) => row.value > 0)
-    components = amplifyFired(components, alreadyFired && Boolean(wiki?.amplify.length))
+    const humanFired = components.some((row) =>
+      COMPONENT_FAMILY[row.key] === 'human' && row.value > 0 && row.key !== 'health_attention' && row.key !== 'slow_burn',
+    )
+    components = amplifyFired(components, {
+      natural: Boolean(wiki?.natural.length),
+      human: Boolean(wiki?.human.length) && humanFired,
+    })
     if (region.level === 0 && wiki?.health.length) {
       components = [...components, healthAttentionComponent(true, wiki.health[0])]
     }
     const neighborIds = snap.neighbors.get(region.id) ?? []
     const covered = new Set([region.id, ...neighborIds])
     const pace = linked
-      .filter((event) => event.region_ids.some((id) => covered.has(id)))
+      .filter((event) => {
+        if (event.kind === 'cyclone') return cycloneCoversRegion(event.track, region.lat, region.lon, CYCLONE.nearKm)
+        return event.region_ids.some((id) => covered.has(id))
+      })
       .sort((a, b) => escalationValue(b.pace) - escalationValue(a.pace))[0]
     if (pace && escalationValue(pace.pace) > 0) {
       components = [...components, escalationComponent(escalationValue(pace.pace), { event: pace.id, pace: pace.pace })]
     }
+    const hit = burn.byRegion.get(region.id)
+    if (hit && hit.value > 0) components = [...components, slowBurnComponent(hit.value, hit.detail)]
     triggerByRegion.set(region.id, components)
   }
 
@@ -119,8 +133,10 @@ export async function runLayer1Score(
     const upstream = upstreamDamAdd(neighborIds, triggerByRegion, snap.dams)
     const wiki = region.iso3 ? snap.wikiByIso.get(region.iso3) : undefined
     const context: string[] = []
-    const firedBesideWiki = components.some((row) => row.value > 0 && row.key !== 'health_attention' && row.key !== 'escalation')
-    if (firedBesideWiki && wiki?.amplify[0]) context.push(`wiki: ${wiki.amplify[0]}`)
+    const naturalAmp = components.some((row) => COMPONENT_FAMILY[row.key] === 'natural' && row.raw.wiki_amplify)
+    if (naturalAmp && wiki?.natural[0]) context.push(`wiki: ${wiki.natural[0]}`)
+    const humanAmp = components.some((row) => COMPONENT_FAMILY[row.key] === 'human' && row.raw.wiki_amplify)
+    if (humanAmp && wiki?.human[0]) context.push(`wiki: ${wiki.human[0]}`)
     if (region.level === 0 && wiki?.health[0]) context.push(`wiki: ${wiki.health[0]}`)
     const floodOrDrought = components.some((row) => (row.key === 'rain' || row.key === 'river' || row.key === 'food') && row.value > 0)
     if (snap.enso && floodOrDrought) {
@@ -214,6 +230,16 @@ export async function runLayer1Score(
         departments: row.departments,
       },
     })
+    const slow = row.components.find((component) => component.key === 'slow_burn' && component.value > 0)
+    if (slow) {
+      flags.push({
+        region_id: row.region_id,
+        flag_date: day,
+        flag: 'slow_burn',
+        value: slow.value,
+        detail: slow.raw,
+      })
+    }
     if (row.stage >= 2) {
       const card = buildAnomalyCard(row, snap.signalsByRegion.get(row.region_id) ?? [])
       flags.push({

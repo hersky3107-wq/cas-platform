@@ -268,6 +268,10 @@ export function escalationComponent(value: number, raw: Record<string, unknown> 
   return component('escalation', value, raw)
 }
 
+export function slowBurnComponent(value: number, raw: Record<string, unknown> = {}): TriggerComponent {
+  return component('slow_burn', value, raw)
+}
+
 export function foodComponent(ipc: number | null): TriggerComponent {
   let value = 0
   if (ipc != null && ipc >= FOOD.ipcHard) value = FOOD.hardValue

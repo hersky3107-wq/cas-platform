@@ -1,3 +1,4 @@
+import { haversineKm } from '../score/math'
 import { ESCALATION } from '../score/thresholds'
 
 export type EventKind = 'cyclone' | 'conflict' | 'outbreak' | 'fire_cluster' | 'flood' | 'volcano'
@@ -12,6 +13,8 @@ export interface EventPoint {
   value: number
   unit: string
   region_id: number | null
+  lat?: number | null
+  lon?: number | null
   source: string
   ref: string
 }
@@ -33,6 +36,7 @@ export interface LinkedEvent {
   status: EventStatus
   pace: EventPace
   source_refs: Array<{ source: string; ref: string }>
+  track: Array<{ lat: number; lon: number }>
 }
 
 export function gridKey(lat: number, lon: number, step = 0.5): string {
@@ -87,6 +91,12 @@ export function linkEvents(points: EventPoint[], now: Date): LinkedEvent[] {
     const history = [...byDay.values()]
     const growth = growthPace(history, sorted[0].kind, now)
     const regions = [...new Set(sorted.map((row) => row.region_id).filter((id): id is number => id != null))]
+    const track: Array<{ lat: number; lon: number }> = []
+    for (const row of sorted) {
+      if (row.lat == null || row.lon == null) continue
+      if (track.some((point) => point.lat === row.lat && point.lon === row.lon)) continue
+      track.push({ lat: row.lat, lon: row.lon })
+    }
     const refs = new Map<string, { source: string; ref: string }>()
     for (const row of sorted) refs.set(`${row.source}|${row.ref}`, { source: row.source, ref: row.ref })
     out.push({
@@ -100,9 +110,20 @@ export function linkEvents(points: EventPoint[], now: Date): LinkedEvent[] {
       status: growth.status,
       pace: growth.pace,
       source_refs: [...refs.values(), { source: 'slope', ref: String(Number(growth.slope.toFixed(3))) }],
+      track,
     })
   }
   return out
+}
+
+/** A storm attaches only to regions near its own track, not via a shared country. */
+export function cycloneCoversRegion(
+  track: Array<{ lat: number; lon: number }>,
+  lat: number,
+  lon: number,
+  nearKm: number,
+): boolean {
+  return track.some((point) => haversineKm(lat, lon, point.lat, point.lon) <= nearKm)
 }
 
 export function escalationValue(pace: EventPace): number {

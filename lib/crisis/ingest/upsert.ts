@@ -245,6 +245,62 @@ export async function upsertGlobalMetrics(
   return { written: rows.length, skipped: null }
 }
 
+function missingRelation(error: { message: string }, table: string): boolean {
+  return new RegExp(`${table}|schema cache|does not exist`, 'i').test(error.message)
+}
+
+export async function upsertDyadDaily(
+  client: SupabaseClient,
+  rows: Array<{ actor1_country: string; actor2_country: string; day: string; stats: Record<string, unknown> }>,
+): Promise<{ written: number; skipped: string | null }> {
+  if (!rows.length) return { written: 0, skipped: null }
+  try {
+    const written = await chunked(rows, async (batch) => {
+      const { error } = await client.from('crisis_dyad_daily').upsert(batch, {
+        onConflict: 'actor1_country,actor2_country,day',
+      })
+      if (error) {
+        if (missingRelation(error, 'crisis_dyad_daily')) throw new Error('crisis_dyad_daily is not applied yet')
+        throw new Error(`crisis_dyad_daily upsert: ${error.message}`)
+      }
+    })
+    return { written, skipped: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/not applied yet|schema cache|does not exist/i.test(message)) {
+      return { written: 0, skipped: 'crisis_dyad_daily is not applied yet' }
+    }
+    throw error
+  }
+}
+
+export async function upsertCountryDaily(
+  client: SupabaseClient,
+  rows: Array<{ country_iso3: string; day: string; stats: Record<string, unknown> }>,
+): Promise<{ written: number; skipped: string | null }> {
+  if (!rows.length) return { written: 0, skipped: null }
+  try {
+    const written = await chunked(rows, async (batch) => {
+      const { error } = await client.from('crisis_country_daily').upsert(batch, {
+        onConflict: 'country_iso3,day',
+      })
+      if (error) {
+        if (missingRelation(error, 'crisis_country_daily')) {
+          throw new Error('crisis_country_daily is not applied yet')
+        }
+        throw new Error(`crisis_country_daily upsert: ${error.message}`)
+      }
+    })
+    return { written, skipped: null }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (/not applied yet|schema cache|does not exist/i.test(message)) {
+      return { written: 0, skipped: 'crisis_country_daily is not applied yet' }
+    }
+    throw error
+  }
+}
+
 export async function insertAdvisoryHistory(
   client: SupabaseClient,
   rows: NormalizedAdvisoryHistory[],
