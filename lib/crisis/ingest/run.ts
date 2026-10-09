@@ -1,6 +1,7 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { nextBudgetCursor } from './budget'
 import { missingEnv, redactSecrets } from './fetch'
+import { isFixedScheduleDue, nextDueAt } from './schedule'
 import type { CrisisSource, IngestContext, IngestStateRow, IngestStatus } from './types'
 import { insertAdvisoryHistory, upsertAdvisories, upsertDaily, upsertForecasts, upsertMetrics, upsertSignals } from './upsert'
 
@@ -31,8 +32,11 @@ export async function loadState(client: SupabaseClient, key: string): Promise<In
   return (data as IngestStateRow | null) ?? null
 }
 
-export function isDue(state: IngestStateRow | null, now: Date, force: boolean): boolean {
+export function isDue(state: IngestStateRow | null, now: Date, force: boolean, source?: CrisisSource): boolean {
   if (force) return true
+  if (source?.fixedSchedule) {
+    return isFixedScheduleDue(source.fixedSchedule, state?.last_success_at ?? null, now)
+  }
   if (!state?.next_due_at) return true
   return new Date(state.next_due_at).getTime() <= now.getTime()
 }
@@ -74,7 +78,7 @@ export async function runSource(
   let runId: number | null = null
   try {
     const state = dryRun ? null : await loadState(client, source.key)
-    if (!dryRun && !isDue(state, now, Boolean(options.force))) {
+    if (!dryRun && !isDue(state, now, Boolean(options.force), source)) {
       return { ...empty, error: 'not due', quotaNote: `next_due_at=${state?.next_due_at}` }
     }
 
@@ -188,7 +192,7 @@ async function finishRun(
     })
   }
 
-  const nextDue = new Date(now.getTime() + source.scheduleMinutes * 60_000).toISOString()
+  const nextDue = nextDueAt(source, now).toISOString()
   const statePatch: Record<string, unknown> = {
     source: source.key,
     next_due_at: nextDue,

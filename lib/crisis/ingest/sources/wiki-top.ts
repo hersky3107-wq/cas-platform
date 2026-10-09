@@ -3,6 +3,7 @@ import { WIKI_PROJECTS, WIKI_PROJECT_ISO3, wikiProjectLang, type WikiProject } f
 import { buildDedupeKey } from '../dedupe'
 import { asArray, asRecord, finiteNumber, politeFetch } from '../fetch'
 import { loadCountryIdByIso3, loadStateSafe } from '../regions'
+import { FIXED_SLOTS } from '../schedule'
 import type { CrisisSource, IngestFetchResult, NormalizedDaily, NormalizedSignal } from '../types'
 
 export const WIKI_TOP_CAP = 1000
@@ -103,6 +104,7 @@ export const wikiTopSource: CrisisSource = {
   key: 'wiki_top',
   department: 'media',
   scheduleMinutes: 1440,
+  fixedSchedule: FIXED_SLOTS.wiki_top,
   writes: 'mixed',
   async fetch(ctx): Promise<IngestFetchResult> {
     const countryIds = await loadCountryIdByIso3(ctx.client).catch(() => new Map<string, number>())

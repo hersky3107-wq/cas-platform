@@ -1,5 +1,6 @@
 import { asArray, asRecord, finiteNumber } from '../fetch'
 import { loadDischargeMeans, loadHighInformRegions } from '../regions'
+import { FIXED_SLOTS } from '../schedule'
 import type { CrisisSource, ForecastRegion, IngestFetchResult, NormalizedForecast } from '../types'
 import { fetchOpenMeteoGrid, gridUrl } from './openmeteo-forecast'
 
@@ -49,6 +50,7 @@ export const glofasSource: CrisisSource = {
   key: 'glofas',
   department: 'hydro_weather',
   scheduleMinutes: 1440,
+  fixedSchedule: FIXED_SLOTS.glofas,
   writes: 'forecasts',
   async fetch(ctx): Promise<IngestFetchResult> {
     const highInform = await loadHighInformRegions(ctx.client, 0.5)

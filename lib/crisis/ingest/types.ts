@@ -1,4 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
+import type { FixedSchedule } from './schedule'
 
 export type IngestWrites = 'signals' | 'metrics' | 'forecasts' | 'daily' | 'advisories' | 'mixed'
 export type IngestStatus = 'ok' | 'partial' | 'error' | 'skipped'
@@ -95,6 +96,8 @@ export interface CrisisSource {
   key: string
   department: string
   scheduleMinutes: number
+  /** When set, this Seoul clock wins over scheduleMinutes. Missed slots catch up later the same local day, once. */
+  fixedSchedule?: FixedSchedule
   writes: IngestWrites
   requiredEnv?: string[]
   fetch(ctx: IngestContext): Promise<IngestFetchResult>

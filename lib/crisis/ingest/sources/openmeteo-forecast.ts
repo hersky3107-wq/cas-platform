@@ -11,6 +11,7 @@ import {
 import { asArray, asRecord, finiteNumber, politeFetch } from '../fetch'
 import { addBilled, extrapolateCount, loadProviderQuota, providerAllowance, saveProviderQuota } from '../quota'
 import { loadForecastRegions } from '../regions'
+import { FIXED_SLOTS } from '../schedule'
 import type { CrisisSource, ForecastRegion, IngestContext, IngestFetchResult, NormalizedForecast } from '../types'
 
 const DAILY = 'precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max'
@@ -96,6 +97,7 @@ export const openmeteoForecastSource: CrisisSource = {
   key: 'openmeteo_forecast',
   department: 'hydro_weather',
   scheduleMinutes: 1440,
+  fixedSchedule: FIXED_SLOTS.openmeteo_forecast,
   writes: 'forecasts',
   async fetch(ctx): Promise<IngestFetchResult> {
     return fetchOpenMeteoGrid(ctx, {

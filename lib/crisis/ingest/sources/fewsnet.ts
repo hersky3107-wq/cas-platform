@@ -1,4 +1,5 @@
 import { buildRegionIndex, loadForecastRegions, matchRegion } from '../regions'
+import { FIXED_SLOTS } from '../schedule'
 import { asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import { toIso3 } from '../iso'
 import type { CrisisSource, ForecastRegion, IngestFetchResult, NormalizedMetric } from '../types'
@@ -83,6 +84,7 @@ export const fewsnetSource: CrisisSource = {
   key: 'fewsnet',
   department: 'hydro_weather',
   scheduleMinutes: 10_080,
+  fixedSchedule: FIXED_SLOTS.fewsnet,
   writes: 'metrics',
   async fetch(ctx): Promise<IngestFetchResult> {
     const regions = await loadForecastRegions(ctx.client)

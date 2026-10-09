@@ -1,5 +1,6 @@
 import { asArray, asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import { loadAllRegions } from '../regions'
+import { FIXED_SLOTS } from '../schedule'
 import type { CrisisSource, IngestFetchResult, NormalizedMetric } from '../types'
 
 const API = 'https://drmkc.jrc.ec.europa.eu/inform-index/API/InformAPI'
@@ -95,6 +96,7 @@ export const informSource: CrisisSource = {
   key: 'inform',
   department: 'hydro_weather',
   scheduleMinutes: 43_200,
+  fixedSchedule: FIXED_SLOTS.inform,
   writes: 'metrics',
   async fetch(ctx): Promise<IngestFetchResult> {
     const year = ctx.now.getUTCFullYear()

@@ -64,7 +64,7 @@ async function pass(opts: { dryRun: boolean; only: string | null }): Promise<voi
   for (const source of sources) {
     if (!opts.only && !opts.dryRun) {
       const state = await loadState(supabaseAdmin, source.key)
-      if (!isDue(state, now, false)) continue
+      if (!isDue(state, now, false, source)) continue
     }
     const summary = await runSource(source, supabaseAdmin, {
       dryRun: opts.dryRun,
