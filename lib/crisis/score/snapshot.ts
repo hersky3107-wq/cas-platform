@@ -15,9 +15,14 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { loadAllRegions } from '../ingest/regions'
+import { isHealthWikiConcept } from '../config/wiki-health'
+import type { EventPoint } from '../events/link'
+import { politeFetch } from '../ingest/fetch'
 import { advisoryPairDiverges } from './advisory'
 import { asRecord, finite } from './math'
-import { ADVISORY, INTERNET, WIKI } from './thresholds'
+import { ADVISORY, INTERNET, RAIN, WIKI } from './thresholds'
+import { forecastRainFired, } from './vector-watch'
+import { eventIsOlderThan, loadWikiYearCache, lookupWikiEventYear, saveWikiYearCache } from './wikidata'
 import { classifyWikiTitle, wikiArticleTitle } from './wiki'
 import type { CampSite, DamSite, PlantSite, PointEvent, QuakeEvent, RelatedSignal, UrbanCentre } from './types'
 
@@ -78,6 +83,10 @@ export interface ScoreSnapshot {
   advisoryDiverge: string[]
   wikiKept: string[]
   wikiDropped: string[]
+  wikiByIso: Map<string, { amplify: string[]; health: string[] }>
+  enso: { status: string; anomaly: number | null } | null
+  observations: EventPoint[]
+  rainDays: Map<number, string[]>
 }
 
 function centroidLonLat(centroid: unknown): { lon: number; lat: number } | null {
@@ -216,6 +225,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     }
   }
 
+  const observations: EventPoint[] = []
   const daily = await pageSelect<{ region_id: number; day: string; source: string; stats: unknown }>(
     client,
     'crisis_region_daily',
@@ -227,6 +237,19 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
   for (const row of daily) {
     const stats = asRecord(row.stats) ?? {}
     const id = Number(row.region_id)
+    if (row.source === 'firms') {
+      observations.push({
+        kind: 'fire_cluster',
+        key: String(id),
+        name: `fire ${id}`,
+        at: `${row.day}T00:00:00.000Z`,
+        value: finite(stats.frp_sum) ?? 0,
+        unit: 'frp',
+        region_id: id,
+        source: 'firms',
+        ref: row.day,
+      })
+    }
     if (row.source === 'firms' && row.day === day) {
       const frp = finite(stats.frp_sum) ?? 0
       firmsToday.set(id, frp)
@@ -241,6 +264,19 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       hist.conflict.push(conflict)
       hist.total.push(total)
       gdeltHist.set(id, hist)
+      if (conflict > 0) {
+        observations.push({
+          kind: 'conflict',
+          key: String(id),
+          name: `conflict ${id}`,
+          at: `${row.day}T00:00:00.000Z`,
+          value: conflict,
+          unit: 'cameo_18_20',
+          region_id: id,
+          source: 'gdelt',
+          ref: row.day,
+        })
+      }
       if (row.day === day) {
         const cur = put(id)
         cur.conflictCount = conflict
@@ -367,6 +403,10 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
           'VO',
           'DR',
           'WF',
+          'cyclone_formation',
+          'enso_status',
+          'volcano_unrest',
+          'holocene_eruption',
         ])
         .gte('event_time', since14)
         .order('event_time', { ascending: false }),
@@ -375,6 +415,8 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
   const wikiKept: string[] = []
   const wikiDropped: string[] = []
   const wikiSeen = new Set<string>()
+  const wikiPending: Array<{ title: string; term: string; iso3: string | null }> = []
+  let enso: ScoreSnapshot['enso'] = null
   const quakes: QuakeEvent[] = []
   const cyclones: PointEvent[] = []
   const gdacs: PointEvent[] = []
@@ -412,8 +454,22 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         source: row.source,
         event_time: row.event_time,
       })
-    } else if (row.signal_type === 'cyclone_forecast_point' && row.lat != null && row.lon != null) {
+    } else if ((row.signal_type === 'cyclone_forecast_point' || row.signal_type === 'cyclone_formation' || row.signal_type === 'TC') && row.lat != null && row.lon != null) {
       cyclones.push({ lat: row.lat, lon: row.lon, event_time: row.event_time })
+      const storm = String(raw.storm_id ?? raw.name ?? row.title ?? 'storm')
+      observations.push({
+        kind: 'cyclone',
+        key: storm,
+        name: storm,
+        at: row.event_time ?? now.toISOString(),
+        value: finite(row.value_num) ?? 0,
+        unit: row.signal_type === 'cyclone_formation' ? 'percent' : 'kt',
+        region_id: row.region_id == null ? null : Number(row.region_id),
+        source: row.source,
+        ref: storm,
+      })
+    } else if (row.signal_type === 'enso_status') {
+      enso = { status: String(raw.status ?? row.title ?? 'unspecified'), anomaly: finite(row.value_num) }
     } else if (row.source === 'gdacs' && row.lat != null && row.lon != null) {
       gdacs.push({
         lat: row.lat,
@@ -423,6 +479,19 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         region_id: row.region_id == null ? null : Number(row.region_id),
         country_iso3: row.country_iso3,
       })
+      if (row.signal_type === 'FL' && row.region_id != null) {
+        observations.push({
+          kind: 'flood',
+          key: String(row.region_id),
+          name: row.title ?? 'flood',
+          at: row.event_time ?? now.toISOString(),
+          value: finite(row.value_num) ?? 1,
+          unit: 'alert',
+          region_id: Number(row.region_id),
+          source: row.source,
+          ref: row.title ?? 'flood',
+        })
+      }
     } else if (row.signal_type === 'elevated_volcano' && row.lat != null && row.lon != null) {
       const alert = String(raw.color_code ?? raw.alert_level ?? '')
       volcanoes.push({ lat: row.lat, lon: row.lon, event_time: row.event_time, alert })
@@ -437,18 +506,56 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       const tag = `${title} [${verdict.reason ?? 'keep'}]`
       if (!wikiSeen.has(title)) {
         wikiSeen.add(title)
-        if (verdict.keep) wikiKept.push(title)
+        if (verdict.keep) wikiPending.push({ title, term, iso3: row.country_iso3 })
         else wikiDropped.push(tag)
       }
-      if (verdict.keep) {
-        inheritCountry(row.country_iso3, (cur) => {
-          cur.wiki = true
-          if (!cur.wikiTitle) cur.wikiTitle = title
-        })
-      }
+    } else if (row.signal_type === 'FL' && row.region_id != null) {
+      observations.push({
+        kind: 'flood',
+        key: String(row.region_id),
+        name: row.title ?? 'flood',
+        at: row.event_time ?? now.toISOString(),
+        value: finite(row.value_num) ?? 1,
+        unit: 'alert',
+        region_id: Number(row.region_id),
+        source: row.source,
+        ref: row.title ?? 'flood',
+      })
     } else if (row.signal_type === 'advisory_change' && (row.event_time ?? '') >= sinceAdvisory) {
       inheritCountry(row.country_iso3, (cur) => { cur.advisoryChange = true })
     }
+  }
+
+  const wikiByIso = new Map<string, { amplify: string[]; health: string[] }>()
+  const yearCache = loadWikiYearCache()
+  let yearCacheDirty = false
+  for (const row of wikiPending) {
+    let ancient = false
+    try {
+      const year = await lookupWikiEventYear(row.title, yearCache, async (url) => {
+        const res = await politeFetch(url, { sourceKey: 'wikidata', minIntervalMs: 250 })
+        if (!res.ok || res.data == null) throw new Error(res.error ?? 'wikidata')
+        yearCacheDirty = true
+        return res.data
+      })
+      if (Object.prototype.hasOwnProperty.call(yearCache, row.title)) yearCacheDirty = true
+      ancient = eventIsOlderThan(year, now.getUTCFullYear())
+    } catch {
+      ancient = false
+    }
+    if (ancient) {
+      wikiDropped.push(`${row.title} [wikidata]`)
+      continue
+    }
+    wikiKept.push(row.title)
+    if (!row.iso3) continue
+    const bag = wikiByIso.get(row.iso3) ?? { amplify: [], health: [] }
+    if (isHealthWikiConcept(row.title, row.term)) bag.health.push(row.title)
+    else bag.amplify.push(row.title)
+    wikiByIso.set(row.iso3, bag)
+  }
+  if (yearCacheDirty) {
+    try { saveWikiYearCache(yearCache) } catch { /* cache is optional */ }
   }
 
   const advisoryRows = await pageSelect<{ country_iso3: string; source: string; level: number | null; updated_at: string | null }>(
@@ -505,7 +612,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     client,
     'crisis_fragility',
     'region_id, kind, name, lat, lon, attributes',
-    (q) => q.in('kind', ['dam', 'levee', 'refugee_camp', 'nuclear_plant']).in('confidence', ['dataset', 'confirmed', 'candidate']),
+    (q) => q.in('kind', ['dam', 'levee', 'refugee_camp', 'nuclear_plant', 'chemical_plant', 'port']).in('confidence', ['dataset', 'confirmed', 'candidate']),
   )
   const dams: DamSite[] = []
   const camps: CampSite[] = []
@@ -526,13 +633,38 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         year_built: finite(attrs.year_built),
       })
     } else if (row.kind === 'refugee_camp') camps.push(site)
-    else if (row.kind === 'nuclear_plant') plants.push(site)
+    else if (row.kind === 'nuclear_plant' || row.kind === 'chemical_plant' || row.kind === 'port') {
+      plants.push({ ...site, kind: row.kind })
+    }
   }
 
   let neighborSource: ScoreSnapshot['neighborSource'] = 'same_country'
   const neighbors = new Map<number, number[]>()
-  const { data: touch, error: touchError } = await client.rpc('crisis_touching_region_pairs')
-  if (!touchError && Array.isArray(touch)) {
+  let geometryPairs = false
+  try {
+    const stored = await pageSelect<{ region_id: number; neighbor_id: number }>(
+      client,
+      'crisis_region_neighbors',
+      'region_id, neighbor_id',
+      (q) => q,
+    )
+    if (stored.length) {
+      geometryPairs = true
+      neighborSource = 'st_touches'
+      for (const row of stored) {
+        const a = Number(row.region_id)
+        const b = Number(row.neighbor_id)
+        if (!a || !b) continue
+        neighbors.set(a, [...(neighbors.get(a) ?? []), b])
+      }
+    }
+  } catch {
+    geometryPairs = false
+  }
+  const { data: touch, error: touchError } = geometryPairs
+    ? { data: null, error: null }
+    : await client.rpc('crisis_touching_region_pairs')
+  if (!geometryPairs && !touchError && Array.isArray(touch) && touch.length) {
     neighborSource = 'st_touches'
     for (const row of touch as Array<{ a?: number; b?: number }>) {
       const a = Number(row.a)
@@ -541,7 +673,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       neighbors.set(a, [...(neighbors.get(a) ?? []), b])
       neighbors.set(b, [...(neighbors.get(b) ?? []), a])
     }
-  } else {
+  } else if (!geometryPairs) {
     const byCountry = new Map<string, number[]>()
     for (const row of regions) {
       if (!row.iso3) continue
@@ -574,7 +706,42 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     advisoryDiverge,
     wikiKept,
     wikiDropped,
+    wikiByIso,
+    enso,
+    observations,
+    rainDays: await loadRainDays(client, now),
   }
+}
+
+async function loadRainDays(client: SupabaseClient, now: Date): Promise<Map<number, string[]>> {
+  const rainDays = new Map<number, string[]>()
+  const from = new Date(now.getTime() - 56 * 86_400_000).toISOString().slice(0, 10)
+  const to = new Date(now.getTime() - 21 * 86_400_000).toISOString().slice(0, 10)
+  const page = 1000
+  try {
+    for (let start = 0; start < 3000; start += page) {
+      const { data, error } = await client
+        .from('crisis_region_forecasts')
+        .select('region_id, issued_date, series')
+        .eq('source', 'openmeteo_forecast')
+        .gte('issued_date', from)
+        .lte('issued_date', to)
+        .range(start, start + page - 1)
+      if (error) break
+      const rows = data ?? []
+      for (const row of rows) {
+        if (!forecastRainFired(row.series, RAIN.sumSoftMm, RAIN.dayMm)) continue
+        const id = Number(row.region_id)
+        const list = rainDays.get(id) ?? []
+        list.push(String(row.issued_date))
+        rainDays.set(id, list)
+      }
+      if (rows.length < page) break
+    }
+  } catch {
+    return rainDays
+  }
+  return rainDays
 }
 
 export function watchlistIso3(iso3: string | null): boolean {

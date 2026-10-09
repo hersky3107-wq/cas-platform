@@ -96,8 +96,15 @@ export const ADVISORY = {
 }
 
 export const WIKI = {
-  value: 0.3,
+  /** Kept articles amplify an already-fired component. They are not a trigger. */
+  amplify: 1.15,
   days: 2,
+}
+
+export const WIKI_AMPLIFY = WIKI.amplify
+
+export const HEALTH_ATTENTION = {
+  value: 0.3,
 }
 
 export const FOOD = {
@@ -150,9 +157,33 @@ export const PEOPLE = {
   exposureWeight: 0.2,
 }
 
+export const WATCHLIST_FRAGILITY = {
+  multiplier: 1.5,
+  kinds: ['dam', 'levee', 'nuclear_plant', 'chemical_plant', 'port'] as const,
+}
+
+export const ESCALATION = {
+  growing: 0.5,
+  fast: 0.8,
+  days: 3,
+  cycloneKtPerDay: 5,
+  cycloneFastKtPerDay: 15,
+  conflictPerDay: 1,
+  conflictFastPerDay: 3,
+  fireFrpPerDay: 20,
+  fireFastFrpPerDay: 80,
+  volcanoPerDay: 2,
+  volcanoFastPerDay: 5,
+  floodPerDay: 10,
+  floodFastPerDay: 30,
+  outbreakPerDay: 1,
+  outbreakFastPerDay: 3,
+}
+
 export const SCORE = {
   cap: 100,
-  compoundDepartments: 10,
+  /** Natural plus human/war. Raised from +10 on 2026-10-09. */
+  compoundDepartments: 15,
   /** Each counting component must reach this, and they must sit in two families. */
   compoundMin: 0.5,
   cascadeBonus: 10,
@@ -182,6 +213,7 @@ export const COMPONENT_FAMILY: Record<string, 'natural' | 'human' | 'media'> = {
   advisory: 'human',
   food: 'human',
   wiki: 'media',
+  health_attention: 'human',
 }
 
 export const CARD_MAX_BYTES = 1800
@@ -200,6 +232,9 @@ export const COMPONENT_DEPARTMENT: Record<string, string> = {
   advisory: 'advisory',
   wiki: 'media',
   food: 'food',
+  health_attention: 'health',
+  escalation: 'escalation',
+  cyclone_formation: 'natural',
 }
 
 /** cascade.trigger_type → fired component keys that satisfy it. */
@@ -224,6 +259,9 @@ export const CASCADE_TRIGGER_COMPONENTS: Record<string, string[]> = {
   disaster: ['gdacs'],
   currency_collapse: [],
   fuel_shortage: [],
+  maritime_attack: [],
+  nuclear_hazard: ['quake', 'rain', 'river'],
+  vector_disease: ['rain'],
 }
 
 export const SCORE_SOURCE = 'score'

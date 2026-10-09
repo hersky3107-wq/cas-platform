@@ -27,6 +27,7 @@ import {
   riverComponent,
   silenceComponent,
   volcanoComponent,
+  healthAttentionComponent,
   wikiComponent,
 } from '../trigger'
 import type { RegionScore, TriggerComponent } from '../types'
@@ -129,7 +130,9 @@ describe('alerts and human components', () => {
     expect(internetComponent(true).value).toBe(0.8)
     expect(advisoryComponent({ changed: true, diverge: false }).value).toBe(0.6)
     expect(advisoryComponent({ changed: true, diverge: true }).value).toBe(0.7)
-    expect(wikiComponent(true, 'Cyclone').value).toBe(0.3)
+    expect(wikiComponent(true, 'Cyclone').value).toBe(0)
+    expect(healthAttentionComponent(true, 'Pneumonic plague').value).toBe(0.3)
+    expect(healthAttentionComponent(false).value).toBe(0)
     expect(foodComponent(3).value).toBe(0.5)
     expect(foodComponent(4).value).toBe(1)
   })
@@ -212,7 +215,7 @@ describe('people and score', () => {
     expect(compoundBonus([
       { key: 'rain', department: 'natural', value: 0.5, raw: {} },
       { key: 'conflict', department: 'conflict', value: 0.6, raw: {} },
-    ])).toBe(10)
+    ])).toBe(15)
     expect(compoundBonus([
       { key: 'rain', department: 'natural', value: 0.4, raw: {} },
       { key: 'conflict', department: 'conflict', value: 0.6, raw: {} },
@@ -383,6 +386,9 @@ describe('advisory divergence', () => {
 describe('wiki title filter', () => {
   it('keeps current hazard articles and drops history and biographies', () => {
     expect(classifyWikiTitle('Чума', 'чума', 2026).keep).toBe(true)
+    expect(classifyWikiTitle('Peste Negra', 'peste', 2026)).toEqual({ keep: false, reason: 'historical' })
+    expect(classifyWikiTitle('15 Temmuz Darbe Girişimi', 'darbe', 2026).reason).toBe('historical')
+    expect(classifyWikiTitle('Black Death', 'plague', 2026).reason).toBe('historical')
     expect(classifyWikiTitle('Hurricane Isaias (2026)', 'hurricane', 2026).keep).toBe(true)
     expect(classifyWikiTitle('Hurricane Isaias (2025)', 'hurricane', 2026).keep).toBe(true)
     expect(classifyWikiTitle('Kashmir earthquake, 2005', 'earthquake', 2026)).toEqual({ keep: false, reason: 'year' })
@@ -429,7 +435,8 @@ describe('print sample', () => {
         evidence_level: 'sourced',
       }],
       urban_centres: [{ name: 'Derna', pop: 90000, lat: 32.76, lon: 22.64 }],
-      bonus: { compound: 10, cascade: 10 },
+      bonus: { compound: 15, cascade: 10 },
+      context: ['wiki: Hurricane Isaias (2026)'],
     }
     const text = explainRegion(1, row)
     expect(text).toContain('1. Derna / Libya')

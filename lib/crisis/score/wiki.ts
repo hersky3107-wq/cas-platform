@@ -1,3 +1,5 @@
+import { isHistoricalWikiTitle } from '../config/wiki-historical'
+
 const PAST_EVENT = [
   /,\s*(?:1[0-9]{3}|20[0-9]{2})\s*$/,
   /\b(?:earthquake|flood|cyclone|hurricane|typhoon|outbreak),\s*(?:1[0-9]{3}|20[0-9]{2})\b/i,
@@ -28,7 +30,7 @@ export function wikiArticleTitle(stored: string): string {
   return stored.replace(/\s*\([^)]*wikipedia[^)]*\)\s*$/i, '').trim()
 }
 
-export type WikiDropReason = 'year' | 'past_event' | 'term' | 'person'
+export type WikiDropReason = 'year' | 'past_event' | 'term' | 'person' | 'historical'
 
 export function classifyWikiTitle(
   title: string,
@@ -38,6 +40,7 @@ export function classifyWikiTitle(
   const years = [...title.matchAll(/\b(1[0-9]{3}|20[0-9]{2})\b/g)].map((match) => Number(match[1]))
   if (years.some((year) => year < nowYear - 1)) return { keep: false, reason: 'year' }
   if (PAST_EVENT.some((pattern) => pattern.test(title))) return { keep: false, reason: 'past_event' }
+  if (isHistoricalWikiTitle(title)) return { keep: false, reason: 'historical' }
   const tokens = title.split(/\s+/).filter(Boolean)
   const personalName =
     tokens.length >= 2 &&

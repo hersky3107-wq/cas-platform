@@ -5,8 +5,8 @@ const FAKE_URL = /example\.(com|org|net)|localhost|placeholder|127\.0\.0\.1|chan
 export function validateCascades(rows: CascadeSeed[]): string[] {
   const errors: string[] = []
   const seen = new Set<string>()
-  if (rows.length < 25 || rows.length > 35) {
-    errors.push(`expected 25-35 cascades, got ${rows.length}`)
+  if (rows.length < 25 || rows.length > 45) {
+    errors.push(`expected 25-45 cascades, got ${rows.length}`)
   }
   for (const row of rows) {
     if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.id)) errors.push(`${row.id}: id is not a slug`)

@@ -13,7 +13,7 @@ import {
   RIVER,
   SILENCE,
   VOLCANO,
-  WIKI,
+  HEALTH_ATTENTION,
 } from './thresholds'
 import type { PointEvent, QuakeEvent, TriggerComponent } from './types'
 
@@ -255,8 +255,17 @@ export function advisoryComponent(opts: { changed: boolean; diverge: boolean }):
   return component('advisory', value, { change: opts.changed, diverge: opts.diverge })
 }
 
-export function wikiComponent(freshHazard: boolean, title: string | null = null): TriggerComponent {
-  return component('wiki', freshHazard ? WIKI.value : 0, { title })
+/** Wiki is an amplifier, not a trigger. The component stays at 0 so old callers cannot fire it. */
+export function wikiComponent(_freshHazard: boolean, title: string | null = null): TriggerComponent {
+  return component('wiki', 0, { title, role: 'context' })
+}
+
+export function healthAttentionComponent(active: boolean, title: string | null = null): TriggerComponent {
+  return component('health_attention', active ? HEALTH_ATTENTION.value : 0, { title, scope: 'country' })
+}
+
+export function escalationComponent(value: number, raw: Record<string, unknown> = {}): TriggerComponent {
+  return component('escalation', value, raw)
 }
 
 export function foodComponent(ipc: number | null): TriggerComponent {

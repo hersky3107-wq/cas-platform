@@ -21,6 +21,16 @@ export interface NormalizedSignal {
   dedupe_key: string
 }
 
+export interface NormalizedGlobalMetric {
+  metric: string
+  valid_time: string
+  issued_at: string
+  value: number | null
+  unit: string | null
+  source: string
+  detail?: Record<string, unknown> | null
+}
+
 export interface NormalizedMetric {
   region_id: number
   metric: string
@@ -73,6 +83,7 @@ export interface IngestFetchResult {
   daily?: NormalizedDaily[]
   advisories?: NormalizedAdvisory[]
   advisoryHistory?: NormalizedAdvisoryHistory[]
+  globalMetrics?: NormalizedGlobalMetric[]
   cursor?: Record<string, unknown>
   /** When set (dry-run extrapolation), this is the row count the sweep reports. */
   reportedRows?: number

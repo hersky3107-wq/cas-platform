@@ -10,6 +10,7 @@ export interface CalibrationExtras {
   wikiDropped: number
   wikiKeptExamples: string[]
   wikiDroppedExamples: string[]
+  wikiRelated: number
 }
 
 function pct(values: number[], p: number): number | null {
@@ -38,6 +39,7 @@ export function calibrationReport(rows: RegionScore[], extra: CalibrationExtras)
     `  wiki kept=${extra.wikiKept} dropped=${extra.wikiDropped}`,
     `  wiki kept examples: ${extra.wikiKeptExamples.slice(0, 6).join(' | ') || '-'}`,
     `  wiki dropped examples: ${extra.wikiDroppedExamples.slice(0, 6).join(' | ') || '-'}`,
+    `  wiki-related ${extra.wikiRelated} (${rows.length ? ((extra.wikiRelated / rows.length) * 100).toFixed(1) : '0.0'}% target <3%)`,
   ]
   if (!rows.length) return lines.join('\n')
   const keys = new Set<string>()

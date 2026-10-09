@@ -3,7 +3,7 @@ import { nextBudgetCursor } from './budget'
 import { missingEnv, redactSecrets } from './fetch'
 import { isFixedScheduleDue, nextDueAt } from './schedule'
 import type { CrisisSource, IngestContext, IngestStateRow, IngestStatus } from './types'
-import { insertAdvisoryHistory, upsertAdvisories, upsertDaily, upsertForecasts, upsertMetrics, upsertSignals } from './upsert'
+import { insertAdvisoryHistory, upsertAdvisories, upsertDaily, upsertForecasts, upsertGlobalMetrics, upsertMetrics, upsertSignals } from './upsert'
 
 const inflight = new Set<string>()
 
@@ -100,8 +100,9 @@ export async function runSource(
     const daily = result.daily ?? []
     const advisories = result.advisories ?? []
     const advisoryHistory = result.advisoryHistory ?? []
+    const globalMetrics = result.globalMetrics ?? []
     const rowsIn = result.reportedRows
-      ?? signals.length + metrics.length + forecasts.length + daily.length + advisories.length + advisoryHistory.length
+      ?? signals.length + metrics.length + forecasts.length + daily.length + advisories.length + advisoryHistory.length + globalMetrics.length
     let rowsWritten = 0
 
     if (!dryRun) {
@@ -111,6 +112,11 @@ export async function runSource(
       if (daily.length) rowsWritten += await upsertDaily(client, daily)
       if (advisories.length) rowsWritten += await upsertAdvisories(client, advisories)
       if (advisoryHistory.length) rowsWritten += await insertAdvisoryHistory(client, advisoryHistory)
+      if (globalMetrics.length) {
+        const saved = await upsertGlobalMetrics(client, globalMetrics)
+        rowsWritten += saved.written
+        if (saved.skipped) result.quotaNote = [result.quotaNote, saved.skipped].filter(Boolean).join('; ')
+      }
     }
 
     let status: IngestStatus = 'ok'

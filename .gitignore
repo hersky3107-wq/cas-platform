@@ -32,6 +32,7 @@ yarn-error.log*
 
 # env files (local only)
 .env.local
+data/crisis/
 .env.*.local
 
 # vercel

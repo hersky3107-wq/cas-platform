@@ -29,6 +29,7 @@ export function explainRegion(rank: number, row: RegionScore): string {
     `   people: ${people}`,
     `   cascades: ${watch}`,
     `   bonus: compound=${row.bonus.compound} cascade=${row.bonus.cascade}  depts=${row.departments.join(',') || '-'}`,
+    `   context: ${(row.context ?? []).join(' | ') || '-'}`,
   ].join('\n')
 }
 

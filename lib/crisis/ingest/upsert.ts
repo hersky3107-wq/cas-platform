@@ -4,6 +4,7 @@ import type {
   NormalizedAdvisoryHistory,
   NormalizedDaily,
   NormalizedForecast,
+  NormalizedGlobalMetric,
   NormalizedMetric,
   NormalizedSignal,
 } from './types'
@@ -227,6 +228,21 @@ export async function upsertAdvisories(client: SupabaseClient, rows: NormalizedA
     const { error } = await client.from('crisis_advisory_state').upsert(batch, { onConflict: 'country_iso3,source' })
     if (error) throw new Error(`crisis_advisory_state upsert: ${error.message}`)
   })
+}
+
+export async function upsertGlobalMetrics(
+  client: SupabaseClient,
+  rows: NormalizedGlobalMetric[],
+): Promise<{ written: number; skipped: string | null }> {
+  if (!rows.length) return { written: 0, skipped: null }
+  const { error } = await client.from('crisis_global_metrics').upsert(rows, { onConflict: 'metric,valid_time,source' })
+  if (error) {
+    if (/crisis_global_metrics|schema cache|does not exist/i.test(error.message)) {
+      return { written: 0, skipped: 'crisis_global_metrics is not applied yet' }
+    }
+    throw new Error(`crisis_global_metrics upsert: ${error.message}`)
+  }
+  return { written: rows.length, skipped: null }
 }
 
 export async function insertAdvisoryHistory(

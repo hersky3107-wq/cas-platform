@@ -68,6 +68,7 @@ export function nuclearNear(
   if (!floodOrQuake) return []
   const items: FragilityItem[] = []
   for (const plant of plants) {
+    if (plant.kind && plant.kind !== 'nuclear_plant') continue
     const km = haversineKm(lat, lon, plant.lat, plant.lon)
     if (plant.region_id !== regionId && km > NUCLEAR.nearKm) continue
     items.push({
@@ -111,7 +112,9 @@ export function geographicKinds(
     if (dam.region_id != null && ids.has(dam.region_id)) kinds.add(dam.kind ?? 'dam')
   }
   if (camps.some((camp) => camp.region_id != null && ids.has(camp.region_id))) kinds.add('refugee_camp')
-  if (plants.some((plant) => plant.region_id != null && ids.has(plant.region_id))) kinds.add('nuclear_plant')
+  for (const plant of plants) {
+    if (plant.region_id != null && ids.has(plant.region_id)) kinds.add(plant.kind ?? 'nuclear_plant')
+  }
   return kinds
 }
 

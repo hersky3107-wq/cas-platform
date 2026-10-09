@@ -55,6 +55,7 @@ export interface RegionScore {
   cascades: CascadeWatch[]
   urban_centres: UrbanCentre[]
   bonus: { compound: number; cascade: number }
+  context: string[]
 }
 
 export interface AnomalyCard {
@@ -68,6 +69,7 @@ export interface AnomalyCard {
   urban: Array<{ name: string; pop: number }>
   cascades: Array<{ id: string; effect: string; lag: string; evidence: string }>
   signals: RelatedSignal[]
+  context: string[]
 }
 
 export interface QuakeEvent {
@@ -109,4 +111,5 @@ export interface PlantSite {
   lat: number
   lon: number
   region_id: number | null
+  kind?: 'nuclear_plant' | 'chemical_plant' | 'port'
 }

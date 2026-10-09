@@ -19,6 +19,7 @@ import {
   NUCLEAR_TRIGGER_KEYS,
   SCORE,
   STAGE_MIN,
+  WATCHLIST_FRAGILITY,
 } from './thresholds'
 import { combineTrigger } from './trigger'
 import type { CascadeWatch, FragilityItem, RegionScore, TriggerComponent, UrbanCentre } from './types'
@@ -66,6 +67,9 @@ export function finalizeScore(opts: {
   upstream_add: number
   urban_centres: UrbanCentre[]
   kinds: Set<string>
+  watchlist?: boolean
+  context?: string[]
+  extra_items?: FragilityItem[]
 }): RegionScore {
   const trigger = combineTrigger(opts.components)
   const hydro = fired(opts.components, DAM_TRIGGER_KEYS)
@@ -75,12 +79,20 @@ export function finalizeScore(opts: {
   const campCount = campOn ? opts.camp_count : 0
   const nuclearItems = nuclearOn ? opts.nuclear_items : []
   const upstream = hydro ? opts.upstream_add : 0
+  const boost = opts.watchlist ? WATCHLIST_FRAGILITY.multiplier : 1
+  const boostedKinds = new Set<string>(WATCHLIST_FRAGILITY.kinds)
+  const scale = (item: FragilityItem): FragilityItem =>
+    boost !== 1 && boostedKinds.has(item.kind) ? { ...item, weight: item.weight * boost } : item
+  const shownDams = damItems.map(scale)
+  const shownNuclear = nuclearItems.map(scale)
+  const shownExtra = (opts.extra_items ?? []).map(scale)
   const camps = campBucket(campCount)
   const inform = informFragility(opts.inform_vulnerability, opts.inform_coping)
   const weightSum =
-    damItems.reduce((acc, item) => acc + item.weight, 0) +
+    shownDams.reduce((acc, item) => acc + item.weight, 0) +
+    shownExtra.reduce((acc, item) => acc + item.weight, 0) +
     camps +
-    (nuclearItems.length ? Math.max(...nuclearItems.map((item) => item.weight)) : 0) +
+    (shownNuclear.length ? Math.max(...shownNuclear.map((item) => item.weight)) : 0) +
     upstream +
     inform
   const fragility = diminish(weightSum, FRAGILITY_K)
@@ -90,13 +102,14 @@ export function finalizeScore(opts: {
     components: opts.components,
     kinds: opts.kinds,
     urbanPop: opts.urban_pop,
+    watchlist: opts.watchlist,
   })
   const compound = compoundBonus(opts.components)
   const cascade = cascadeBonusApplies(watch, opts.kinds, CASCADE_SEEDS) ? SCORE.cascadeBonus : 0
   const raw = rawRiskScore(trigger, fragility, people)
   const score = Math.min(SCORE.cap, raw + compound + cascade)
   const items = [
-    ...damItems.slice(0, 5),
+    ...shownDams.slice(0, 5),
     ...(camps > 0
       ? [{
           kind: 'refugee_camp',
@@ -107,7 +120,8 @@ export function finalizeScore(opts: {
           attributes: { count: campCount, bucket: camps },
         } satisfies FragilityItem]
       : []),
-    ...nuclearItems.slice(0, 2),
+    ...shownExtra.slice(0, 2),
+    ...shownNuclear.slice(0, 2),
   ].sort((a, b) => b.weight - a.weight).slice(0, 5)
 
   return {
@@ -128,6 +142,7 @@ export function finalizeScore(opts: {
     cascades: watch,
     urban_centres: opts.urban_centres.slice(0, 5),
     bonus: { compound, cascade },
+    context: opts.context ?? [],
   }
 }
 

@@ -406,6 +406,76 @@ export const CASCADE_SEEDS: CascadeSeed[] = [
     mechanism:
       'A burned slope sheds water instead of absorbing it. The next heavy rain, which may be the same storm season and up to about two months later, can send a debris flow into the valley town. Hypothesis only.',
   }),
+  hypothesis({
+    id: 'conflict-dam-attack-flood',
+    trigger_type: 'conflict',
+    effect_type: 'downstream_flood',
+    lag_min_days: 0,
+    lag_max_days: 3,
+    conditions: { requires_fragility: ['dam'] },
+    mechanism:
+      'Fighting around a large dam can breach it or force a sudden release. The water then floods the valley downstream within hours to a few days. A public page for the 2023 Kakhovka breach was not verified in this pass, so the pathway stays a hypothesis.',
+  }),
+  hypothesis({
+    id: 'conflict-nuclear-radiological',
+    trigger_type: 'nuclear_hazard',
+    effect_type: 'radiological_risk',
+    lag_min_days: 0,
+    lag_max_days: 7,
+    conditions: { requires_fragility: ['nuclear_plant'], requires_watchlist: true },
+    mechanism:
+      'A nuclear plant inside a conflict-watchlist country is a different object once an earthquake or a flood reaches it. Damage to cooling or to the grid can raise a radiological risk within the first week. No checked public source is attached.',
+  }),
+  hypothesis({
+    id: 'conflict-response-failure-mortality',
+    trigger_type: 'conflict',
+    effect_type: 'higher_mortality',
+    lag_min_days: 0,
+    lag_max_days: 14,
+    conditions: { min_population: 50000 },
+    mechanism:
+      'When responders cannot move, hospitals are hit, or roads are held, the same disaster kills more people than it would in a quiet region. The extra deaths show up over the first two weeks. Hypothesis until a checked source is added.',
+  }),
+  hypothesis({
+    id: 'maritime-attack-fuel-unrest',
+    trigger_type: 'maritime_attack',
+    effect_type: 'unrest',
+    lag_min_days: 7,
+    lag_max_days: 60,
+    conditions: { min_population: 100000 },
+    mechanism:
+      'Attacks on shipping divert tankers and grain ships. Fuel and food prices rise in the importing cities over the following weeks, and protests can follow. There is no maritime component yet, so this seed does not fire. Hypothesis only.',
+  }),
+  hypothesis({
+    id: 'disaster-armed-group',
+    trigger_type: 'disaster',
+    effect_type: 'armed_group_opportunity',
+    lag_min_days: 0,
+    lag_max_days: 14,
+    conditions: { min_population: 50000 },
+    mechanism:
+      'A disaster that empties police posts and blocks roads can give an armed group room to move, tax aid, or take a town during the first two weeks. It is not automatic. Hypothesis only.',
+  }),
+  hypothesis({
+    id: 'rain-malaria-lag',
+    trigger_type: 'vector_disease',
+    effect_type: 'malaria',
+    lag_min_days: 28,
+    lag_max_days: 56,
+    conditions: {},
+    mechanism:
+      'Standing water after heavy rain gives Anopheles mosquitoes a breeding window. Malaria cases, where the parasite is already present, tend to rise about four to eight weeks later. The day window is an operational bound. No checked source is attached, so this stays a hypothesis.',
+  }),
+  hypothesis({
+    id: 'rain-dengue-lag',
+    trigger_type: 'vector_disease',
+    effect_type: 'dengue',
+    lag_min_days: 21,
+    lag_max_days: 56,
+    conditions: {},
+    mechanism:
+      'Containers and puddles filled by rain breed Aedes mosquitoes. Dengue, where the virus already circulates, can rise about three to eight weeks later. The day window is an operational bound. No checked source is attached, so this stays a hypothesis.',
+  }),
 ]
 
 export function cascadeCounts(rows: CascadeSeed[] = CASCADE_SEEDS): { sourced: number; hypothesis: number; total: number } {

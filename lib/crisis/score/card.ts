@@ -29,6 +29,7 @@ export function buildAnomalyCard(score: RegionScore, signals: RelatedSignal[]): 
       url: row.url,
       event_time: row.event_time,
     })),
+    context: (score.context ?? []).slice(0, 4).map((row) => trim(row, 80)),
   }
   return shrinkCard(card)
 }
@@ -55,6 +56,7 @@ function shrinkCard(card: AnomalyCard): AnomalyCard {
     else if (next.urban.length > 1) next.urban = next.urban.slice(0, next.urban.length - 1)
     else if (next.fragility.length > 1) next.fragility = next.fragility.slice(0, next.fragility.length - 1)
     else if (next.components.length > 1) next.components = next.components.slice(0, next.components.length - 1)
+    else if (next.context.length > 1) next.context = next.context.slice(0, next.context.length - 1)
     else break
   }
   return next
