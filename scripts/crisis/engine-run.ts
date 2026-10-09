@@ -119,7 +119,7 @@ async function main(): Promise<void> {
     : undefined
 
   const caller = live
-    ? (await import('../../lib/crisis/engine/live-caller')).liveCaller(supabaseAdmin)
+    ? (await import('../../lib/crisis/engine/live-caller')).liveCaller()
     : {
         async complete() {
           throw new Error('dry-run tried to call a model')

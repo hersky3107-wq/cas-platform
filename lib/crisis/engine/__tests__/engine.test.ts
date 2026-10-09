@@ -59,7 +59,7 @@ function caller(seen: ModelCall[], mode: 'full' | 'drop' | 'throw-hunter' = 'ful
   return {
     async complete(call) {
       seen.push(call)
-      if (mode === 'throw-hunter' && call.slot === 'hunter-us') throw new Error('hunter down')
+      if (mode === 'throw-hunter' && call.slot === 'hunter-qwen') throw new Error('hunter down')
       if (call.role === 'dept_analyst') return { text: JSON.stringify({ notes: `${call.slot} note`, signals: ['one'] }), tokensIn: 10, tokensOut: 10, costUsd: 0.01 }
       if (call.role === 'query_writer') return { text: JSON.stringify({ queries: ['Badulla dam', 'බදුල්ල වේල්ල', 'Badulla rain'] }), tokensIn: 10, tokensOut: 10, costUsd: 0.01 }
       if (call.role === 'search') {
@@ -122,18 +122,32 @@ describe('roster', () => {
     expect(new Set(analysts.map((slot) => slot.brand)).size).toBe(analysts.length)
     expect(new Set(hunters.map((slot) => slot.brand)).size).toBe(hunters.length)
     expect(hunters.map((slot) => slot.brand).sort()).toEqual(
-      ['DeepSeek', 'Mistral', 'NVIDIA', 'OpenAI', 'Qwen', 'Upstage'].sort(),
+      ['DeepSeek', 'Mistral', 'NVIDIA', 'Qwen', 'Upstage', 'Z.ai'].sort(),
     )
-    expect(hunters.some((slot) => slot.model === 'gpt-4o')).toBe(true)
-    expect(hunters.some((slot) => slot.model === 'openrouter:mistral-medium-3.5')).toBe(true)
-    expect(hunters.some((slot) => slot.model === 'upstage:solar-pro3')).toBe(true)
-    expect(roster.slots.find((slot) => slot.slot === 'grok-live')?.model).toBe('grok-3')
-    expect(roster.slots.find((slot) => slot.slot === 'perplexity-sonar')?.model).toBe('sonar')
-    expect(roster.judgeModel).toBe('claude-opus-4-7')
-    expect(analysts.find((slot) => slot.slot === 'health')?.model).toBe('claude-sonnet-4-6')
+    expect(analysts.find((slot) => slot.slot === 'health')?.model).toBe('claude-sonnet-5')
+    expect(analysts.find((slot) => slot.slot === 'natural-hydro')?.model).toBe('gemini-3.6-flash')
+    expect(analysts.find((slot) => slot.slot === 'natural-geo')?.model).toBe('moonshotai/kimi-k2.6')
+    expect(analysts.find((slot) => slot.slot === 'conflict-political')?.model).toBe('grok-4.3')
+    expect(analysts.find((slot) => slot.slot === 'infrastructure-economy')?.model).toBe('gpt-5.6-terra')
+    expect(roster.slots.find((slot) => slot.slot === 'query_writer')?.model).toBe('gemini-3.5-flash-lite')
+    expect(roster.slots.find((slot) => slot.slot === 'grok-live')).toMatchObject({
+      model: 'grok-4.6',
+      search: true,
+      maxTurns: 1,
+    })
+    expect(roster.slots.find((slot) => slot.slot === 'perplexity-sonar')?.model).toBe('sonar-reasoning-pro')
+    expect(hunters.some((slot) => slot.model === 'qwen/qwen3.5-plus-20260420')).toBe(true)
+    expect(hunters.some((slot) => slot.model === 'deepseek/deepseek-v3.2')).toBe(true)
+    expect(hunters.some((slot) => slot.model === 'mistralai/mistral-medium-3-5')).toBe(true)
+    expect(hunters.some((slot) => slot.model === 'solar-pro4')).toBe(true)
+    expect(hunters.some((slot) => slot.model === 'nvidia/nemotron-3-ultra-550b-a55b')).toBe(true)
+    expect(hunters.some((slot) => slot.model === 'z-ai/glm-5.3')).toBe(true)
+    expect(roster.slots.find((slot) => slot.slot === 'red_team')?.model).toBe('cohere/command-a')
+    expect(roster.judgeModel).toBe('claude-opus-5-5')
+    expect(resolveRoster({ CRISIS_ENGINE_JUDGE_MODEL: 'claude-opus-5-5-test' }).judgeModel).toBe('claude-opus-5-5-test')
     const estimate = estimateRegionRunUsd(roster)
-    expect(estimate).toBeGreaterThan(0.15)
-    expect(estimate).toBeLessThan(0.25)
+    expect(estimate).toBeGreaterThan(0.05)
+    expect(estimate).toBeLessThan(1.5)
   })
 })
 
@@ -188,7 +202,7 @@ describe('department isolation and hunters', () => {
     expect(searches).toHaveLength(2)
     expect(searches[0].user).toBe(searches[1].user)
     expect(record.status).toBe('done')
-    expect(record.steps.some((step) => step.slot === 'hunter-us' && step.error === 'hunter down')).toBe(true)
+    expect(record.steps.some((step) => step.slot === 'hunter-qwen' && step.error === 'hunter down')).toBe(true)
     expect(record.result?.hypotheses.length).toBe(5)
     expect(record.result?.partial).toBe(false)
   })

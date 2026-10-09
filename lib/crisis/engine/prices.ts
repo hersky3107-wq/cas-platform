@@ -2,28 +2,29 @@ import type { EngineRole } from './schema'
 
 /**
  * Dry-run list prices in USD per 1,000,000 tokens.
- * These are budgeting estimates. A live call stores the provider billed cost when one is returned.
+ * Taken from league-work lib/league/roster.ts (PRICE AUDIT 2026-09) and
+ * lib/league/deep-report-ledger.ts for Claude Opus 5.5.
+ * A live call stores the provider billed cost when one is returned.
  */
 export const LIST_PRICE_PER_MILLION: Record<string, { input: number; output: number }> = {
-  'openrouter:qwen3.5-flash': { input: 0.1, output: 0.4 },
-  'openrouter:deepseek-v4-flash': { input: 0.14, output: 0.28 },
-  'claude-sonnet-4-6': { input: 3, output: 15 },
-  'openrouter:nova-2-lite': { input: 0.06, output: 0.24 },
-  'openrouter:phi-4': { input: 0.07, output: 0.14 },
-  'gemini-3.5-flash': { input: 0.15, output: 0.6 },
-  'grok-3': { input: 3, output: 15 },
-  sonar: { input: 1, output: 1 },
-  'gpt-4o': { input: 2.5, output: 10 },
-  'openrouter:qwen3.5-plus': { input: 0.4, output: 1.2 },
-  'openrouter:mistral-medium-3.5': { input: 0.4, output: 2 },
-  'upstage:solar-pro3': { input: 0.15, output: 0.6 },
-  'openrouter:nemotron-3-ultra-550b': { input: 0.9, output: 2.7 },
-  'openrouter:deepseek-v3.2': { input: 0.27, output: 1.1 },
-  'openrouter:command-a': { input: 2.5, output: 10 },
-  'claude-opus-4-7': { input: 15, output: 75 },
+  'claude-sonnet-5': { input: 2, output: 10 },
+  'gemini-3.6-flash': { input: 1.5, output: 7.5 },
+  'moonshotai/kimi-k2.6': { input: 0.6, output: 3 },
+  'grok-4.3': { input: 1.25, output: 2.5 },
+  'gpt-5.6-terra': { input: 2, output: 12 },
+  'gemini-3.5-flash-lite': { input: 0.3, output: 2.5 },
+  'grok-4.6': { input: 2, output: 6 },
+  'sonar-reasoning-pro': { input: 2, output: 8 },
+  'qwen/qwen3.5-plus-20260420': { input: 0.4, output: 1.2 },
+  'deepseek/deepseek-v3.2': { input: 0.27, output: 1.1 },
+  'mistralai/mistral-medium-3-5': { input: 0.4, output: 2 },
+  'solar-pro4': { input: 0.15, output: 0.6 },
+  'nvidia/nemotron-3-ultra-550b-a55b': { input: 0.5, output: 2.2 },
+  'z-ai/glm-5.3': { input: 0.378, output: 1.188 },
+  'cohere/command-a': { input: 2.5, output: 10 },
+  'claude-opus-5-5': { input: 4, output: 20 },
 }
 
-/** Completion size used when estimating a call that has not run. */
 export const TYPICAL_OUTPUT_TOKENS: Record<EngineRole, number> = {
   dept_analyst: 400,
   query_writer: 180,
@@ -45,7 +46,7 @@ export const TOKEN_CAPS: Record<EngineRole, { in: number; out: number }> = {
 export const ROLE_TIMEOUT_MS: Record<EngineRole, number> = {
   dept_analyst: 45_000,
   query_writer: 30_000,
-  search: 60_000,
+  search: 150_000,
   hunter: 60_000,
   red_team: 45_000,
   judge: 90_000,

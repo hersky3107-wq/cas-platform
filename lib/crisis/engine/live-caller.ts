@@ -1,58 +1,33 @@
-import type { SupabaseClient } from '@supabase/supabase-js'
-import type { ExtendedAiProviderName } from '@/lib/ai/router'
-import type { ModelCaller } from './run'
+import { callEngineProvider } from './providers'
+import type { EngineProvider } from './providers/types'
 import { listPriceCost } from './prices'
+import type { ModelCaller } from './run'
 
 /**
- * Live calls only. engine-run.ts imports this from the --live branch.
- * Platform-registry ids go through callPlatformModel. Router ids (Grok live search,
- * Perplexity sonar, Anthropic, OpenAI, Google) go through runSingleAiProvider.
+ * Live calls only. Uses the crisis explicit-model callers, not lib/ai.
+ * engine-run.ts imports this from the --live branch.
  */
-export function liveCaller(supabase: SupabaseClient): ModelCaller {
+export function liveCaller(): ModelCaller {
   return {
     async complete(call) {
-      if (call.model.includes(':')) {
-        const { callPlatformModel } = await import('@/lib/ai/platform-providers')
-        const result = await callPlatformModel({
-          id: call.model,
-          systemPrompt: call.system,
-          userPrompt: call.user,
-          maxCompletionTokens: call.maxTokens,
-          timeoutMs: call.timeoutMs,
-        })
-        if (result.error || !result.text) throw new Error(result.error ?? 'empty platform response')
-        const tokensIn = result.usage?.promptTokens ?? 0
-        const tokensOut = result.usage?.completionTokens ?? 0
-        return {
-          text: result.text,
-          tokensIn,
-          tokensOut,
-          costUsd: result.costUsd ?? listPriceCost(call.model, tokensIn, tokensOut),
-        }
-      }
-      const { runSingleAiProvider } = await import('@/lib/ai/router')
-      const result = await runSingleAiProvider({
-        supabase,
-        sessionId: null,
-        userId: null,
-        provider: call.provider as ExtendedAiProviderName,
-        prompt: call.user,
-        systemPrompt: call.system,
-        skipLanguageInjection: true,
-        maxCompletionTokens: call.maxTokens,
+      const result = await callEngineProvider({
+        model: call.model,
+        provider: call.provider as EngineProvider,
+        system: call.system,
+        user: call.user,
+        maxTokens: call.maxTokens,
         timeoutMs: call.timeoutMs,
-        modelOverride: call.model,
-        searchTool: call.search,
+        search: call.search,
+        maxTurns: call.maxTurns,
+        extraBody: call.extraBody,
+        googleThinking: call.googleThinking,
+        anthropicThinking: call.anthropicThinking,
       })
-      if (!result.text) throw new Error('empty router response')
-      const tokensIn = result.promptTokens ?? 0
-      const tokensOut = result.completionTokens ?? 0
-      const billed = result.costUsd ?? null
       return {
         text: result.text,
-        tokensIn,
-        tokensOut,
-        costUsd: billed ?? listPriceCost(call.model, tokensIn, tokensOut),
+        tokensIn: result.tokensIn,
+        tokensOut: result.tokensOut,
+        costUsd: result.costUsd ?? listPriceCost(call.model, result.tokensIn, result.tokensOut),
       }
     },
   }

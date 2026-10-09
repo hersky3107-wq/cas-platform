@@ -30,6 +30,10 @@ export interface ModelCall {
   maxTokens: number
   timeoutMs: number
   search: boolean
+  maxTurns?: number
+  extraBody?: Record<string, unknown>
+  googleThinking?: RosterSlot['googleThinking']
+  anthropicThinking?: RosterSlot['anthropicThinking']
 }
 
 export interface ModelCaller {
@@ -219,6 +223,10 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
           maxTokens: outputCap,
           timeoutMs: ROLE_TIMEOUT_MS[slot.role],
           search: slot.search,
+          maxTurns: slot.maxTurns,
+          extraBody: slot.extraBody,
+          googleThinking: slot.googleThinking,
+          anthropicThinking: slot.anthropicThinking,
         }),
         ROLE_TIMEOUT_MS[slot.role],
       )
