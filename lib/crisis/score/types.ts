@@ -94,6 +94,7 @@ export interface DamSite {
   region_id: number | null
   height_m: number | null
   year_built: number | null
+  kind?: 'dam' | 'levee'
 }
 
 export interface CampSite {

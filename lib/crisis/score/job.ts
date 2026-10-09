@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { buildAnomalyCard } from './card'
 import { finalizeScore } from './compute'
-import { damsNear, nuclearNear, regionHasDam, upstreamDamAdd } from './fragility'
+import { damsNear, geographicKinds, nuclearNear, upstreamDamAdd } from './fragility'
 import { printTop30 } from './print'
+import { calibrationReport } from './report'
 import { loadScoreSnapshot, watchlistIso3 } from './snapshot'
 import { SCORE_SCHEDULE_MINUTES, SCORE_SOURCE } from './thresholds'
 import {
@@ -35,7 +36,7 @@ export interface ScoreJobResult {
 
 export async function runLayer1Score(
   client: SupabaseClient,
-  opts: { dryRun: boolean; now?: Date; log?: (message: string) => void },
+  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void },
 ): Promise<ScoreJobResult> {
   const now = opts.now ?? new Date()
   const log = opts.log ?? ((message: string) => console.log(message))
@@ -52,12 +53,21 @@ export async function runLayer1Score(
     if (!input) continue
     const components = [
       rainComponent(input.precip),
-      riverComponent({ discharge: input.discharge, ratioTo30d: input.ratioTo30d }),
+      riverComponent({
+        discharge: input.discharge,
+        ratioTo30d: input.ratioTo30d,
+        historyDays: input.glofasDays,
+      }),
       cycloneComponent(region.lat, region.lon, now, snap.cyclones),
       quakeComponent(region.lat, region.lon, now, snap.quakes),
       gdacsComponent(region.lat, region.lon, region.id, region.iso3, now, snap.gdacs),
       volcanoComponent(region.lat, region.lon, now, snap.volcanoes),
-      fireComponent({ frpSum: input.frpSum, top1Cut: frpCut, watchlist: watchlistIso3(region.iso3) }),
+      fireComponent({
+        frpSum: input.frpSum,
+        count: input.frpCount,
+        top1Cut: frpCut,
+        watchlist: watchlistIso3(region.iso3),
+      }),
       conflictComponent({
         conflictCount: input.conflictCount,
         mean30d: input.conflictMean,
@@ -82,14 +92,12 @@ export async function runLayer1Score(
     const input = snap.inputs.get(region.id)
     const components = triggerByRegion.get(region.id)
     if (!input || !components) continue
+    const neighborIds = snap.neighbors.get(region.id) ?? []
     const damItems = damsNear(region.lat, region.lon, region.id, snap.dams, nowYear)
     const campHere = snap.camps.filter((camp) => camp.region_id === region.id)
     const nuclearItems = nuclearNear(region.lat, region.lon, region.id, snap.plants, components)
-    const kinds = new Set<string>()
-    if (damItems.length || regionHasDam(region.id, snap.dams)) kinds.add('dam')
-    if (campHere.length) kinds.add('refugee_camp')
-    if (nuclearItems.length) kinds.add('nuclear_plant')
-    const upstream = upstreamDamAdd(snap.neighbors.get(region.id) ?? [], triggerByRegion, snap.dams)
+    const kinds = geographicKinds(region.id, neighborIds, snap.dams, snap.camps, snap.plants)
+    const upstream = upstreamDamAdd(neighborIds, triggerByRegion, snap.dams)
     const scored = finalizeScore({
       region_id: region.id,
       name: region.name,
@@ -111,10 +119,30 @@ export async function runLayer1Score(
   }
 
   const top30 = printTop30(rows)
+  const report = calibrationReport(rows, {
+    riverFired: rows.filter((row) => row.components.some((component) => component.key === 'river')).length,
+    advisoryBoth: snap.advisoryBoth,
+    advisoryDiverge: snap.advisoryDiverge,
+    wikiKept: snap.wikiKept.length,
+    wikiDropped: snap.wikiDropped.length,
+    wikiKeptExamples: snap.wikiKept,
+    wikiDroppedExamples: snap.wikiDropped,
+  })
   log(`score day=${day} regions=${rows.length} neighbors=${snap.neighborSource}`)
+  log(report)
   log(top30)
 
-  if (opts.dryRun) {
+  const write = opts.write === true && !opts.dryRun
+  const schedulePatch = async (markSuccess: boolean) => {
+    const patch: Record<string, unknown> = {
+      source: SCORE_SOURCE,
+      next_due_at: new Date(now.getTime() + SCORE_SCHEDULE_MINUTES * 60_000).toISOString(),
+    }
+    if (markSuccess) patch.last_success_at = now.toISOString()
+    await client.from('crisis_ingest_state').upsert(patch, { onConflict: 'source' })
+  }
+  if (!write) {
+    if (opts.touchSchedule) await schedulePatch(false)
     return { day, scored: rows.length, cards: rows.filter((row) => row.stage >= 2).length, neighborSource: snap.neighborSource, top30, rows }
   }
 
@@ -158,15 +186,7 @@ export async function runLayer1Score(
     if (error) throw new Error(`crisis_region_flags: ${error.message}`)
   }
   log(`wrote ${flags.length} flags`)
-
-  await client.from('crisis_ingest_state').upsert(
-    {
-      source: SCORE_SOURCE,
-      last_success_at: now.toISOString(),
-      next_due_at: new Date(now.getTime() + SCORE_SCHEDULE_MINUTES * 60_000).toISOString(),
-    },
-    { onConflict: 'source' },
-  )
+  await schedulePatch(true)
 
   return {
     day,

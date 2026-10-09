@@ -15,8 +15,10 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { loadAllRegions } from '../ingest/regions'
+import { advisoryPairDiverges } from './advisory'
 import { asRecord, finite } from './math'
 import { ADVISORY, INTERNET, WIKI } from './thresholds'
+import { classifyWikiTitle, wikiArticleTitle } from './wiki'
 import type { CampSite, DamSite, PlantSite, PointEvent, QuakeEvent, RelatedSignal, UrbanCentre } from './types'
 
 export interface ScoreRegion {
@@ -34,7 +36,9 @@ export interface RegionInputs {
   precip: Array<number | null> | null
   discharge: Array<number | null> | null
   ratioTo30d: Array<number | null> | null
+  glofasDays: number
   frpSum: number
+  frpCount: number
   conflictCount: number
   conflictMean: number | null
   conflictDays: number
@@ -70,6 +74,10 @@ export interface ScoreSnapshot {
   conflictCounts: number[]
   signalsByRegion: Map<number, RelatedSignal[]>
   neighborSource: 'st_touches' | 'same_country'
+  advisoryBoth: number
+  advisoryDiverge: string[]
+  wikiKept: string[]
+  wikiDropped: string[]
 }
 
 function centroidLonLat(centroid: unknown): { lon: number; lat: number } | null {
@@ -108,7 +116,9 @@ function emptyInputs(): RegionInputs {
     precip: null,
     discharge: null,
     ratioTo30d: null,
+    glofasDays: 0,
     frpSum: 0,
+    frpCount: 0,
     conflictCount: 0,
     conflictMean: null,
     conflictDays: 0,
@@ -185,10 +195,12 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     (q) => q.gte('issued_date', since30).in('source', ['openmeteo_forecast', 'glofas']),
   )
   const latest = new Map<string, (typeof forecasts)[0]>()
+  const glofasDays = new Map<number, number>()
   for (const row of forecasts) {
     const key = `${row.region_id}|${row.source}`
     const prev = latest.get(key)
     if (!prev || row.issued_date >= prev.issued_date) latest.set(key, row)
+    if (row.source === 'glofas') glofasDays.set(Number(row.region_id), (glofasDays.get(Number(row.region_id)) ?? 0) + 1)
   }
   for (const row of latest.values()) {
     const series = asRecord(row.series) ?? {}
@@ -200,6 +212,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       cur.ratioTo30d = Array.isArray(series.ratio_to_30d_mean)
         ? series.ratio_to_30d_mean.map((value) => finite(value))
         : null
+      cur.glofasDays = glofasDays.get(Number(row.region_id)) ?? 0
     }
   }
 
@@ -217,7 +230,9 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     if (row.source === 'firms' && row.day === day) {
       const frp = finite(stats.frp_sum) ?? 0
       firmsToday.set(id, frp)
-      put(id).frpSum = frp
+      const cur = put(id)
+      cur.frpSum = frp
+      cur.frpCount = finite(stats.count) ?? 0
     }
     if (row.source === 'gdelt') {
       const hist = gdeltHist.get(id) ?? { conflict: [], total: [] }
@@ -357,6 +372,9 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         .order('event_time', { ascending: false }),
   )
 
+  const wikiKept: string[] = []
+  const wikiDropped: string[] = []
+  const wikiSeen = new Set<string>()
   const quakes: QuakeEvent[] = []
   const cyclones: PointEvent[] = []
   const gdacs: PointEvent[] = []
@@ -412,14 +430,67 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       const t = row.event_time ?? sinceInternet
       if (t >= sinceInternet) inheritCountry(row.country_iso3, (cur) => { cur.internet = true })
     } else if (row.signal_type === 'wiki_new_top' && (row.event_time ?? '') >= sinceWiki) {
-      inheritCountry(row.country_iso3, (cur) => {
-        cur.wiki = true
-        if (!cur.wikiTitle) cur.wikiTitle = row.title
-      })
+      const stored = row.title ?? ''
+      const title = wikiArticleTitle(stored)
+      const term = typeof raw.term === 'string' ? raw.term : ''
+      const verdict = classifyWikiTitle(title, term, now.getUTCFullYear())
+      const tag = `${title} [${verdict.reason ?? 'keep'}]`
+      if (!wikiSeen.has(title)) {
+        wikiSeen.add(title)
+        if (verdict.keep) wikiKept.push(title)
+        else wikiDropped.push(tag)
+      }
+      if (verdict.keep) {
+        inheritCountry(row.country_iso3, (cur) => {
+          cur.wiki = true
+          if (!cur.wikiTitle) cur.wikiTitle = title
+        })
+      }
     } else if (row.signal_type === 'advisory_change' && (row.event_time ?? '') >= sinceAdvisory) {
       inheritCountry(row.country_iso3, (cur) => { cur.advisoryChange = true })
-    } else if (row.signal_type === 'advisory_divergence') {
-      inheritCountry(row.country_iso3, (cur) => { cur.advisoryDiverge = true })
+    }
+  }
+
+  const advisoryRows = await pageSelect<{ country_iso3: string; source: string; level: number | null; updated_at: string | null }>(
+    client,
+    'crisis_advisory_state',
+    'country_iso3, source, level, updated_at',
+    (q) => q.in('source', ['us_state', 'uk_fcdo']),
+  )
+  const historyRows = await pageSelect<{ country_iso3: string; source: string; changed_at: string }>(
+    client,
+    'crisis_advisory_history',
+    'country_iso3, source, changed_at',
+    (q) => q.gte('changed_at', sinceAdvisory),
+  )
+  const changedByCountry = new Map<string, Set<string>>()
+  for (const row of historyRows) {
+    const set = changedByCountry.get(row.country_iso3) ?? new Set()
+    set.add(row.source)
+    changedByCountry.set(row.country_iso3, set)
+  }
+  const pair = new Map<string, { us: number | null; uk: number | null }>()
+  for (const row of advisoryRows) {
+    const bag = pair.get(row.country_iso3) ?? { us: null, uk: null }
+    if (row.source === 'us_state') bag.us = finite(row.level)
+    if (row.source === 'uk_fcdo') bag.uk = finite(row.level)
+    pair.set(row.country_iso3, bag)
+  }
+  const advisoryDiverge: string[] = []
+  let advisoryBoth = 0
+  for (const [iso3, sides] of pair) {
+    const us = sides.us == null ? null : { level: sides.us }
+    const uk = sides.uk == null ? null : { level: sides.uk }
+    if (us && uk) advisoryBoth += 1
+    const changed = changedByCountry.get(iso3) ?? new Set()
+    if (advisoryPairDiverges({
+      us,
+      uk,
+      usChanged: changed.has('us_state'),
+      ukChanged: changed.has('uk_fcdo'),
+    })) {
+      advisoryDiverge.push(iso3)
+      inheritCountry(iso3, (cur) => { cur.advisoryDiverge = true })
     }
   }
 
@@ -434,7 +505,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     client,
     'crisis_fragility',
     'region_id, kind, name, lat, lon, attributes',
-    (q) => q.in('kind', ['dam', 'refugee_camp', 'nuclear_plant']).in('confidence', ['dataset', 'confirmed', 'candidate']),
+    (q) => q.in('kind', ['dam', 'levee', 'refugee_camp', 'nuclear_plant']).in('confidence', ['dataset', 'confirmed', 'candidate']),
   )
   const dams: DamSite[] = []
   const camps: CampSite[] = []
@@ -447,9 +518,10 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       lon: row.lon,
       region_id: row.region_id == null ? null : Number(row.region_id),
     }
-    if (row.kind === 'dam') {
+    if (row.kind === 'dam' || row.kind === 'levee') {
       dams.push({
         ...site,
+        kind: row.kind,
         height_m: finite(attrs.height_m),
         year_built: finite(attrs.year_built),
       })
@@ -498,6 +570,10 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     conflictCounts: [...inputs.values()].map((row) => row.conflictCount),
     signalsByRegion,
     neighborSource,
+    advisoryBoth,
+    advisoryDiverge,
+    wikiKept,
+    wikiDropped,
   }
 }
 

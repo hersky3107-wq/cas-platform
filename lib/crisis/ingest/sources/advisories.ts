@@ -1,3 +1,4 @@
+import { advisoryPairDiverges } from '../../score/advisory'
 import { buildDedupeKey } from '../dedupe'
 import { asArray, asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import { toIso3 } from '../iso'
@@ -287,17 +288,25 @@ export function detectAdvisoryChanges(
     }
   }
 
-  const nowMs = new Date(nowIso).getTime()
   const divergeSignals: NormalizedSignal[] = []
+  const changedThisRun = new Map<string, Set<string>>()
+  for (const row of history) {
+    const set = changedThisRun.get(row.country_iso3) ?? new Set()
+    set.add(row.source)
+    changedThisRun.set(row.country_iso3, set)
+  }
   for (const [iso3, sources] of latest) {
     const us = sources.get('us_state')
     const uk = sources.get('uk_fcdo')
-    if (!us || !uk) continue
-    const spread = Math.abs(us.level - uk.level)
-    const usChanged = us.updated_at ? nowMs - new Date(us.updated_at).getTime() <= ADVISORY_STALE_MS : false
-    const ukChanged = uk.updated_at ? nowMs - new Date(uk.updated_at).getTime() <= ADVISORY_STALE_MS : false
-    const lag = (usChanged && !ukChanged) || (ukChanged && !usChanged)
-    if (spread >= ADVISORY_DIVERGE_LEVELS || lag) {
+    const changed = changedThisRun.get(iso3) ?? new Set()
+    const diverges = advisoryPairDiverges({
+      us: us ? { level: us.level } : null,
+      uk: uk ? { level: uk.level } : null,
+      usChanged: changed.has('us_state'),
+      ukChanged: changed.has('uk_fcdo'),
+    })
+    if (diverges && us && uk) {
+      const spread = Math.abs(us.level - uk.level)
       divergeSignals.push({
         department: 'diplomacy',
         source: 'advisories',
@@ -312,7 +321,8 @@ export function detectAdvisoryChanges(
           uk_fcdo: uk.level,
           us_updated_at: us.updated_at,
           uk_updated_at: uk.updated_at,
-          lag_72h: lag,
+          us_changed: changed.has('us_state'),
+          uk_changed: changed.has('uk_fcdo'),
         },
         unit_raw: 'level_delta',
         event_time: nowIso,

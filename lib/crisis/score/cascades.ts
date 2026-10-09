@@ -29,10 +29,12 @@ export function matchCascades(opts: {
   return out
 }
 
+/** Bonus only when every required fragility kind is inside the region or a neighbour. */
 export function cascadeBonusApplies(watch: CascadeWatch[], kinds: Set<string>, cascades: CascadeSeed[]): boolean {
   return watch.some((item) => {
     const seed = cascades.find((row) => row.id === item.id)
     const required = seed?.conditions.requires_fragility
-    return Array.isArray(required) && required.length > 0 && required.every((kind) => kinds.has(String(kind)))
+    if (!Array.isArray(required) || required.length === 0) return false
+    return required.every((kind) => kinds.has(String(kind)))
   })
 }

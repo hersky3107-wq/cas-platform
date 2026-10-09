@@ -16,6 +16,12 @@ export const RIVER = {
   ratioHard: 3,
   softValue: 0.5,
   hardValue: 1,
+  /** Forecast peak must reach this before a ratio can fire. Stops near-zero today values. */
+  minPeakM3s: 50,
+  minBaselineM3s: 1,
+  ratioCap: 10,
+  /** Prefer ratio_to_30d_mean only after this many stored forecast days. */
+  minHistoryDays: 14,
 }
 
 export const CYCLONE = {
@@ -56,7 +62,10 @@ export const VOLCANO = {
 export const FIRE = {
   topPercentile: 0.99,
   topValue: 0.4,
-  watchlistValue: 0.6,
+  /** Detections required: top 1% of today's frp_sum, or at least this many points, and frp_sum > 0. */
+  minCount: 20,
+  /** Applied only after fire already fired. */
+  watchlistMultiplier: 1.3,
 }
 
 export const CONFLICT = {
@@ -87,7 +96,7 @@ export const ADVISORY = {
 }
 
 export const WIKI = {
-  value: 0.4,
+  value: 0.3,
   days: 2,
 }
 
@@ -124,8 +133,16 @@ export const NUCLEAR = {
 
 export const INFORM = {
   scale: 10,
-  fragilityCap: 0.5,
+  /** Country modifier inside the fragility sum, before diminishing returns. */
+  fragilityCap: 0.3,
 }
+
+/** 1 - exp(-k * x). k is editable. */
+export const FRAGILITY_K = 1.2
+
+export const DAM_TRIGGER_KEYS = ['rain', 'river', 'quake'] as const
+export const CAMP_TRIGGER_KEYS = ['rain', 'river', 'conflict', 'food'] as const
+export const NUCLEAR_TRIGGER_KEYS = ['quake', 'rain', 'river'] as const
 
 export const PEOPLE = {
   logCap: 10_000_000,
@@ -134,12 +151,38 @@ export const PEOPLE = {
 }
 
 export const SCORE = {
+  cap: 100,
   compoundDepartments: 10,
-  compoundRainRiverDam: 10,
+  /** Each counting component must reach this, and they must sit in two families. */
+  compoundMin: 0.5,
   cascadeBonus: 10,
 }
 
-export const STAGE_MIN = [0, 0, 12, 25, 40, 60] as const
+/**
+ * Stage cuts after the 2026-10-09 dry-run saturated stage 5.
+ * 1: <40, 2: >=40, 3: >=55, 4: >=70, 5: >=85.
+ * Target: stage >= 2 about 200 regions, stage 5 about 10.
+ */
+export const STAGE_MIN = [0, 0, 40, 55, 70, 85] as const
+
+export const SATURATION_FRACTION = 0.1
+
+/** natural vs human/war vs media. Same-family pairs do not earn the compound bonus. */
+export const COMPONENT_FAMILY: Record<string, 'natural' | 'human' | 'media'> = {
+  rain: 'natural',
+  river: 'natural',
+  cyclone: 'natural',
+  quake: 'natural',
+  gdacs: 'natural',
+  volcano: 'natural',
+  fire: 'natural',
+  conflict: 'human',
+  silence: 'human',
+  internet: 'human',
+  advisory: 'human',
+  food: 'human',
+  wiki: 'media',
+}
 
 export const CARD_MAX_BYTES = 1800
 

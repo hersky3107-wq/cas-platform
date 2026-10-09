@@ -22,7 +22,7 @@ export function damsNear(
     const km = haversineKm(lat, lon, dam.lat, dam.lon)
     if (dam.region_id !== regionId && km > DAM.nearKm) continue
     items.push({
-      kind: 'dam',
+      kind: dam.kind ?? 'dam',
       name: dam.name,
       lat: dam.lat,
       lon: dam.lon,
@@ -88,8 +88,31 @@ export function informFragility(vulnerability: number | null, coping: number | n
   return clamp(INFORM.fragilityCap * (0.5 * vuln + 0.5 * lack), 0, INFORM.fragilityCap)
 }
 
+/** Diminishing returns. x is the raw weight sum. */
+export function diminish(x: number, k: number): number {
+  if (x <= 0) return 0
+  return clamp(1 - Math.exp(-k * x))
+}
+
 export function regionHasDam(regionId: number, dams: DamSite[]): boolean {
   return dams.some((dam) => dam.region_id === regionId)
+}
+
+export function geographicKinds(
+  regionId: number,
+  neighborIds: number[],
+  dams: DamSite[],
+  camps: CampSite[],
+  plants: PlantSite[],
+): Set<string> {
+  const ids = new Set([regionId, ...neighborIds])
+  const kinds = new Set<string>()
+  for (const dam of dams) {
+    if (dam.region_id != null && ids.has(dam.region_id)) kinds.add(dam.kind ?? 'dam')
+  }
+  if (camps.some((camp) => camp.region_id != null && ids.has(camp.region_id))) kinds.add('refugee_camp')
+  if (plants.some((plant) => plant.region_id != null && ids.has(plant.region_id))) kinds.add('nuclear_plant')
+  return kinds
 }
 
 export function upstreamDamAdd(

@@ -35,20 +35,36 @@ export function rainComponent(precipMm: Array<number | null> | null | undefined)
   return component('rain', value, { sum_mm: sum, max_day_mm: maxDay })
 }
 
+function seriesMedian(values: number[]): number {
+  if (!values.length) return 0
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2
+}
+
 export function riverComponent(opts: {
   discharge: Array<number | null> | null | undefined
   ratioTo30d?: Array<number | null> | null
+  historyDays?: number
 }): TriggerComponent {
   const ratios = (opts.ratioTo30d ?? []).filter((value): value is number => value != null && Number.isFinite(value))
   const discharge = (opts.discharge ?? []).filter((value): value is number => value != null && Number.isFinite(value))
+  const peak = discharge.length ? Math.max(...discharge) : 0
+  if (peak < RIVER.minPeakM3s) {
+    return component('river', 0, { peak_m3s: peak, ratio: null, used: 'below_peak' })
+  }
+  const today = discharge[0] ?? 0
+  const baseline = Math.max(today, seriesMedian(discharge), RIVER.minBaselineM3s)
   let ratio: number | null = null
   let used = 'none'
-  if (ratios.length) {
-    ratio = Math.max(...ratios)
+  const historyDays = opts.historyDays ?? 0
+  if (historyDays >= RIVER.minHistoryDays && ratios.length) {
+    ratio = Math.min(RIVER.ratioCap, Math.max(...ratios))
     used = 'ratio_to_30d_mean'
-  } else if (discharge.length >= 2 && discharge[0] > 0) {
-    ratio = Math.max(...discharge.slice(1)) / discharge[0]
-    used = 'max_next7_over_today'
+  } else if (discharge.length >= 2) {
+    const nextMax = Math.max(...discharge.slice(1))
+    ratio = Math.min(RIVER.ratioCap, nextMax / baseline)
+    used = 'capped_peak_over_baseline'
   }
   let value = 0
   if (ratio != null) {
@@ -58,7 +74,7 @@ export function riverComponent(opts: {
         ((ratio - RIVER.ratioSoft) / (RIVER.ratioHard - RIVER.ratioSoft)) * (RIVER.hardValue - RIVER.softValue)
     }
   }
-  return component('river', value, { ratio, used })
+  return component('river', value, { peak_m3s: peak, baseline_m3s: baseline, ratio, used, history_days: historyDays })
 }
 
 export function cycloneComponent(
@@ -163,13 +179,25 @@ export function volcanoComponent(
 
 export function fireComponent(opts: {
   frpSum: number
+  count?: number
   top1Cut: number | null
   watchlist: boolean
 }): TriggerComponent {
+  const count = opts.count ?? 0
+  const inTail = opts.top1Cut != null && opts.frpSum >= opts.top1Cut
+  const detected = opts.frpSum > 0 && (inTail || count >= FIRE.minCount)
   let value = 0
-  if (opts.top1Cut != null && opts.frpSum > 0 && opts.frpSum >= opts.top1Cut) value = FIRE.topValue
-  if (opts.watchlist) value = Math.max(value, FIRE.watchlistValue)
-  return component('fire', value, { frp_sum: opts.frpSum, watchlist: opts.watchlist, top1_cut: opts.top1Cut })
+  if (detected) {
+    value = FIRE.topValue
+    if (opts.watchlist) value = Math.min(1, value * FIRE.watchlistMultiplier)
+  }
+  return component('fire', value, {
+    frp_sum: opts.frpSum,
+    count,
+    watchlist: opts.watchlist,
+    detected,
+    top1_cut: opts.top1Cut,
+  })
 }
 
 export function conflictComponent(opts: {

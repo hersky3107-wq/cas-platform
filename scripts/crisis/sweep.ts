@@ -11,6 +11,7 @@ import { CRISIS_SOURCES, sourceByKey } from '../../lib/crisis/ingest/registry'
 import { isDue, loadState, runSource } from '../../lib/crisis/ingest/run'
 import { runLayer1Score } from '../../lib/crisis/score/job'
 import { SCORE_SOURCE } from '../../lib/crisis/score/thresholds'
+import { scoreWriteEnabled } from '../../lib/crisis/score/write'
 import { supabaseAdmin } from '../../lib/supabase/server'
 
 const LOOP_MS = 60_000
@@ -59,16 +60,26 @@ async function maybeScore(opts: { dryRun: boolean; force: boolean; now: Date; af
     const state = await loadState(supabaseAdmin, SCORE_SOURCE)
     if (!isDue(state, opts.now, false)) return
   }
-  const result = await runLayer1Score(supabaseAdmin, { dryRun: opts.dryRun, now: opts.now })
+  const write = !opts.dryRun && scoreWriteEnabled()
+  if (!opts.dryRun && !write) {
+    console.log('score write disabled; set CRISIS_SCORE_WRITE_ENABLED=1 to let the sweep write flags')
+  }
+  const result = await runLayer1Score(supabaseAdmin, {
+    dryRun: !write,
+    write,
+    touchSchedule: !opts.dryRun,
+    now: opts.now,
+  })
   console.log(
     JSON.stringify({
       at: opts.now.toISOString(),
       source: SCORE_SOURCE,
       status: 'ok',
       rowsIn: result.scored,
-      rowsWritten: opts.dryRun ? 0 : result.scored + result.cards,
+      rowsWritten: write ? result.scored + result.cards : 0,
       cards: result.cards,
       neighbors: result.neighborSource,
+      write,
     }),
   )
 }

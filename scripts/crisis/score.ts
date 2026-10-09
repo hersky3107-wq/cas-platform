@@ -4,6 +4,9 @@
  *
  *   npx tsx --env-file=.env.local scripts/crisis/score.ts
  *   npx tsx --env-file=.env.local scripts/crisis/score.ts --apply
+ *
+ * The sweep does not write scores unless CRISIS_SCORE_WRITE_ENABLED is set.
+ * --apply on this script is the explicit write.
  */
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -17,7 +20,8 @@ async function main(): Promise<void> {
   const envPath = path.resolve(process.cwd(), '.env.local')
   if (!existsSync(envPath)) throw new Error('Copy cas-platform/.env.local into cas-platform-crisis first')
   const { supabaseAdmin } = await import('../../lib/supabase/server')
-  const result = await runLayer1Score(supabaseAdmin, { dryRun: !wants('--apply') })
+  const apply = wants('--apply')
+  const result = await runLayer1Score(supabaseAdmin, { dryRun: !apply, write: apply })
   console.log(`scored=${result.scored} cards=${result.cards} neighbors=${result.neighborSource} day=${result.day}`)
 }
 
