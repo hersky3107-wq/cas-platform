@@ -81,6 +81,9 @@ export const CONFLICT = {
 export const SILENCE = {
   fraction: 0.3,
   minHistoryDays: 7,
+  minWeeks: 8,
+  minMean30: 50,
+  consecutiveDays: 2,
   value: 0.7,
 }
 
@@ -272,14 +275,17 @@ export const SLOW_BURN = {
   escalationSpread: 0.7,
   minIndicators: 3,
   minPoints: 8,
-  minEvents: 20,
+  minEvents: 80,
+  minCameo: 20,
   windowDays: 28,
   baselineDays: 90,
   agreeFraction: 0.6,
   spikeRatio: 3,
   advisoryDays: 60,
   recentDays: 14,
-  priorDays: 14,
+  priorDays: 60,
+  newActorMinRecent: 5,
+  shareSlope: 0.003,
 }
 
 export const SCORE_SOURCE = 'score'

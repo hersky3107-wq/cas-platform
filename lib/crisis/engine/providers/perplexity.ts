@@ -1,3 +1,5 @@
+import { stripThink } from '../parse'
+import { citationRecords } from '../search-items'
 import { chatContent, emptyExtra, postJson, requireText } from './http'
 import { envKey, type ProviderCall, type ProviderResult } from './types'
 
@@ -17,12 +19,19 @@ export async function callPerplexity(call: ProviderCall): Promise<ProviderResult
     },
   })
   const parsed = chatContent(json)
+  const searchItems = citationRecords([json.citations, json.search_results])
+  const stripped = parsed.text ? stripThink(parsed.text) : ''
+  const text = stripped || (searchItems.length ? '(citations only)' : '')
+  if (!searchItems.length) {
+    requireText(call.model, parsed.text, parsed.finishReason, emptyExtra(parsed.reasoningTokens, parsed.tokensOut))
+  }
   return {
-    text: requireText(call.model, parsed.text, parsed.finishReason, emptyExtra(parsed.reasoningTokens, parsed.tokensOut)),
+    text,
     tokensIn: parsed.tokensIn,
     tokensOut: parsed.tokensOut,
     costUsd: parsed.costUsd,
     httpStatus: status,
     finishReason: parsed.finishReason,
+    searchItems,
   }
 }

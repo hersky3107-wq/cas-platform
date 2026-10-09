@@ -1,4 +1,5 @@
-import { SLOW_BURN } from './thresholds'
+import { lastCompleteUtcDay, dayShift } from './silence'
+import { ESCALATION, SLOW_BURN } from './thresholds'
 
 export interface TrendReading {
   key: string
@@ -86,8 +87,34 @@ export function conflictSpread(
 }
 
 export function hasNewActor(recentPartners: string[], priorPartners: string[]): boolean {
-  const prior = new Set(priorPartners)
-  return recentPartners.some((partner) => partner && !prior.has(partner))
+  return hasNewActorCounted(
+    new Map(recentPartners.filter(Boolean).map((partner) => [partner, SLOW_BURN.newActorMinRecent])),
+    new Set(priorPartners),
+  )
+}
+
+/** A new actor had zero events with this country in the prior 60 days and at least 5 in the last 14. */
+export function hasNewActorCounted(
+  recentCounts: Map<string, number>,
+  priorPartners: Set<string>,
+  minRecent = SLOW_BURN.newActorMinRecent,
+): boolean {
+  for (const [partner, count] of recentCounts) {
+    if (!partner || priorPartners.has(partner)) continue
+    if (count >= minRecent) return true
+  }
+  return false
+}
+
+export function dowAdjust(days: string[], values: number[], minWeeks = 8): number[] {
+  return values.map((value, index) => {
+    const weekday = new Date(`${days[index]}T00:00:00Z`).getUTCDay()
+    const peers = values.filter((_, other) => other !== index && new Date(`${days[other]}T00:00:00Z`).getUTCDay() === weekday)
+    if (peers.length < minWeeks) return value
+    const mean = peers.reduce((sum, item) => sum + item, 0) / peers.length
+    if (mean <= 0) return 0
+    return value / mean
+  })
 }
 
 export function slowBurnValue(opts: { quiet: boolean; dyad: boolean; escalation: boolean }): number {
@@ -104,15 +131,15 @@ export interface DailyVolume {
   avg_goldstein: number
   avg_tone: number
   cameo_18_20: number
+  cameo_share: number
   num_sources: number
 }
 
-const CORE: Array<{ key: keyof DailyVolume; direction: 'up' | 'down'; minSlope: number }> = [
-  { key: 'conflict_share', direction: 'up', minSlope: 0.002 },
-  { key: 'avg_goldstein', direction: 'down', minSlope: 0.02 },
-  { key: 'avg_tone', direction: 'down', minSlope: 0.02 },
-  { key: 'cameo_18_20', direction: 'up', minSlope: 0.05 },
-  { key: 'num_sources', direction: 'up', minSlope: 0.05 },
+const CORE: Array<{ key: keyof DailyVolume; direction: 'up' | 'down'; minSlope: number; dow: boolean }> = [
+  { key: 'conflict_share', direction: 'up', minSlope: SLOW_BURN.shareSlope, dow: true },
+  { key: 'avg_goldstein', direction: 'down', minSlope: 0.02, dow: true },
+  { key: 'avg_tone', direction: 'down', minSlope: 0.02, dow: true },
+  { key: 'cameo_share', direction: 'up', minSlope: SLOW_BURN.shareSlope, dow: true },
 ]
 
 export function lastWindow(rows: DailyVolume[], endDay: string, days: number): DailyVolume[] {
@@ -133,14 +160,18 @@ export function scoreVolume(
 ): { quiet: boolean; cameoRising: boolean; indicators: TrendReading[] } {
   const window = lastWindow(rows, endDay, SLOW_BURN.windowDays)
   const events = window.reduce((acc, row) => acc + row.events, 0)
+  const cameoSum = window.reduce((acc, row) => acc + row.cameo_18_20, 0)
+  const days = window.map((row) => row.day)
   const indicators: TrendReading[] = CORE.map((spec) => {
-    const reading = assessTrend(window.map((row) => row[spec.key] as number), spec.direction, spec.minSlope)
+    const raw = window.map((row) => row[spec.key] as number)
+    const series = spec.dow ? dowAdjust(days, raw) : raw
+    const reading = assessTrend(series, spec.direction, spec.minSlope)
     reading.key = spec.key
-    if (events < SLOW_BURN.minEvents) reading.significant = false
+    if (events < SLOW_BURN.minEvents || cameoSum < SLOW_BURN.minCameo) reading.significant = false
     return reading
   })
   indicators.push(...extras)
-  const cameo = indicators.find((row) => row.key === 'cameo_18_20')
+  const cameo = indicators.find((row) => row.key === 'cameo_share' || row.key === 'conflict_share')
   return {
     quiet: isQuietRise(indicators),
     cameoRising: Boolean(cameo?.significant && cameo.worsening),
@@ -155,4 +186,33 @@ export function concentratedRegions(cameoByRegion: Map<number, number>): number[
   const sorted = rows.map(([, value]) => value).sort((a, b) => a - b)
   const cut = sorted[Math.floor(sorted.length * 0.75)] ?? sorted[sorted.length - 1]
   return rows.filter(([, value]) => value >= cut).map(([id]) => id)
+}
+
+export function conflictShareEscalation(
+  series: Array<{ day: string; total: number; cameo: number }>,
+  now: Date,
+): { value: number; raw: Record<string, unknown> } {
+  const endDay = lastCompleteUtcDay(now)
+  const window = series.filter((row) => row.day <= endDay && row.day > dayShift(endDay, -SLOW_BURN.windowDays))
+  const events = window.reduce((sum, row) => sum + row.total, 0)
+  const cameo = window.reduce((sum, row) => sum + row.cameo, 0)
+  const shares = window.map((row) => (row.total > 0 ? row.cameo / row.total : 0))
+  const adjusted = dowAdjust(window.map((row) => row.day), shares)
+  const reading = assessTrend(adjusted, 'up', SLOW_BURN.shareSlope)
+  const enough = events >= SLOW_BURN.minEvents && cameo >= SLOW_BURN.minCameo && window.length >= SLOW_BURN.minPoints
+  const value = enough && reading.significant && !reading.spiked
+    ? reading.slope >= 0.02
+      ? ESCALATION.fast
+      : ESCALATION.growing
+    : 0
+  return {
+    value,
+    raw: {
+      complete_day: endDay,
+      events,
+      cameo,
+      slope: Number(reading.slope.toFixed(4)),
+      significant: reading.significant,
+    },
+  }
 }

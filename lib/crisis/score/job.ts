@@ -1,5 +1,6 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { cycloneCoversRegion, escalationValue, linkEvents } from '../events/link'
+import { conflictShareEscalation } from './slowburn'
 import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { buildAnomalyCard } from './card'
 import { finalizeScore } from './compute'
@@ -59,6 +60,12 @@ export async function runLayer1Score(
   const linked = linkEvents(snap.observations, now)
   const burn = await loadSlowBurn(client, now, snap.regions, snap.neighbors)
   log(`slow-burn source=${burn.source} countries=${burn.countries.length} dyads=${burn.dyads.length}`)
+  for (const row of burn.countries.slice(0, 20)) {
+    log(`slow-burn country ${row.name} ${row.id} value=${row.value} kind=${row.kind} ${row.note}`)
+  }
+  for (const row of burn.dyads.slice(0, 20)) {
+    log(`slow-burn dyad ${row.name} value=${row.value} kind=${row.kind} ${row.note}`)
+  }
 
   for (const region of snap.regions) {
     const input = snap.inputs.get(region.id)
@@ -90,9 +97,8 @@ export async function runLayer1Score(
         absCut,
       }),
       silenceComponent({
-        totalEvents: input.totalEvents,
-        mean30d: input.totalMean,
-        historyDays: input.gdeltDays,
+        series: input.gdeltSeries,
+        now,
       }),
       internetComponent(input.internet),
       advisoryComponent({ changed: input.advisoryChange, diverge: input.advisoryDiverge }),
@@ -112,11 +118,15 @@ export async function runLayer1Score(
     const covered = new Set([region.id, ...neighborIds])
     const pace = linked
       .filter((event) => {
+        if (event.kind === 'conflict') return false
         if (event.kind === 'cyclone') return cycloneCoversRegion(event.track, region.lat, region.lon, CYCLONE.nearKm)
         return event.region_ids.some((id) => covered.has(id))
       })
       .sort((a, b) => escalationValue(b.pace) - escalationValue(a.pace))[0]
-    if (pace && escalationValue(pace.pace) > 0) {
+    const shareEsc = conflictShareEscalation(input.gdeltSeries, now)
+    if (shareEsc.value > 0) {
+      components = [...components, escalationComponent(shareEsc.value, shareEsc.raw)]
+    } else if (pace && escalationValue(pace.pace) > 0) {
       components = [...components, escalationComponent(escalationValue(pace.pace), { event: pace.id, pace: pace.pace })]
     }
     const hit = burn.byRegion.get(region.id)

@@ -10,7 +10,7 @@ import { scoreWriteEnabled } from '../write'
 import { mollweideToWgs84 } from '../../population/mollweide'
 import { aggregateUrbanPop, normalizeGhsCentre } from '../../population/normalize'
 import { peopleNorm } from '../people'
-import { explainRegion } from '../print'
+import { explainRegion, formatRawValue } from '../print'
 import {
   advisoryComponent,
   combineTrigger,
@@ -125,8 +125,22 @@ describe('alerts and human components', () => {
   })
 
   it('scores silence, internet, advisory, wiki, food', () => {
-    expect(silenceComponent({ totalEvents: 2, mean30d: 10, historyDays: 10 }).value).toBe(0.7)
-    expect(silenceComponent({ totalEvents: 2, mean30d: 10, historyDays: 3 }).value).toBe(0)
+    const quietDays = Array.from({ length: 70 }, (_, i) => {
+      const day = new Date(Date.UTC(2026, 7, 1 + i)).toISOString().slice(0, 10)
+      return { day, total: 80, cameo: 4 }
+    })
+    expect(silenceComponent({
+      series: quietDays.map((row, i) => (i >= 68 ? { ...row, total: 10 } : row)),
+      now: new Date('2026-10-10T12:00:00Z'),
+    }).value).toBe(0.7)
+    expect(silenceComponent({
+      series: Array.from({ length: 10 }, (_, i) => ({ day: `2026-09-${String(i + 1).padStart(2, '0')}`, total: 2, cameo: 0 })),
+      now: new Date('2026-10-10T12:00:00Z'),
+    }).value).toBe(0)
+    expect(silenceComponent({
+      series: quietDays,
+      now: new Date('2026-10-10T12:00:00Z'),
+    }).value).toBe(0)
     expect(internetComponent(true).value).toBe(0.8)
     expect(advisoryComponent({ changed: true, diverge: false }).value).toBe(0.6)
     expect(advisoryComponent({ changed: true, diverge: true }).value).toBe(0.7)
@@ -219,6 +233,10 @@ describe('people and score', () => {
     expect(compoundBonus([
       { key: 'rain', department: 'natural', value: 0.4, raw: {} },
       { key: 'conflict', department: 'conflict', value: 0.6, raw: {} },
+    ])).toBe(0)
+    expect(compoundBonus([
+      { key: 'rain', department: 'natural', value: 0.8, raw: {} },
+      { key: 'silence', department: 'conflict', value: 0.7, raw: {} },
     ])).toBe(0)
   })
 })
@@ -423,7 +441,7 @@ describe('print sample', () => {
       fragility: 0.6,
       people_norm: 0.3,
       urban_pop: 90000,
-      components: [{ key: 'rain', department: 'natural', value: 0.5, raw: { sum_mm: 142 } }],
+      components: [{ key: 'rain', department: 'natural', value: 0.5, raw: { sum_mm: 142, indicators: { slope: 0.01, significant: true } } }],
       departments: ['natural'],
       fragility_items: [{ kind: 'dam', name: 'Derna Dam', lat: 32.8, lon: 22.6, weight: 0.4, attributes: {} }],
       cascades: [{
@@ -442,5 +460,8 @@ describe('print sample', () => {
     expect(text).toContain('1. Derna / Libya')
     expect(text).toContain('score=42.0 stage=3')
     expect(text).toContain('flood-dam-failure')
+    expect(text).not.toContain('[object Object]')
+    expect(text).toContain('indicators:slope:0.01,significant:true')
+    expect(formatRawValue({ slope: 0.01, significant: true })).toBe('slope:0.01,significant:true')
   })
 })

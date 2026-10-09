@@ -4,9 +4,11 @@ vi.mock('server-only', () => ({}))
 
 import { hypothesisSchema } from '../schema'
 import { localLanguages } from '../languages'
-import { analystUser, hunterUser, queryWriterSystem, SHARED_PREAMBLE } from '../prompts'
+import { analystUser, departmentSliceEmpty, ensureQueries, fallbackQueries, hunterUser, queryWriterSystem, SHARED_PREAMBLE } from '../prompts'
 import { buildLedgerInserts, ledgerContentHash, memoryLedger, publishHypotheses } from '../publish'
 import { estimateRegionRunUsd, resolveRoster } from '../roster'
+import { extractJson } from '../parse'
+import { TOKEN_CAPS } from '../prices'
 import { applyJudgeGroups, applyWeakness, runEngine, withTimeout, type ModelCall, type ModelCaller } from '../run'
 import type { EngineCard } from '../schema'
 import { normalizeSearchItems } from '../search-items'
@@ -148,6 +150,9 @@ describe('roster', () => {
     const estimate = estimateRegionRunUsd(roster)
     expect(estimate).toBeGreaterThan(0.05)
     expect(estimate).toBeLessThan(1.5)
+    expect(TOKEN_CAPS.hunter.out).toBe(3000)
+    expect(TOKEN_CAPS.dept_analyst.out).toBe(1200)
+    expect(TOKEN_CAPS.judge.out).toBe(4000)
   })
 })
 
@@ -343,10 +348,70 @@ describe('search items and structure', () => {
 
   it('asks for Sinhala, Tamil, and English on a Sri Lanka card', () => {
     expect(localLanguages('LKA').sort()).toEqual(['en', 'si', 'ta'])
-    expect(queryWriterSystem(card())).toContain('si')
-    expect(queryWriterSystem(card())).toContain('ta')
+    expect(queryWriterSystem(card())).toContain('Sinhala')
+    expect(queryWriterSystem(card())).toContain('Tamil')
     expect(analystUser(card(), 'natural-hydro')).toContain('Victoria Dam')
     expect(hunterUser(card(), [], [])).toContain('Badulla')
+    const queries = ensureQueries(card(), ['Badulla flood'])
+    expect(queries.length).toBeGreaterThanOrEqual(3)
+    expect(queries.some((query) => /[\u0D80-\u0DFF]/.test(query))).toBe(true)
+    expect(queries.some((query) => /[\u0B80-\u0BFF]/.test(query))).toBe(true)
+    expect(fallbackQueries(card()).length).toBeGreaterThanOrEqual(3)
+  })
+})
+
+describe('empty slice, force, and failed-run cache', () => {
+  it('skips an analyst whose department slice is empty', async () => {
+    const slim = card()
+    slim.components = slim.components.filter((row) => row.key !== 'quake')
+    slim.fragility = slim.fragility.filter((row) => row.kind !== 'volcano')
+    slim.cascades = []
+    slim.context = ['wiki: Victoria Dam']
+    expect(departmentSliceEmpty(slim, 'natural-geo')).toBe(true)
+    const seen: ModelCall[] = []
+    const record = await runEngine({ card: slim, caller: caller(seen), now: NOW })
+    const geo = record.steps.find((step) => step.slot === 'natural-geo')
+    expect(geo?.skipped).toBe(true)
+    expect(geo?.error).toBe('skipped: empty slice')
+    expect(seen.some((call) => call.slot === 'natural-geo')).toBe(false)
+  })
+
+  it('does not reuse a partial cached run and --force bypasses a complete one', async () => {
+    const store = new Map<string, Awaited<ReturnType<typeof runEngine>>>()
+    const cache = {
+      async get(key: string) {
+        return store.get(key) ?? null
+      },
+      async put(record: Awaited<ReturnType<typeof runEngine>>) {
+        store.set(record.cacheKey, record)
+      },
+    }
+    const failHunters: ModelCaller = {
+      async complete(call) {
+        if (call.role === 'hunter') throw new Error('no json')
+        return caller([]).complete(call)
+      },
+    }
+    const first = await runEngine({ card: card(), caller: failHunters, now: NOW, cache })
+    expect(first.status).toBe('partial')
+    expect(first.result?.partial).toBe(true)
+    const seen: ModelCall[] = []
+    const second = await runEngine({ card: card(), caller: caller(seen), now: NOW, cache })
+    expect(second.cacheHit).toBe(false)
+    expect(seen.length).toBeGreaterThan(0)
+    const after = seen.length
+    const forced = await runEngine({ card: card(), caller: caller(seen), now: NOW, cache, force: true })
+    expect(forced.cacheHit).toBe(false)
+    expect(seen.length).toBeGreaterThan(after)
+  })
+})
+
+describe('json parse', () => {
+  it('strips think tags, fences, and leading prose, then repairs', () => {
+    const messy = '<think>plan</think>\nSure.\n```json\n{"hypotheses":[{"title":"Rain"}]}\n```'
+    expect(extractJson(messy)).toEqual({ hypotheses: [{ title: 'Rain' }] })
+    const repaired = 'Here you go {hypotheses:[{title:"Dam"}]}'
+    expect(extractJson(repaired)).toEqual({ hypotheses: [{ title: 'Dam' }] })
   })
 })
 

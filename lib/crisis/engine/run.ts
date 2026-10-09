@@ -3,6 +3,9 @@ import {
   analystSystem,
   analystUser,
   cacheKey,
+  departmentSliceEmpty,
+  ensureQueries,
+  fallbackQueries,
   hunterSystem,
   hunterUser,
   judgeSystem,
@@ -14,7 +17,8 @@ import {
   searchSystem,
   searchUser,
 } from './prompts'
-import { DEFAULT_COST_CAP_USD, estimateTokens, listPriceCost, ROLE_TIMEOUT_MS, TOKEN_CAPS, TYPICAL_OUTPUT_TOKENS } from './prices'
+import { extractJson, logParseFailure, RETRY_JSON_HINT } from './parse'
+import { DEFAULT_COST_CAP_USD, estimateTokens, listPriceCost, outputBudget, ROLE_TIMEOUT_MS, TOKEN_CAPS, TYPICAL_OUTPUT_TOKENS } from './prices'
 import { resolveRoster, slotsFor, type ResolvedRoster, type RosterSlot } from './roster'
 import { engineResultSchema, hypothesisSchema, type Department, type EngineCard, type EngineResult, type EngineRole, type Horizon, type Hypothesis } from './schema'
 import { normalizeSearchItems, type SearchItem } from './search-items'
@@ -34,6 +38,7 @@ export interface ModelCall {
   extraBody?: Record<string, unknown>
   googleThinking?: RosterSlot['googleThinking']
   anthropicThinking?: RosterSlot['anthropicThinking']
+  jsonMode?: boolean
 }
 
 export interface ModelCaller {
@@ -42,6 +47,7 @@ export interface ModelCaller {
     tokensIn: number
     tokensOut: number
     costUsd: number | null
+    searchItems?: SearchItem[]
   }>
 }
 
@@ -82,7 +88,7 @@ export interface EngineRunRecord {
   regionId: number
   horizon: Horizon
   mode: 'region' | 'top' | 'global'
-  status: 'done' | 'error'
+  status: 'done' | 'error' | 'partial'
   roster: ResolvedRoster
   costUsd: number
   tokensIn: number
@@ -91,6 +97,7 @@ export interface EngineRunRecord {
   steps: EngineStepRecord[]
   card: EngineCard
   searchUrls: string[]
+  queries: string[]
   error: string | null
   dryRun: boolean
 }
@@ -110,20 +117,14 @@ export interface RunEngineOptions {
   roster?: ResolvedRoster
   cache?: EngineCache
   costOf?: (model: string, tokensIn: number, tokensOut: number) => number
+  force?: boolean
 }
 
 export function promptHash(system: string, user: string): string {
   return createHash('sha256').update(system).update('\n').update(user).digest('hex').slice(0, 16)
 }
 
-export function extractJson(text: string): unknown {
-  const fenced = /```(?:json)?\s*([\s\S]*?)```/.exec(text)
-  const raw = fenced ? fenced[1] : text
-  const start = raw.indexOf('{')
-  const end = raw.lastIndexOf('}')
-  if (start < 0 || end < start) throw new Error('model returned no JSON object')
-  return JSON.parse(raw.slice(start, end + 1))
-}
+export { extractJson } from './parse'
 
 export async function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
   let timer: ReturnType<typeof setTimeout> | undefined
@@ -153,9 +154,9 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const key = cacheKey(opts.card.region_id, opts.card.horizon, now)
   const costOf = opts.costOf ?? listPriceCost
   const cap = opts.costCapUsd ?? DEFAULT_COST_CAP_USD
-  if (!opts.dryRun && opts.cache) {
+  if (!opts.dryRun && !opts.force && opts.cache) {
     const hit = await opts.cache.get(key)
-    if (hit?.result && hit.status === 'done') return { ...hit, cacheHit: true, cacheKey: key }
+    if (hit?.result && hit.status === 'done' && !hit.result.partial) return { ...hit, cacheHit: true, cacheKey: key }
   }
 
   const steps: EngineStepRecord[] = []
@@ -165,9 +166,13 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   let partial = false
   const notes: string[] = []
 
-  const callSlot = async (slot: RosterSlot, system: string, user: string): Promise<unknown | null> => {
+  const callSlot = async (
+    slot: RosterSlot,
+    system: string,
+    user: string,
+  ): Promise<{ parsed: unknown | null; searchItems: SearchItem[] } | null> => {
     const inputEstimate = estimateTokens(`${system}\n${user}`)
-    const outputCap = TOKEN_CAPS[slot.role].out
+    const outputCap = outputBudget(slot.role, Boolean(slot.reasoning))
     const estimate = costOf(slot.model, inputEstimate, outputCap)
     const base = {
       role: slot.role,
@@ -193,7 +198,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       return null
     }
     if (opts.dryRun) {
-      const dryOut = Math.min(TYPICAL_OUTPUT_TOKENS[slot.role], outputCap)
+      const dryOut = Math.min(TYPICAL_OUTPUT_TOKENS[slot.role], TOKEN_CAPS[slot.role].out)
       const dryCost = costOf(slot.model, inputEstimate, dryOut)
       steps.push({
         ...base,
@@ -208,18 +213,18 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       spent += dryCost
       tokensIn += inputEstimate
       tokensOut += dryOut
-      return null
+      return { parsed: null, searchItems: [] }
     }
     const started = Date.now()
-    try {
-      const result = await withTimeout(
+    const invoke = async (promptUser: string) =>
+      withTimeout(
         opts.caller.complete({
           role: slot.role,
           slot: slot.slot,
           model: slot.model,
           provider: slot.provider,
           system,
-          user,
+          user: promptUser,
           maxTokens: outputCap,
           timeoutMs: ROLE_TIMEOUT_MS[slot.role],
           search: slot.search,
@@ -227,10 +232,15 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
           extraBody: slot.extraBody,
           googleThinking: slot.googleThinking,
           anthropicThinking: slot.anthropicThinking,
+          jsonMode: !slot.search,
         }),
         ROLE_TIMEOUT_MS[slot.role],
       )
-      const parsed = extractJson(result.text)
+    const recordStep = (
+      result: { tokensIn: number; tokensOut: number; costUsd: number | null },
+      parsed: unknown,
+      error: string | null,
+    ) => {
       const cost = result.costUsd ?? costOf(slot.model, result.tokensIn, result.tokensOut)
       steps.push({
         ...base,
@@ -239,13 +249,53 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         costUsd: cost,
         latencyMs: Date.now() - started,
         output: parsed,
-        error: null,
+        error,
         skipped: false,
       })
       spent += cost
       tokensIn += result.tokensIn
       tokensOut += result.tokensOut
-      return parsed
+    }
+    try {
+      const result = await invoke(user)
+      const apiItems = normalizeSearchItems(result.searchItems, slot.slot, now)
+      if (slot.search) {
+        let parsed: unknown = { items: apiItems }
+        if (!apiItems.length) {
+          try {
+            parsed = extractJson(result.text)
+          } catch {
+            parsed = { items: [] }
+          }
+        }
+        recordStep(result, parsed, null)
+        return { parsed, searchItems: apiItems }
+      }
+      try {
+        const parsed = extractJson(result.text)
+        recordStep(result, parsed, null)
+        return { parsed, searchItems: apiItems }
+      } catch (parseError) {
+        logParseFailure(slot.slot, result.text)
+        const retry = await invoke(`${user}\n${RETRY_JSON_HINT}`)
+        try {
+          const parsed = extractJson(retry.text)
+          recordStep(
+            {
+              tokensIn: result.tokensIn + retry.tokensIn,
+              tokensOut: result.tokensOut + retry.tokensOut,
+              costUsd: (result.costUsd ?? 0) + (retry.costUsd ?? 0) || null,
+            },
+            parsed,
+            null,
+          )
+          return { parsed, searchItems: apiItems }
+        } catch {
+          logParseFailure(slot.slot, retry.text)
+          recordStep(retry, null, parseError instanceof Error ? parseError.message : 'json parse failed')
+          return null
+        }
+      }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'call failed'
       steps.push({
@@ -264,35 +314,61 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
 
   for (const slot of slotsFor(roster, 'dept_analyst')) {
     const department = slot.slot as Department
-    const parsed = await callSlot(slot, analystSystem(department), analystUser(opts.card, department))
-    const record = asRecord(parsed)
+    if (departmentSliceEmpty(opts.card, department)) {
+      steps.push({
+        role: slot.role,
+        slot: slot.slot,
+        model: slot.model,
+        provider: slot.provider,
+        promptHash: promptHash(analystSystem(department), analystUser(opts.card, department)),
+        system: analystSystem(department),
+        user: analystUser(opts.card, department),
+        inputTokens: 0,
+        outputTokens: 0,
+        costUsd: 0,
+        latencyMs: 0,
+        output: null,
+        error: 'skipped: empty slice',
+        skipped: true,
+      })
+      continue
+    }
+    const called = await callSlot(slot, analystSystem(department), analystUser(opts.card, department))
+    const record = asRecord(called?.parsed)
     const note = typeof record?.notes === 'string' ? record.notes : ''
     if (note) notes.push(`${department}: ${note}`)
   }
 
   const writer = slotsFor(roster, 'query_writer')[0]
-  const writerParsed = writer ? await callSlot(writer, queryWriterSystem(opts.card), queryWriterUser(opts.card, notes)) : null
-  const queries = stringList(asRecord(writerParsed)?.queries).slice(0, 5)
-  const searchQueries = queries.length > 0 ? queries : [`${opts.card.name} ${opts.card.country} flood dam health conflict`]
+  const writerCalled = writer ? await callSlot(writer, queryWriterSystem(opts.card), queryWriterUser(opts.card, notes)) : null
+  const queries = ensureQueries(opts.card, stringList(asRecord(writerCalled?.parsed)?.queries))
+  const searchQueries = queries.length > 0 ? queries : fallbackQueries(opts.card)
 
   const searchItems: SearchItem[] = []
   for (const slot of slotsFor(roster, 'search')) {
-    const parsed = await callSlot(slot, searchSystem(), searchUser(searchQueries))
-    const items = normalizeSearchItems(asRecord(parsed)?.items, slot.slot, now)
+    const called = await callSlot(slot, searchSystem(), searchUser(searchQueries))
+    if (called?.searchItems.length) {
+      searchItems.push(...called.searchItems)
+      continue
+    }
+    const items = normalizeSearchItems(asRecord(called?.parsed)?.items, slot.slot, now)
     searchItems.push(...items)
   }
 
   const drafts: Draft[] = []
-  const hunterPacket = hunterUser(opts.card, notes, searchItems)
+  const hunterPacket = hunterUser(opts.card, notes, searchItems.slice(0, 8))
+  let hunterOk = 0
   for (const slot of slotsFor(roster, 'hunter')) {
-    const parsed = await callSlot(slot, hunterSystem(), hunterPacket)
-    const rows = asRecord(parsed)?.hypotheses
+    const called = await callSlot(slot, hunterSystem(), hunterPacket)
+    const rows = asRecord(called?.parsed)?.hypotheses
     if (!Array.isArray(rows)) continue
-    for (const row of rows) {
+    hunterOk += 1
+    for (const row of rows.slice(0, 3)) {
       const draft = draftFromHunter(row, slot.model, opts.card.horizon, drafts.length)
       if (draft) drafts.push(draft)
     }
   }
+  if (hunterOk < 2) partial = true
 
   const red = slotsFor(roster, 'red_team')[0]
   if (opts.dryRun && red) {
@@ -302,7 +378,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       redTeamUser([{ id: 'h0', title: '(hunter hypotheses are inserted here on a live run)', why_humans_miss: '', evidence: [] }]),
     )
   } else if (red && drafts.length > 0) {
-    const parsed = await callSlot(
+    const called = await callSlot(
       red,
       redTeamSystem(),
       redTeamUser(drafts.map((draft) => ({
@@ -312,7 +388,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         evidence: draft.evidence,
       }))),
     )
-    applyWeakness(drafts, asRecord(parsed)?.notes)
+    applyWeakness(drafts, asRecord(called?.parsed)?.notes)
   }
 
   const judge = slotsFor(roster, 'judge')[0]
@@ -334,8 +410,8 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       search_items: searchItems,
       note: 'Hunter hypotheses, weakness notes, and search items are inserted here on a live run.',
     }))
-  } else if (judge && drafts.length > 0) {
-    const parsed = await callSlot(
+  } else if (judge && hunterOk >= 2 && drafts.length > 0) {
+    const called = await callSlot(
       judge,
       judgeSystem(),
       judgeUser({
@@ -344,7 +420,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         structure: 'stage comes from hunter count, department count, weakness, and evidence count',
       }),
     )
-    const record = asRecord(parsed)
+    const record = asRecord(called?.parsed)
     if (record) {
       summaries = {
         summary_ko: stringOr(record.summary_ko, summaries.summary_ko),
@@ -368,7 +444,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   }
 
   let result: EngineResult | null = null
-  let status: 'done' | 'error' = 'done'
+  let status: 'done' | 'error' | 'partial' = partial ? 'partial' : 'done'
   let error: string | null = null
   if (!opts.dryRun) {
     const candidate: EngineResult = {
@@ -384,6 +460,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       error = parsed.error.issues.map((issue) => issue.message).join('; ')
     } else {
       result = parsed.data
+      if (partial) status = 'partial'
     }
   }
 
@@ -402,10 +479,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     steps,
     card: opts.card,
     searchUrls: searchItems.map((item) => item.url),
+    queries: searchQueries,
     error,
     dryRun: Boolean(opts.dryRun),
   }
-  if (!opts.dryRun && status === 'done' && opts.cache) await opts.cache.put(record)
+  if (!opts.dryRun && opts.cache) await opts.cache.put(record)
   return record
 }
 

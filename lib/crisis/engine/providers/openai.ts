@@ -13,6 +13,7 @@ export async function callOpenAI(call: ProviderCall): Promise<ProviderResult> {
         { role: 'user', content: call.user },
       ],
       max_completion_tokens: call.maxTokens,
+      ...(call.jsonMode ? { response_format: { type: 'json_object' } } : {}),
       ...call.extraBody,
     },
   })

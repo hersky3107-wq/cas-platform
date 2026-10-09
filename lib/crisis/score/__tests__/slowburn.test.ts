@@ -11,6 +11,7 @@ import {
   assessTrend,
   conflictSpread,
   hasNewActor,
+  hasNewActorCounted,
   hasSingleDaySpike,
   isQuietRise,
   scoreVolume,
@@ -81,6 +82,7 @@ describe('slow burn', () => {
       avg_goldstein: -1 - i * 0.1,
       avg_tone: -1 - i * 0.1,
       cameo_18_20: 2 + i,
+      cameo_share: (2 + i) / 10,
       num_sources: 4 + i,
     }))
     const scored = scoreVolume(rows, '2026-09-20')
@@ -92,6 +94,23 @@ describe('slow burn', () => {
     expect(conflictSpread([1], [1], new Map())).toBe(false)
     expect(hasNewActor(['RUS'], ['UKR'])).toBe(true)
     expect(hasNewActor(['UKR'], ['UKR'])).toBe(false)
+    expect(hasNewActorCounted(new Map([['RUS', 4]]), new Set())).toBe(false)
+    expect(hasNewActorCounted(new Map([['RUS', 5]]), new Set())).toBe(true)
+    expect(hasNewActorCounted(new Map([['RUS', 8]]), new Set(['RUS']))).toBe(false)
+  })
+
+  it('does not fire quiet rise on raw cameo counts without a share rise', () => {
+    const rows: DailyVolume[] = Array.from({ length: 20 }, (_, i) => ({
+      day: `2026-09-${String(i + 1).padStart(2, '0')}`,
+      events: 100 + i * 20,
+      conflict_share: 0.2,
+      avg_goldstein: -1,
+      avg_tone: -1,
+      cameo_18_20: 20 + i * 4,
+      cameo_share: 0.2,
+      num_sources: 50 + i,
+    }))
+    expect(scoreVolume(rows, '2026-09-20').quiet).toBe(false)
   })
 })
 

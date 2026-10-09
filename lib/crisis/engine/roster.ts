@@ -22,6 +22,7 @@ export interface RosterSlot {
   extraBody?: Record<string, unknown>
   googleThinking?: GoogleThinking
   anthropicThinking?: AnthropicThinking
+  reasoning?: boolean
 }
 
 export interface ResolvedRoster {
@@ -46,6 +47,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'Google',
       search: false,
       googleThinking: 'minimal',
+      reasoning: true,
     }),
     slot({
       role: 'dept_analyst',
@@ -55,6 +57,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'Moonshot AI',
       search: false,
       extraBody: REASONING_MINIMAL,
+      reasoning: true,
     }),
     slot({
       role: 'dept_analyst',
@@ -73,6 +76,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'xAI',
       search: false,
       extraBody: XAI_REASONING_LOW,
+      reasoning: true,
     }),
     slot({
       role: 'dept_analyst',
@@ -81,6 +85,8 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       provider: 'openai',
       brand: 'OpenAI',
       search: false,
+      extraBody: { reasoning_effort: 'low' },
+      reasoning: true,
     }),
   ]
   const queryWriter = slot({
@@ -91,6 +97,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
     brand: 'Google',
     search: false,
     googleThinking: 'minimal',
+    reasoning: true,
   })
   const search: RosterSlot[] = [
     slot({
@@ -101,6 +108,8 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'xAI',
       search: true,
       maxTurns: 1,
+      extraBody: XAI_REASONING_LOW,
+      reasoning: true,
     }),
     slot({
       role: 'search',
@@ -109,6 +118,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       provider: 'perplexity',
       brand: 'Perplexity',
       search: true,
+      reasoning: true,
     }),
   ]
   const hunters: RosterSlot[] = [
@@ -120,6 +130,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'Qwen',
       search: false,
       extraBody: REASONING_MINIMAL,
+      reasoning: true,
     }),
     slot({
       role: 'hunter',
@@ -129,6 +140,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'DeepSeek',
       search: false,
       extraBody: REASONING_MINIMAL,
+      reasoning: true,
     }),
     slot({
       role: 'hunter',
@@ -146,6 +158,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'Upstage',
       search: false,
       extraBody: { reasoning_effort: 'none' },
+      reasoning: true,
     }),
     slot({
       role: 'hunter',
@@ -155,6 +168,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'NVIDIA',
       search: false,
       extraBody: REASONING_MINIMAL,
+      reasoning: true,
     }),
     slot({
       role: 'hunter',
@@ -164,6 +178,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       brand: 'Z.ai',
       search: false,
       extraBody: REASONING_MINIMAL,
+      reasoning: true,
     }),
   ]
   const redTeam = slot({
@@ -182,6 +197,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
     provider: 'anthropic',
     brand: 'Anthropic',
     search: false,
+    reasoning: true,
   })
   const slots = [...analysts, queryWriter, ...search, ...hunters, redTeam, judge]
   assertDistinctBrands(analysts, 'dept_analyst')

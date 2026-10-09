@@ -43,6 +43,7 @@ export function rawRiskScore(trigger: number, fragility: number, people: number)
 export function compoundBonus(components: TriggerComponent[]): number {
   const families = new Set<string>()
   for (const row of components) {
+    if (row.key === 'silence') continue
     if (row.value < SCORE.compoundMin) continue
     const family = COMPONENT_FAMILY[row.key]
     if (family) families.add(family)

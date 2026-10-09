@@ -11,10 +11,10 @@ import {
   QUAKE,
   RAIN,
   RIVER,
-  SILENCE,
   VOLCANO,
   HEALTH_ATTENTION,
 } from './thresholds'
+import { silenceFromSeries } from './silence'
 import type { PointEvent, QuakeEvent, TriggerComponent } from './types'
 
 function component(key: string, value: number, raw: Record<string, unknown>): TriggerComponent {
@@ -227,21 +227,11 @@ export function conflictComponent(opts: {
 }
 
 export function silenceComponent(opts: {
-  totalEvents: number
-  mean30d: number | null
-  historyDays: number
+  series: Array<{ day: string; total: number; cameo: number }>
+  now: Date
 }): TriggerComponent {
-  let value = 0
-  const fraction = opts.mean30d != null && opts.mean30d > 0 ? opts.totalEvents / opts.mean30d : null
-  if (opts.historyDays >= SILENCE.minHistoryDays && fraction != null && fraction < SILENCE.fraction) {
-    value = SILENCE.value
-  }
-  return component('silence', value, {
-    total_events: opts.totalEvents,
-    mean_30d: opts.mean30d,
-    fraction,
-    history_days: opts.historyDays,
-  })
+  const scored = silenceFromSeries(opts.series, opts.now)
+  return component('silence', scored.value, scored.raw)
 }
 
 export function internetComponent(active: boolean, raw: Record<string, unknown> = {}): TriggerComponent {

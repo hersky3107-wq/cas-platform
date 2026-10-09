@@ -35,12 +35,19 @@ export const TYPICAL_OUTPUT_TOKENS: Record<EngineRole, number> = {
 }
 
 export const TOKEN_CAPS: Record<EngineRole, { in: number; out: number }> = {
-  dept_analyst: { in: 4000, out: 800 },
+  dept_analyst: { in: 4000, out: 1200 },
   query_writer: { in: 2000, out: 400 },
   search: { in: 2500, out: 1200 },
-  hunter: { in: 6000, out: 1500 },
+  hunter: { in: 6000, out: 3000 },
   red_team: { in: 6000, out: 1000 },
-  judge: { in: 8000, out: 2500 },
+  judge: { in: 8000, out: 4000 },
+}
+
+/** Added on top of the role output cap for models that spend tokens on reasoning. */
+export const REASONING_OVERHEAD = 2000
+
+export function outputBudget(role: EngineRole, reasoning = false): number {
+  return TOKEN_CAPS[role].out + (reasoning ? REASONING_OVERHEAD : 0)
 }
 
 export const ROLE_TIMEOUT_MS: Record<EngineRole, number> = {

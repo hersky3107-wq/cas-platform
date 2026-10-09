@@ -3,6 +3,7 @@ import { envKey, type ProviderCall, type ProviderResult } from './types'
 
 export async function callGoogle(call: ProviderCall): Promise<ProviderResult> {
   const generationConfig: Record<string, unknown> = { maxOutputTokens: call.maxTokens }
+  if (call.jsonMode) generationConfig.responseMimeType = 'application/json'
   if (call.googleThinking === 'off') {
     generationConfig.thinkingConfig = { thinkingBudget: 0 }
   } else if (call.googleThinking === 'minimal') {

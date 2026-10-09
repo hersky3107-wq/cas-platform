@@ -9,7 +9,7 @@ interface RunRow {
   region_id: number | null
   horizon: EngineRunRecord['horizon']
   mode: EngineRunRecord['mode']
-  status: 'done' | 'error'
+  status: 'done' | 'error' | 'partial'
   roster: EngineRunRecord['roster']
   cost_usd: number | null
   tokens_in: number | null
@@ -37,6 +37,7 @@ function fromRow(row: RunRow): EngineRunRecord | null {
     steps: [],
     card: row.result.card,
     searchUrls: row.result.search_urls ?? [],
+    queries: Array.isArray((row.result as { queries?: string[] }).queries) ? (row.result as { queries: string[] }).queries : [],
     error: row.error,
     dryRun: false,
   }
@@ -55,7 +56,9 @@ export async function loadCachedRun(client: SupabaseClient, key: string): Promis
     if (/crisis_engine_runs|schema cache|does not exist/i.test(error.message)) throw new Error(`${error.message}. ${APPLY}`)
     throw new Error(error.message)
   }
-  return data ? fromRow(data as RunRow) : null
+  const hit = data ? fromRow(data as RunRow) : null
+  if (!hit || hit.status !== 'done' || hit.result?.partial) return null
+  return hit
 }
 
 export async function persistRun(client: SupabaseClient, record: EngineRunRecord, triggeredBy: 'admin' | 'system' | 'user'): Promise<string> {
@@ -66,7 +69,7 @@ export async function persistRun(client: SupabaseClient, record: EngineRunRecord
       region_id: record.regionId,
       horizon: record.horizon,
       mode: record.mode,
-      status: record.status,
+      status: record.status === 'partial' ? 'error' : record.status,
       triggered_by: triggeredBy,
       user_id: null,
       roster: record.roster,
@@ -75,11 +78,11 @@ export async function persistRun(client: SupabaseClient, record: EngineRunRecord
       tokens_out: record.tokensOut,
       started_at: now,
       finished_at: now,
-      error: record.error,
+      error: record.status === 'partial' ? record.error ?? 'partial' : record.error,
       result: record.result
-        ? { ...record.result, card: record.card, search_urls: record.searchUrls }
+        ? { ...record.result, card: record.card, search_urls: record.searchUrls, queries: record.queries }
         : null,
-      cache_key: record.cacheKey,
+      cache_key: record.status === 'done' && !record.result?.partial ? record.cacheKey : null,
     })
     .select('id')
     .single()

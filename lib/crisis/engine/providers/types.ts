@@ -22,6 +22,7 @@ export interface ProviderCall {
   extraBody?: Record<string, unknown>
   googleThinking?: GoogleThinking
   anthropicThinking?: AnthropicThinking
+  jsonMode?: boolean
 }
 
 export interface ProviderResult {
@@ -31,6 +32,7 @@ export interface ProviderResult {
   costUsd: number | null
   httpStatus: number
   finishReason: string | null
+  searchItems?: Array<{ title: string; url: string; published: string; snippet?: string }>
 }
 
 export class ProviderHttpError extends Error {

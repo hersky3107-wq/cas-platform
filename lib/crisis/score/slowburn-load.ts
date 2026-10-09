@@ -3,12 +3,13 @@ import { WIKI_HUMAN_CONCEPTS } from './wiki-roles'
 import {
   concentratedRegions,
   conflictSpread,
-  hasNewActor,
+  hasNewActorCounted,
   scoreVolume,
   slowBurnValue,
   type DailyVolume,
   type TrendReading,
 } from './slowburn'
+import { lastCompleteUtcDay } from './silence'
 import { SLOW_BURN } from './thresholds'
 import type { ScoreRegion } from './snapshot'
 import { asRecord, finite } from './math'
@@ -54,6 +55,7 @@ function volumeFromStats(day: string, stats: Record<string, unknown>, cameoKey =
     avg_goldstein: num(stats.avg_goldstein),
     avg_tone: num(stats.avg_tone),
     cameo_18_20: cameo,
+    cameo_share: events > 0 ? cameo / events : 0,
     num_sources: num(stats.num_sources),
   }
 }
@@ -71,6 +73,7 @@ function addVolume(map: Map<string, DailyVolume>, key: string, row: DailyVolume)
   prev.cameo_18_20 += row.cameo_18_20
   prev.num_sources += row.num_sources
   prev.conflict_share = events > 0 ? prev.cameo_18_20 / events : 0
+  prev.cameo_share = prev.conflict_share
 }
 
 async function pageAll(
@@ -107,7 +110,7 @@ export async function loadSlowBurn(
   regions: ScoreRegion[],
   neighbors: Map<number, number[]>,
 ): Promise<SlowBurnLoad> {
-  const endDay = now.toISOString().slice(0, 10)
+  const endDay = lastCompleteUtcDay(now)
   const since = dayShift(endDay, -(SLOW_BURN.baselineDays - 1))
   const recentStart = dayShift(endDay, -(SLOW_BURN.recentDays - 1))
   const priorEnd = dayShift(recentStart, -1)
@@ -251,22 +254,30 @@ export async function loadSlowBurn(
       weakIndicator('wiki_mobilization', wiki.has(iso3)),
     ]
     const scored = scoreVolume(rows, endDay, extras)
-    const partnersBetween = (start: string, finish: string): string[] => {
-      const found = new Set<string>()
+    const partnerCounts = (start: string, finish: string): Map<string, number> => {
+      const found = new Map<string, number>()
       for (const [pair, series] of byDyad) {
         const parts = pair.split('|')
         if (!parts.includes(iso3)) continue
-        if (!series.some((row) => row.day >= start && row.day <= finish && row.events > 0)) continue
-        for (const part of parts) if (part !== iso3) found.add(part)
+        const events = series
+          .filter((row) => row.day >= start && row.day <= finish)
+          .reduce((sum, row) => sum + row.events, 0)
+        if (events <= 0) continue
+        for (const part of parts) {
+          if (part === iso3) continue
+          found.set(part, (found.get(part) ?? 0) + events)
+        }
       }
-      return [...found]
+      return found
     }
     const spread = conflictSpread(
       [...(cameoRecent.get(iso3)?.keys() ?? [])],
       [...(cameoPrior.get(iso3) ?? [])],
       neighbors,
     )
-    const actor = hasNewActor(partnersBetween(recentStart, endDay), partnersBetween(priorStart, priorEnd))
+    const recentPartners = partnerCounts(recentStart, endDay)
+    const priorPartners = new Set(partnerCounts(priorStart, priorEnd).keys())
+    const actor = hasNewActorCounted(recentPartners, priorPartners)
     const escalation = scored.cameoRising && (spread || actor)
     const quiet = scored.quiet
     const dyad = quiet && dyadQuiet.has(iso3)

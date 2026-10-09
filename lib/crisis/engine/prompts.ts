@@ -79,14 +79,53 @@ export function analystUser(card: EngineCard, department: Department): string {
   })
 }
 
+export function departmentSliceEmpty(card: EngineCard, department: Department): boolean {
+  const view = departmentView(card, department)
+  return view.components.length === 0 && view.fragility.length === 0 && view.cascades.length === 0 && view.context.length === 0
+}
+
+export function fallbackQueries(card: EngineCard): string[] {
+  const name = card.name
+  const country = card.country
+  const queries = [
+    `${name} ${country} flood dam health conflict`,
+    `${name} landslide hospital reservoir`,
+  ]
+  if (card.iso3 === 'LKA' || localLanguages(card.iso3).includes('si')) {
+    queries.push(`${name} ගංවතුර වේල්ල`)
+  }
+  if (card.iso3 === 'LKA' || localLanguages(card.iso3).includes('ta')) {
+    queries.push(`${name} வெள்ளம் அணை`)
+  }
+  queries.push(`${name} ${country} protest internet hospital`)
+  return queries.slice(0, 5)
+}
+
 export function queryWriterSystem(card: EngineCard): string {
   const langs = localLanguages(card.iso3)
   return [
     SHARED_PREAMBLE,
-    `Write 3 to 5 web search queries in the local language(s) (${langs.join(', ')}) and in English.`,
+    `Write 3 to 5 web search queries. You must return at least 3.`,
+    `Include English and every local language (${langs.join(', ')}).`,
+    card.iso3 === 'LKA'
+      ? 'For Sri Lanka you MUST include at least one query in Sinhala script and at least one in Tamil script, plus English. Do not return a single generic English query.'
+      : 'Do not return a single generic English query.',
     'The queries should look for the crossed-department possibility, not a generic news recap.',
     'Return JSON: {"queries":["..."]}',
   ].join('\n')
+}
+
+export function ensureQueries(card: EngineCard, parsed: string[]): string[] {
+  const queries = [...parsed]
+  if (card.iso3 === 'LKA') {
+    if (!queries.some((query) => /[\u0D80-\u0DFF]/.test(query))) queries.unshift(`${card.name} ගංවතුර වේල්ල`)
+    if (!queries.some((query) => /[\u0B80-\u0BFF]/.test(query))) queries.unshift(`${card.name} வெள்ளம் அணை`)
+  }
+  for (const query of fallbackQueries(card)) {
+    if (queries.length >= 5) break
+    if (!queries.includes(query)) queries.push(query)
+  }
+  return [...new Set(queries.filter((query) => query.trim()))].slice(0, 5)
 }
 
 export function queryWriterUser(card: EngineCard, notes: string[]): string {
@@ -103,8 +142,9 @@ export function queryWriterUser(card: EngineCard, notes: string[]): string {
 export function searchSystem(): string {
   return [
     SHARED_PREAMBLE,
-    'Search and return items that have a url and a published date. Drop anything missing either.',
-    'Return JSON: {"items":[{"title":"","url":"","published":"YYYY-MM-DD"}]}',
+    'Search the queries. Write a short brief of what you find.',
+    'Do not return JSON. Citations are taken from the API (url, title, date).',
+    'Keep the brief compact. At most 8 sources.',
   ].join('\n')
 }
 
@@ -116,7 +156,8 @@ export function hunterSystem(): string {
   return [
     SHARED_PREAMBLE,
     'You are one independent hunter. You do not see any other hunter.',
-    'Propose possibilities a single department would miss. Keep a thin one if it might be the true hit.',
+    'Propose at most 3 possibilities a single department would miss. Keep a thin one if it might be the true hit.',
+    'Each text field is at most 80 words. what_to_do is at most 4 bullets.',
     'evidence.type should be a component key such as rain, dam, conflict, food, health_attention.',
     'what_to_do is a plain-language list for residents, local language and English.',
     'official_links only when the url is already in the card or the search items.',
@@ -140,11 +181,12 @@ export function hunterUser(card: EngineCard, notes: string[], items: SearchItem[
       urban: card.urban,
     },
     analyst_notes: notes,
-    search_items: items.map((item) => ({
+    search_items: items.slice(0, 8).map((item) => ({
       title: item.title,
       url: item.url,
       published: item.published,
       past: item.past,
+      snippet: item.snippet?.slice(0, 300),
     })),
   })
 }

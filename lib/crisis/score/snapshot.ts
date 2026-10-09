@@ -51,6 +51,7 @@ export interface RegionInputs {
   totalEvents: number
   totalMean: number | null
   gdeltDays: number
+  gdeltSeries: Array<{ day: string; total: number; cameo: number }>
   urbanPop: number
   centres: UrbanCentre[]
   informExposure: number | null
@@ -135,6 +136,7 @@ function emptyInputs(): RegionInputs {
     totalEvents: 0,
     totalMean: null,
     gdeltDays: 0,
+    gdeltSeries: [],
     urbanPop: 0,
     centres: [],
     informExposure: null,
@@ -152,6 +154,7 @@ function emptyInputs(): RegionInputs {
 export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Promise<ScoreSnapshot> {
   const day = now.toISOString().slice(0, 10)
   const since30 = new Date(now.getTime() - 30 * 86_400_000).toISOString().slice(0, 10)
+  const since63 = new Date(now.getTime() - 63 * 86_400_000).toISOString().slice(0, 10)
   const since14 = new Date(now.getTime() - 14 * 86_400_000).toISOString()
   const sinceWiki = new Date(now.getTime() - WIKI.days * 86_400_000).toISOString()
   const sinceAdvisory = new Date(now.getTime() - ADVISORY.changeHours * 3_600_000).toISOString()
@@ -231,10 +234,10 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     client,
     'crisis_region_daily',
     'region_id, day, source, stats',
-    (q) => q.gte('day', since30).in('source', ['firms', 'gdelt']),
+    (q) => q.gte('day', since63).in('source', ['firms', 'gdelt']),
   )
   const firmsToday = new Map<number, number>()
-  const gdeltHist = new Map<number, { conflict: number[]; total: number[] }>()
+  const gdeltHist = new Map<number, { conflict: number[]; total: number[]; series: Array<{ day: string; total: number; cameo: number }> }>()
   for (const row of daily) {
     const stats = asRecord(row.stats) ?? {}
     const id = Number(row.region_id)
@@ -259,11 +262,13 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       cur.frpCount = finite(stats.count) ?? 0
     }
     if (row.source === 'gdelt') {
-      const hist = gdeltHist.get(id) ?? { conflict: [], total: [] }
+      const hist = gdeltHist.get(id) ?? { conflict: [], total: [], series: [] }
       const conflict = (finite(stats.assault) ?? 0) + (finite(stats.fight) ?? 0) + (finite(stats.mass_violence) ?? 0)
       const total = finite(stats.total_events) ?? 0
+      const dayKey = String(row.day).slice(0, 10)
       hist.conflict.push(conflict)
       hist.total.push(total)
+      hist.series.push({ day: dayKey, total, cameo: conflict })
       gdeltHist.set(id, hist)
       if (conflict > 0) {
         observations.push({
@@ -290,6 +295,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     const cur = put(id)
     cur.conflictDays = hist.conflict.length
     cur.gdeltDays = hist.total.length
+    cur.gdeltSeries = hist.series.sort((a, b) => a.day.localeCompare(b.day))
     if (hist.conflict.length) cur.conflictMean = hist.conflict.reduce((a, b) => a + b, 0) / hist.conflict.length
     if (cur.totalMean == null && hist.total.length) {
       cur.totalMean = hist.total.reduce((a, b) => a + b, 0) / hist.total.length

@@ -4,7 +4,7 @@
  * Dry-run prints prompts and token estimates. It does not call a model or a search API.
  *
  *   npx tsx --require ./scripts/crisis/register-server-only.cjs --env-file=.env.local scripts/crisis/engine-run.ts --region=Badulla --horizon=30d --dry-run
- *   npx tsx --require ./scripts/crisis/register-server-only.cjs --env-file=.env.local scripts/crisis/engine-run.ts --region=Badulla --horizon=30d --live
+ *   npx tsx --require ./scripts/crisis/register-server-only.cjs --env-file=.env.local scripts/crisis/engine-run.ts --region=Badulla --horizon=30d --live --force
  */
 import { existsSync } from 'node:fs'
 import path from 'node:path'
@@ -66,6 +66,7 @@ function pickRegions(rows: RegionScore[], region: string | undefined, top: numbe
 
 function printRecord(record: EngineRunRecord, dryRun: boolean): void {
   console.log(`region=${record.regionId} cache_key=${record.cacheKey} cache_hit=${record.cacheHit} status=${record.status} partial=${record.result?.partial ?? false}`)
+  console.log(`queries=${JSON.stringify(record.queries)}`)
   for (const step of record.steps) {
     console.log(
       `step role=${step.role} slot=${step.slot} model=${step.model} in=${step.inputTokens} out=${step.outputTokens} usd=${step.costUsd.toFixed(6)} skipped=${step.skipped} error=${step.error ?? ''}`,
@@ -79,8 +80,16 @@ function printRecord(record: EngineRunRecord, dryRun: boolean): void {
   }
   console.log(`total_usd=${record.costUsd.toFixed(6)} tokens_in=${record.tokensIn} tokens_out=${record.tokensOut}`)
   if (record.result) {
+    console.log(`headline_ko=${record.result.headline_ko}`)
     console.log(`headline_en=${record.result.headline_en}`)
-    console.log(`hypotheses=${record.result.hypotheses.length} outsider=${record.result.outsider.length}`)
+    console.log(`summary_ko=${record.result.summary_ko}`)
+    console.log(`summary_en=${record.result.summary_en}`)
+    for (const [index, row] of record.result.hypotheses.entries()) {
+      console.log(`hypothesis[${index}] title=${row.title} stage=${row.stage} possibility=${row.possibility} novelty=${row.novelty}`)
+      console.log(`  why_humans_miss=${row.why_humans_miss}`)
+      console.log(`  what_to_do=${JSON.stringify(row.what_to_do)}`)
+    }
+    console.log(`outsider=${JSON.stringify(record.result.outsider.map((row) => ({ title: row.title, stage: row.stage, novelty: row.novelty })))}`)
   }
 }
 
@@ -133,6 +142,7 @@ async function main(): Promise<void> {
       dryRun,
       mode: top ? 'top' : 'region',
       cache,
+      force: wants('--force'),
     })
     printRecord(record, dryRun)
     if (record.id) console.log(`run_id=${record.id}`)

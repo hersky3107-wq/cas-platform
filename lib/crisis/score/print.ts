@@ -4,13 +4,26 @@ function fmt(value: number, digits = 2): string {
   return value.toFixed(digits)
 }
 
+export function formatRawValue(value: unknown): string {
+  if (value == null || value === false) return ''
+  if (typeof value === 'string' || typeof value === 'number' || typeof value === 'boolean') return String(value)
+  if (Array.isArray(value)) return value.map((item) => formatRawValue(item)).filter(Boolean).join('|')
+  if (typeof value === 'object') {
+    return Object.entries(value as Record<string, unknown>)
+      .filter(([, item]) => item != null && item !== false)
+      .map(([key, item]) => `${key}:${formatRawValue(item)}`)
+      .join(',')
+  }
+  return String(value)
+}
+
 export function explainRegion(rank: number, row: RegionScore): string {
   const comps = row.components.map((item) => `${item.key}=${fmt(item.value)}`).join(' ') || '(none)'
   const rawBits = row.components
     .map((item) => {
       const extras = Object.entries(item.raw)
         .filter(([, value]) => value != null && value !== false)
-        .map(([key, value]) => `${key}:${value}`)
+        .map(([key, value]) => `${key}:${formatRawValue(value)}`)
         .join(',')
       return extras ? `${item.key}(${extras})` : item.key
     })

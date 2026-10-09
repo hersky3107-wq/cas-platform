@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { chatContent, requireText } from '../http'
+import { chatContent, parseHttpBody, requireText } from '../http'
 import { EmptyContentError } from '../types'
 
 describe('empty content', () => {
@@ -12,5 +12,11 @@ describe('empty content', () => {
     expect(parsed.finishReason).toBe('length')
     expect(() => requireText('z-ai/glm-5.3', parsed.text, parsed.finishReason)).toThrow(EmptyContentError)
     expect(() => requireText('z-ai/glm-5.3', parsed.text, parsed.finishReason)).toThrow(/finish_reason=length/)
+  })
+
+  it('parses SSE JSON and rejects HTML error pages', () => {
+    const sse = parseHttpBody('data: {"ok":true}\n\ndata: [DONE]\n', 'text/event-stream')
+    expect(sse).toEqual({ ok: true })
+    expect(parseHttpBody('<html>error</html>', 'text/html')).toBeNull()
   })
 })
