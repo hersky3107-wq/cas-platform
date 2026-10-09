@@ -57,10 +57,45 @@ export const hypothesisSchema = z
     stage: z.number().int().min(1).max(5),
     confidence: z.enum(['low', 'medium', 'high']),
     outsider: z.boolean(),
+    hazards: z.array(z.string()).optional(),
+    departments: z.array(z.string()).optional(),
+    entities: z.array(z.string()).optional(),
+    mechanism: z.string().optional(),
+    lead_time_days: z.object({ min: z.number(), max: z.number() }).strict().optional(),
+    early_indicators: z.array(z.string()).optional(),
+    falsifier: z.string().optional(),
+    non_obviousness: z.number().min(0).max(1).optional(),
+    twist: z.string().optional(),
+    novelty_match: noveltyMatchSchema().nullable().optional(),
   })
   .strict()
 
 export type Hypothesis = z.infer<typeof hypothesisSchema>
+
+function noveltyMatchSchema() {
+  return z
+    .object({
+      source: z.enum(['reliefweb', 'gdacs', 'metaculus', 'mainstream']),
+      title: z.string(),
+      url: z.string(),
+      date: z.string().nullable(),
+      scope: z.enum(['region', 'country']),
+      hazard: z.string(),
+    })
+    .strict()
+}
+
+const baselineRiskSchema = z
+  .object({
+    title: z.string().min(1),
+    reason: z.string(),
+    proposed_by: z.array(z.string()),
+    novelty: z.enum(['only_us', 'also_seen_elsewhere']),
+    novelty_match: noveltyMatchSchema().nullable(),
+  })
+  .strict()
+
+export type BaselineRisk = z.infer<typeof baselineRiskSchema>
 
 export const engineResultSchema = z
   .object({
@@ -78,6 +113,11 @@ export const engineResultSchema = z
       })
       .strict(),
     partial: z.boolean(),
+    baseline_risks: z.array(baselineRiskSchema).optional(),
+    coverage: z.record(z.string(), z.number()).optional(),
+    novelty_counts: z.object({ only_us: z.number(), also_seen_elsewhere: z.number() }).strict().optional(),
+    rejected: z.array(z.object({ model: z.string(), title: z.string(), reasons: z.array(z.string()) }).strict()).optional(),
+    obvious: z.array(z.string()).optional(),
   })
   .strict()
 

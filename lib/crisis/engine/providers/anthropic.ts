@@ -1,11 +1,16 @@
 import { asRecord, num, postJson, requireText } from './http'
 import { envKey, ProviderHttpError, type ProviderCall, type ProviderResult } from './types'
 
+/** Models that answered 400 "does not support assistant message prefill" in this process. */
+const NO_PREFILL = new Set<string>()
+
 export async function callAnthropic(call: ProviderCall): Promise<ProviderResult> {
+  const prefill = Boolean(call.jsonMode) && !NO_PREFILL.has(call.model)
   try {
-    return await once(call, Boolean(call.jsonMode))
+    return await once(call, prefill)
   } catch (error) {
-    if (call.jsonMode && error instanceof ProviderHttpError && error.status === 400) {
+    if (prefill && error instanceof ProviderHttpError && error.status === 400) {
+      if (/prefill/i.test(error.message)) NO_PREFILL.add(call.model)
       return once(call, false)
     }
     throw error

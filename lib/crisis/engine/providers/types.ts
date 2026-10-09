@@ -33,6 +33,8 @@ export interface ProviderResult {
   httpStatus: number
   finishReason: string | null
   searchItems?: Array<{ title: string; url: string; published: string; snippet?: string }>
+  /** Raw list sizes the search items were read from, such as search_results and citations. */
+  searchOrigin?: Record<string, number>
 }
 
 export class ProviderHttpError extends Error {

@@ -10,7 +10,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { estimateRegionRunUsd } from '../../lib/crisis/engine/roster'
 import { runEngine, type EngineCache, type EngineRunRecord } from '../../lib/crisis/engine/run'
-import { HORIZONS, type EngineCard, type Horizon } from '../../lib/crisis/engine/schema'
+import { HORIZONS, type EngineCard, type Horizon, type Hypothesis } from '../../lib/crisis/engine/schema'
 import type { RegionScore } from '../../lib/crisis/score/types'
 
 function arg(name: string): string | undefined {
@@ -71,6 +71,10 @@ function printRecord(record: EngineRunRecord, dryRun: boolean): void {
     console.log(
       `step role=${step.role} slot=${step.slot} model=${step.model} in=${step.inputTokens} out=${step.outputTokens} usd=${step.costUsd.toFixed(6)} skipped=${step.skipped} error=${step.error ?? ''}`,
     )
+    if (step.role === 'search' && step.output && typeof step.output === 'object') {
+      const output = step.output as { items?: unknown[]; origin?: unknown }
+      console.log(`  search_items=${Array.isArray(output.items) ? output.items.length : 0} origin=${JSON.stringify(output.origin ?? null)}`)
+    }
     if (dryRun) {
       console.log(`--- system ${step.slot}`)
       console.log(step.system)
@@ -79,17 +83,34 @@ function printRecord(record: EngineRunRecord, dryRun: boolean): void {
     }
   }
   console.log(`total_usd=${record.costUsd.toFixed(6)} tokens_in=${record.tokensIn} tokens_out=${record.tokensOut}`)
-  if (record.result) {
-    console.log(`headline_ko=${record.result.headline_ko}`)
-    console.log(`headline_en=${record.result.headline_en}`)
-    console.log(`summary_ko=${record.result.summary_ko}`)
-    console.log(`summary_en=${record.result.summary_en}`)
-    for (const [index, row] of record.result.hypotheses.entries()) {
-      console.log(`hypothesis[${index}] title=${row.title} stage=${row.stage} possibility=${row.possibility} novelty=${row.novelty}`)
-      console.log(`  why_humans_miss=${row.why_humans_miss}`)
-      console.log(`  what_to_do=${JSON.stringify(row.what_to_do)}`)
-    }
-    console.log(`outsider=${JSON.stringify(record.result.outsider.map((row) => ({ title: row.title, stage: row.stage, novelty: row.novelty })))}`)
+  const result = record.result
+  if (!result) return
+  const counts = result.coverage ?? {}
+  console.log(`coverage reliefweb=${counts.reliefweb ?? 0} gdacs=${counts.gdacs ?? 0} metaculus=${counts.metaculus ?? 0} mainstream=${counts.mainstream ?? 0} (last 30 days, this country)`)
+  console.log(`novelty only_us=${result.novelty_counts?.only_us ?? 0} also_seen_elsewhere=${result.novelty_counts?.also_seen_elsewhere ?? 0} (every group, before ranking)`)
+  console.log(`obvious_list=${JSON.stringify(result.obvious ?? [])}`)
+  for (const row of result.rejected ?? []) console.log(`rejected model=${row.model} title=${row.title} reasons=${row.reasons.join('; ')}`)
+  console.log(`headline_ko=${result.headline_ko}`)
+  console.log(`headline_en=${result.headline_en}`)
+  console.log(`summary_ko=${result.summary_ko}`)
+  console.log(`summary_en=${result.summary_en}`)
+  const print = (label: string, row: Hypothesis) => {
+    console.log(`${label} title=${row.title}`)
+    console.log(`  proposed_by=${row.proposed_by.length} [${row.proposed_by.join(', ')}] stage=${row.stage} possibility=${row.possibility} non_obviousness=${row.non_obviousness ?? ''}`)
+    console.log(`  novelty=${row.novelty}${row.novelty_match ? ` match=${row.novelty_match.source}/${row.novelty_match.scope}/${row.novelty_match.hazard} ${row.novelty_match.url}` : ''}`)
+    console.log(`  departments=${(row.departments ?? []).join(',')} entities=${JSON.stringify(row.entities ?? [])} lead_time_days=${row.lead_time_days ? `${row.lead_time_days.min}-${row.lead_time_days.max}` : ''}`)
+    if (row.twist) console.log(`  twist=${row.twist}`)
+    console.log(`  mechanism=${row.mechanism ?? ''}`)
+    console.log(`  early_indicators=${JSON.stringify(row.early_indicators ?? [])}`)
+    console.log(`  falsifier=${row.falsifier ?? ''}`)
+    console.log(`  why_humans_miss=${row.why_humans_miss}`)
+    console.log(`  what_to_do=${JSON.stringify(row.what_to_do)}`)
+  }
+  result.hypotheses.forEach((row, index) => print(`hypothesis[${index}]`, row))
+  result.outsider.forEach((row, index) => print(`outsider[${index}]`, row))
+  console.log(`baseline_risks=${result.baseline_risks?.length ?? 0}`)
+  for (const row of result.baseline_risks ?? []) {
+    console.log(`baseline title=${row.title} proposed_by=${row.proposed_by.length} novelty=${row.novelty}${row.novelty_match ? ` ${row.novelty_match.url}` : ''} reason=${row.reason}`)
   }
 }
 
@@ -135,14 +156,21 @@ async function main(): Promise<void> {
         },
       }
 
+  const { loadCoverage } = await import('../../lib/crisis/engine/coverage-load')
+  const { coverageCounts } = await import('../../lib/crisis/engine/coverage')
   for (const row of picked) {
+    const card = cardFromScore(row, horizon)
+    const coverage = await loadCoverage(supabaseAdmin, card, new Date())
+    const counts = coverageCounts(coverage)
+    console.log(`coverage_db region=${card.name} iso3=${card.iso3} reliefweb=${counts.reliefweb} gdacs=${counts.gdacs} metaculus=${counts.metaculus} region_match=${coverage.filter((item) => item.region_match).length}`)
     const record = await runEngine({
-      card: cardFromScore(row, horizon),
+      card,
       caller,
       dryRun,
       mode: top ? 'top' : 'region',
       cache,
       force: wants('--force'),
+      coverage,
     })
     printRecord(record, dryRun)
     if (record.id) console.log(`run_id=${record.id}`)

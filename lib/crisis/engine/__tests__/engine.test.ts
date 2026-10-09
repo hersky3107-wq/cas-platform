@@ -9,10 +9,10 @@ import { buildLedgerInserts, ledgerContentHash, memoryLedger, publishHypotheses 
 import { estimateRegionRunUsd, resolveRoster } from '../roster'
 import { extractJson } from '../parse'
 import { TOKEN_CAPS } from '../prices'
-import { applyJudgeGroups, applyWeakness, runEngine, withTimeout, type ModelCall, type ModelCaller } from '../run'
+import { applyJudgeGroups, applyWeakness, runEngine, withTimeout, type Draft, type ModelCall, type ModelCaller } from '../run'
 import type { EngineCard } from '../schema'
 import { normalizeSearchItems } from '../search-items'
-import { noveltyOf, structureOf } from '../structure'
+import { structureOf } from '../structure'
 
 const NOW = new Date('2026-10-09T00:00:00Z')
 
@@ -46,6 +46,13 @@ function card(): EngineCard {
 function hypothesisBody(title: string) {
   return {
     title,
+    hazards: ['dam', 'flood'],
+    departments: ['natural-hydro', 'health'],
+    entities: ['Victoria Dam'],
+    mechanism: 'A controlled spill is not classed as a dam failure, so the villages below are not warned.',
+    lead_time_days: { min: 3, max: 14 },
+    early_indicators: ['Spill gates opened two days running'],
+    falsifier: 'The reservoir level stays under the spill crest all month.',
     chain: [{ step: 'rain reaches a dam above the town', cascade_id: 'c-dam' }],
     why_humans_miss: 'Hydro holds the rain and the dam. Conflict and health never see that briefing.',
     evidence: [
@@ -54,6 +61,29 @@ function hypothesisBody(title: string) {
     ],
     what_to_do: ['ජලය ගබඩා කරන්න. Store drinking water and listen to the local radio.'],
     official_links: [{ label: 'Disaster Management Centre', url: 'https://www.dmc.gov.lk/' }],
+  }
+}
+
+function draft(id: string, title: string, model: string, extra: Partial<Draft> = {}): Draft {
+  return {
+    id,
+    title,
+    chain: [{ step: title, cascade_id: null }],
+    why_humans_miss: 'x',
+    evidence: [],
+    what_to_do: ['do'],
+    official_links: [],
+    proposed_by: [model],
+    weakness_notes: [],
+    weakness: 'low',
+    hazards: ['dam'],
+    departments: ['natural-hydro', 'health'],
+    entities: ['Victoria Dam'],
+    mechanism: 'a spill is not classed as a failure',
+    lead_time_days: { min: 2, max: 10 },
+    early_indicators: ['gates open'],
+    falsifier: 'reservoir stays low',
+    ...extra,
   }
 }
 
@@ -102,11 +132,18 @@ function caller(seen: ModelCall[], mode: 'full' | 'drop' | 'throw-hunter' = 'ful
       const kept = mode === 'drop' ? packet.hypotheses.slice(0, 1) : packet.hypotheses
       return {
         text: JSON.stringify({
-          groups: kept.map((row) => ({ ids: [row.id], rank: 1, outsider: false, title: row.title })),
-          summary_ko: '바다울라에서 비와 댐이 주민 이야기와 떨어져 있다.',
-          summary_en: 'In Badulla the rain and the dam are not read together with the people downstream.',
-          headline_ko: '바다울라, 비와 댐',
-          headline_en: 'Badulla: rain, a dam, and the people downstream',
+          groups: kept.map((row, index) => ({
+            ids: [row.id],
+            title: row.title,
+            non_obviousness: index === 0 ? 0.9 : 0.6,
+            on_obvious_list: false,
+            twist: '',
+            reported_as_news: '',
+            headline_ko: index === 0 ? '바둘라, 방류는 붕괴가 아니다' : '',
+            headline_en: index === 0 ? 'Badulla: a spill is not a failure, so no one is warned' : '',
+            brief_ko: index === 0 ? '바둘라에서 비와 댐이 주민 이야기와 떨어져 있다.' : '',
+            brief_en: index === 0 ? 'In Badulla the rain and the dam are not read together with the people downstream.' : '',
+          })),
         }),
         tokensIn: 10,
         tokensOut: 10,
@@ -152,7 +189,9 @@ describe('roster', () => {
     expect(estimate).toBeLessThan(1.5)
     expect(TOKEN_CAPS.hunter.out).toBe(3000)
     expect(TOKEN_CAPS.dept_analyst.out).toBe(1200)
-    expect(TOKEN_CAPS.judge.out).toBe(4000)
+    expect(TOKEN_CAPS.judge.out).toBe(9000)
+    expect(hunters.find((slot) => slot.slot === 'hunter-qwen')?.extraBody).toEqual({ reasoning: { enabled: false } })
+    expect(hunters.find((slot) => slot.slot === 'hunter-deepseek')?.extraBody).toEqual({ reasoning: { enabled: false } })
   })
 })
 
@@ -208,7 +247,8 @@ describe('department isolation and hunters', () => {
     expect(searches[0].user).toBe(searches[1].user)
     expect(record.status).toBe('done')
     expect(record.steps.some((step) => step.slot === 'hunter-qwen' && step.error === 'hunter down')).toBe(true)
-    expect(record.result?.hypotheses.length).toBe(5)
+    expect(record.result?.hypotheses.length).toBe(3)
+    expect(record.result?.outsider.length).toBe(2)
     expect(record.result?.partial).toBe(false)
   })
 
@@ -302,7 +342,9 @@ describe('schema, budget, cache, publish', () => {
     expect(written[0].ai_roster).toBeTruthy()
     const inserts = buildLedgerInserts(run, [0], NOW.toISOString())
     expect(inserts[0].evidence_snapshot).toHaveProperty('roster')
-    expect(run.result?.hypotheses).toHaveLength(6)
+    expect(run.result?.hypotheses).toHaveLength(3)
+    expect(run.result?.outsider).toHaveLength(3)
+    expect(run.result?.headline_en).toBe('Badulla: a spill is not a failure, so no one is warned')
   })
 })
 
@@ -321,23 +363,13 @@ describe('search items and structure', () => {
     expect(items[1].past).toBe(true)
   })
 
-  it('marks mainstream overlap as also seen, and scores from structure', () => {
-    const items = normalizeSearchItems(
-      [{ title: 'Badulla dam rain downstream', url: 'https://www.reuters.com/a', published: '2026-10-08' }],
-      'sonar',
-      NOW,
-    )
-    expect(noveltyOf('Badulla dam rain', items)).toBe('also_seen_elsewhere')
-    expect(noveltyOf('unrelated quarry dust', items)).toBe('only_us')
+  it('scores stage from structure', () => {
     expect(structureOf({ hunters: 4, departments: 3, weakness: 'low', evidence: 3 }).stage).toBe(5)
     expect(structureOf({ hunters: 1, departments: 1, weakness: 'high', evidence: 0 }).stage).toBe(1)
   })
 
   it('does not let red team or the judge remove a hypothesis', () => {
-    const drafts = [
-      { id: 'h0', title: 'a', chain: [{ step: 'a', cascade_id: null }], why_humans_miss: 'x', evidence: [], what_to_do: ['do'], official_links: [], proposed_by: ['m'], weakness_notes: [], weakness: 'low' as const },
-      { id: 'h1', title: 'b', chain: [{ step: 'b', cascade_id: null }], why_humans_miss: 'y', evidence: [], what_to_do: ['do'], official_links: [], proposed_by: ['n'], weakness_notes: [], weakness: 'low' as const },
-    ]
+    const drafts = [draft('h0', 'a', 'm'), draft('h1', 'b', 'n')]
     applyWeakness(drafts, [{ id: 'h0', note: 'weak', severity: 'high' }])
     expect(drafts).toHaveLength(2)
     expect(drafts[1].weakness_notes[0]).toContain('did not return')

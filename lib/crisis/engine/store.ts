@@ -37,7 +37,7 @@ function fromRow(row: RunRow): EngineRunRecord | null {
     steps: [],
     card: row.result.card,
     searchUrls: row.result.search_urls ?? [],
-    queries: Array.isArray((row.result as { queries?: string[] }).queries) ? (row.result as { queries: string[] }).queries : [],
+    queries: Array.isArray((row.result as unknown as { queries?: string[] }).queries) ? (row.result as unknown as { queries: string[] }).queries : [],
     error: row.error,
     dryRun: false,
   }

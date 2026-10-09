@@ -123,6 +123,46 @@ export function advisoryAliasKey(name: string): string {
     .trim()
 }
 
+const TEXT_ALIASES: Record<string, string> = {
+  russian: 'RUS', ukrainian: 'UKR', israeli: 'ISR', iranian: 'IRN', chinese: 'CHN', taiwanese: 'TWN',
+  venezuelan: 'VEN', 'north korean': 'PRK', 'south korean': 'KOR', pakistani: 'PAK', indian: 'IND',
+  syrian: 'SYR', lebanese: 'LBN', yemeni: 'YEM', sudanese: 'SDN', ethiopian: 'ETH', somali: 'SOM',
+  haitian: 'HTI', afghan: 'AFG', iraqi: 'IRQ', turkish: 'TUR', egyptian: 'EGY', nigerian: 'NGA',
+  'sri lankan': 'LKA', bangladeshi: 'BGD', burmese: 'MMR', congolese: 'COD', drc: 'COD',
+  'gaza strip': 'PSE', palestinian: 'PSE', hezbollah: 'LBN', houthi: 'YEM', houthis: 'YEM',
+  crimea: 'UKR', donbas: 'UKR', kashmir: 'IND', 'strait of hormuz': 'IRN', 'hormuz': 'IRN',
+}
+
+const TEXT_CASED: Array<{ pattern: RegExp; iso3: string }> = [
+  { pattern: /\bU\.?S\.?A?\b|\bUnited States\b/, iso3: 'USA' },
+  { pattern: /\bUK\b|\bU\.K\.\b|\bBritain\b|\bBritish\b/, iso3: 'GBR' },
+  { pattern: /\bUAE\b/, iso3: 'ARE' },
+]
+
+let textNames: Array<{ name: string; iso3: string }> | null = null
+
+/** Countries named in free text (Metaculus titles). Longest names win, so "Papua New Guinea" is not "Guinea". */
+export function countriesInText(text: string): string[] {
+  if (!textNames) {
+    textNames = Object.entries({ ...STATE_NAME_ISO3, ...TEXT_ALIASES })
+      .map(([name, iso3]) => ({ name, iso3 }))
+      .sort((a, b) => b.name.length - a.name.length)
+  }
+  const found: string[] = []
+  const add = (iso3: string) => {
+    if (!found.includes(iso3)) found.push(iso3)
+  }
+  for (const row of TEXT_CASED) if (row.pattern.test(text)) add(row.iso3)
+  let hay = ` ${advisoryAliasKey(text).replace(/[^a-z0-9' -]+/g, ' ')} `
+  for (const row of textNames) {
+    const needle = ` ${row.name} `
+    if (!hay.includes(needle)) continue
+    add(row.iso3)
+    hay = hay.split(needle).join(' ')
+  }
+  return found
+}
+
 export function nameToIso3(name: string): string | null {
   const key = advisoryAliasKey(name)
   if (STATE_NAME_ISO3[key]) return STATE_NAME_ISO3[key]

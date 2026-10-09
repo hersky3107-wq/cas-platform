@@ -19,7 +19,11 @@ export async function callPerplexity(call: ProviderCall): Promise<ProviderResult
     },
   })
   const parsed = chatContent(json)
-  const searchItems = citationRecords([json.citations, json.search_results])
+  const searchItems = citationRecords([json.search_results, json.citations])
+  const searchOrigin = {
+    search_results: Array.isArray(json.search_results) ? json.search_results.length : 0,
+    citations: Array.isArray(json.citations) ? json.citations.length : 0,
+  }
   const stripped = parsed.text ? stripThink(parsed.text) : ''
   const text = stripped || (searchItems.length ? '(citations only)' : '')
   if (!searchItems.length) {
@@ -33,5 +37,6 @@ export async function callPerplexity(call: ProviderCall): Promise<ProviderResult
     httpStatus: status,
     finishReason: parsed.finishReason,
     searchItems,
+    searchOrigin,
   }
 }

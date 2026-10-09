@@ -9,6 +9,8 @@ export interface PoliteFetchOptions {
   timeoutMs?: number
   headers?: Record<string, string>
   as?: 'json' | 'text' | 'bytes'
+  method?: 'GET' | 'POST'
+  body?: string
 }
 
 export interface PoliteFetchResult {
@@ -52,7 +54,10 @@ export async function politeFetch(url: string, options: PoliteFetchOptions): Pro
       lastCallAt.set(options.sourceKey, Date.now())
       const response = await fetch(url, {
         signal: controller.signal,
+        method: options.method ?? 'GET',
+        body: options.body,
         headers: {
+          ...(options.body ? { 'Content-Type': 'application/json' } : {}),
           Accept: options.as === 'text' ? 'text/plain, application/xml, */*' : 'application/json, */*',
           'User-Agent': 'AIMANI-CrisisIngest/2B1',
           ...options.headers,

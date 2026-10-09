@@ -17,12 +17,31 @@ import {
   searchSystem,
   searchUser,
 } from './prompts'
+import { sameHazard } from '../config/hazard-taxonomy'
+import { normalizeName } from '../ingest/iso'
+import { coverageCounts, mainstreamFromSearch, noveltyFor, withinDays, type CoverageItem } from './coverage'
+import { checkHunterRow, clusterDrafts, entityCorpus, entityWords, HUNTER_MAX_HYPOTHESES, obviousList, type Draft, type ObviousEntry } from './hunter-rules'
 import { extractJson, logParseFailure, RETRY_JSON_HINT } from './parse'
 import { DEFAULT_COST_CAP_USD, estimateTokens, listPriceCost, outputBudget, ROLE_TIMEOUT_MS, TOKEN_CAPS, TYPICAL_OUTPUT_TOKENS } from './prices'
 import { resolveRoster, slotsFor, type ResolvedRoster, type RosterSlot } from './roster'
-import { engineResultSchema, hypothesisSchema, type Department, type EngineCard, type EngineResult, type EngineRole, type Horizon, type Hypothesis } from './schema'
+import {
+  engineResultSchema,
+  hypothesisSchema,
+  type BaselineRisk,
+  type Department,
+  type EngineCard,
+  type EngineResult,
+  type EngineRole,
+  type Horizon,
+  type Hypothesis,
+} from './schema'
 import { normalizeSearchItems, type SearchItem } from './search-items'
-import { departmentsTouched, noveltyOf, structureOf, weaknessOf, type Weakness } from './structure'
+import { departmentsTouched, structureOf, weaknessOf } from './structure'
+
+export type { Draft } from './hunter-rules'
+
+/** A coverage item counts as the same news when it is this recent and names the same entity. */
+const REPORTED_DAYS = 14
 
 export interface ModelCall {
   role: EngineRole
@@ -48,8 +67,12 @@ export interface ModelCaller {
     tokensOut: number
     costUsd: number | null
     searchItems?: SearchItem[]
+    searchOrigin?: Record<string, number>
+    finishReason?: string | null
   }>
 }
+
+const CUT_OFF = new Set(['length', 'max_tokens', 'MAX_TOKENS', 'incomplete'])
 
 export interface EngineStepRecord {
   role: EngineRole
@@ -66,19 +89,6 @@ export interface EngineStepRecord {
   output: unknown
   error: string | null
   skipped: boolean
-}
-
-interface Draft {
-  id: string
-  title: string
-  chain: Array<{ step: string; cascade_id: string | null }>
-  why_humans_miss: string
-  evidence: Array<{ type: string; ref: string; url?: string }>
-  what_to_do: string[]
-  official_links: Array<{ label: string; url: string }>
-  proposed_by: string[]
-  weakness_notes: string[]
-  weakness: Weakness
 }
 
 export interface EngineRunRecord {
@@ -118,6 +128,8 @@ export interface RunEngineOptions {
   cache?: EngineCache
   costOf?: (model: string, tokensIn: number, tokensOut: number) => number
   force?: boolean
+  /** ReliefWeb, GDACS, and Metaculus items for this card's country; mainstream search items are added in the run. */
+  coverage?: CoverageItem[]
 }
 
 export function promptHash(system: string, user: string): string {
@@ -258,14 +270,17 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     }
     try {
       const result = await invoke(user)
+      if (result.finishReason && CUT_OFF.has(result.finishReason)) {
+        console.warn(`${slot.slot}: output hit the ${outputCap}-token cap (${result.finishReason}); repaired JSON may end mid-item`)
+      }
       const apiItems = normalizeSearchItems(result.searchItems, slot.slot, now)
       if (slot.search) {
-        let parsed: unknown = { items: apiItems }
+        let parsed: unknown = { items: apiItems, origin: result.searchOrigin ?? 'api' }
         if (!apiItems.length) {
           try {
             parsed = extractJson(result.text)
           } catch {
-            parsed = { items: [] }
+            parsed = { items: [], origin: result.searchOrigin ?? 'none' }
           }
         }
         recordStep(result, parsed, null)
@@ -355,17 +370,34 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     searchItems.push(...items)
   }
 
+  const coverage = [...(opts.coverage ?? []), ...mainstreamFromSearch(searchItems, opts.card, now)]
+  const obvious = obviousList(opts.card)
+  const alreadyReported = [...coverage]
+    .sort((a, b) => Number(b.region_match) - Number(a.region_match) || (b.date ?? '').localeCompare(a.date ?? ''))
+    .slice(0, 12)
+    .map((item) => ({ source: item.source, title: item.title, url: item.url, date: item.date }))
+  const hunterItems = searchItems.slice(0, 8)
+  const corpus = entityCorpus(opts.card, hunterItems, alreadyReported.map((item) => item.title))
+
   const drafts: Draft[] = []
-  const hunterPacket = hunterUser(opts.card, notes, searchItems.slice(0, 8))
+  const rejected: Array<{ model: string; title: string; reasons: string[] }> = []
+  const hunterPacket = hunterUser(opts.card, notes, hunterItems, {
+    obvious: obvious.map((row) => row.line),
+    alreadyReported,
+  })
   let hunterOk = 0
   for (const slot of slotsFor(roster, 'hunter')) {
     const called = await callSlot(slot, hunterSystem(), hunterPacket)
     const rows = asRecord(called?.parsed)?.hypotheses
     if (!Array.isArray(rows)) continue
     hunterOk += 1
-    for (const row of rows.slice(0, 3)) {
-      const draft = draftFromHunter(row, slot.model, opts.card.horizon, drafts.length)
-      if (draft) drafts.push(draft)
+    rows.slice(HUNTER_MAX_HYPOTHESES).forEach((row) => {
+      rejected.push({ model: slot.model, title: stringOr(asRecord(row)?.title, '(no title)'), reasons: [`over the ${HUNTER_MAX_HYPOTHESES} per hunter limit`] })
+    })
+    for (const row of rows.slice(0, HUNTER_MAX_HYPOTHESES)) {
+      const checked = checkHunterRow(row, { model: slot.model, id: `h${drafts.length}`, card: opts.card, corpus })
+      if (checked.draft) drafts.push(checked.draft)
+      else rejected.push({ model: checked.model, title: checked.title, reasons: checked.reasons })
     }
   }
   if (hunterOk < 2) partial = true
@@ -398,49 +430,107 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     headline_ko: `${opts.card.name} 가능성`,
     headline_en: `${opts.card.name}: crossed-department possibilities`,
   }
-  let grouped: Array<{ draft: Draft; outsider: boolean; rank: number; sourceIds: string[] }> = drafts.map((draft, index) => ({
-    draft,
+  const suggested = clusterDrafts(drafts, opts.card)
+  const byId = new Map(drafts.map((draft) => [draft.id, draft]))
+  let grouped: Placed[] = suggested.map((ids, index) => ({
+    draft: ids.length > 1 ? mergeDrafts(ids.map((id) => byId.get(id)!), {}) : byId.get(ids[0])!,
     outsider: false,
     rank: index + 1,
-    sourceIds: [draft.id],
+    sourceIds: ids,
+    judge: null,
   }))
+  const judgePacket = (hypotheses: unknown[]) => ({
+    card: { region: opts.card.name, country: opts.card.country, horizon: opts.card.horizon },
+    hypotheses,
+    suggested_groups: suggested,
+    obvious_list: obvious.map((row) => row.line),
+    already_reported: coverage.slice(0, 25).map((item) => ({ source: item.source, title: item.title, url: item.url, date: item.date, hazards: item.hazards })),
+    search_items: searchItems.map((item) => ({ title: item.title, url: item.url, published: item.undated ? 'undated' : item.published })),
+  })
   if (opts.dryRun && judge) {
-    await callSlot(judge, judgeSystem(), judgeUser({
-      hypotheses: [],
-      search_items: searchItems,
-      note: 'Hunter hypotheses, weakness notes, and search items are inserted here on a live run.',
-    }))
+    await callSlot(judge, judgeSystem(), judgeUser(judgePacket([{ id: 'h0', note: 'Hunter hypotheses and weakness notes are inserted here on a live run.' }])))
   } else if (judge && hunterOk >= 2 && drafts.length > 0) {
     const called = await callSlot(
       judge,
       judgeSystem(),
-      judgeUser({
-        hypotheses: drafts,
-        search_items: searchItems,
-        structure: 'stage comes from hunter count, department count, weakness, and evidence count',
-      }),
+      judgeUser(judgePacket(drafts.map((draft) => ({
+        id: draft.id,
+        title: draft.title,
+        proposed_by: draft.proposed_by,
+        hazards: draft.hazards,
+        departments: draft.departments,
+        entities: draft.entities,
+        mechanism: draft.mechanism,
+        lead_time_days: draft.lead_time_days,
+        early_indicators: draft.early_indicators,
+        falsifier: draft.falsifier,
+        why_humans_miss: draft.why_humans_miss,
+        evidence: draft.evidence,
+        what_to_do: draft.what_to_do,
+        official_links: draft.official_links,
+        weakness_notes: draft.weakness_notes,
+      })))),
     )
     const record = asRecord(called?.parsed)
-    if (record) {
-      summaries = {
-        summary_ko: stringOr(record.summary_ko, summaries.summary_ko),
-        summary_en: stringOr(record.summary_en, summaries.summary_en),
-        headline_ko: stringOr(record.headline_ko, summaries.headline_ko),
-        headline_en: stringOr(record.headline_en, summaries.headline_en),
-      }
-      grouped = applyJudgeGroups(drafts, record.groups)
-    }
+    if (record && Array.isArray(record.groups)) grouped = applyJudgeGroups(drafts, record.groups)
   } else if (partial && drafts.length === 0) {
     summaries.headline_en = `${opts.card.name}: run stopped under the cost cap`
     summaries.summary_en = `The run for ${opts.card.name} stopped before a full brief because the cost cap was reached.`
   }
 
-  const built = grouped.map(({ draft, outsider }) => toHypothesis(draft, outsider, opts.card.horizon, searchItems))
-  const hypotheses = built.filter((row) => !row.outsider)
-  const outsider = built.filter((row) => row.outsider)
   const covered = new Set(grouped.flatMap((row) => row.sourceIds))
   if (covered.size !== drafts.length) {
     throw new Error('judge dropped a hypothesis')
+  }
+
+  const knownUrls = new Set([
+    ...searchItems.map((item) => item.url),
+    ...coverage.map((item) => item.url),
+    ...drafts.flatMap((draft) => [...draft.evidence.flatMap((item) => (item.url ? [item.url] : [])), ...draft.official_links.map((link) => link.url)]),
+  ])
+  const scored = grouped.map((row) => {
+    const verdict = obviousnessOf(row, opts.card, obvious, coverage, now, knownUrls)
+    const hypothesis = toHypothesis(row.draft, row.outsider, opts.card.horizon, coverage, verdict.non, row.judge?.twist ?? '')
+    return { row, verdict, hypothesis }
+  })
+  const baseline = scored.filter((item) => item.verdict.non === 0)
+  const liveRows = scored.filter((item) => item.verdict.non > 0)
+  const ranked = liveRows
+    .filter((item) => !item.row.outsider)
+    .sort((a, b) =>
+      b.verdict.non * b.hypothesis.stage - a.verdict.non * a.hypothesis.stage ||
+      b.hypothesis.proposed_by.length - a.hypothesis.proposed_by.length,
+    )
+  const hypotheses = ranked.slice(0, 3).map((item) => ({ ...item.hypothesis, outsider: false }))
+  const outsider = [...ranked.slice(3), ...liveRows.filter((item) => item.row.outsider)].map((item) => ({ ...item.hypothesis, outsider: true }))
+  const baselineRisks: BaselineRisk[] = baseline.map((item) => ({
+    title: item.hypothesis.title,
+    reason: item.verdict.reason,
+    proposed_by: item.hypothesis.proposed_by,
+    novelty: item.hypothesis.novelty,
+    novelty_match: item.hypothesis.novelty_match ?? null,
+  }))
+
+  const lead = [...liveRows].sort((a, b) => b.verdict.non - a.verdict.non || b.hypothesis.stage - a.hypothesis.stage)[0]
+  if (lead) {
+    const judged = lead.row.judge
+    const title = lead.hypothesis.title
+    summaries = {
+      headline_en: stringOr(judged?.headline_en, `${opts.card.name}: ${title}`),
+      headline_ko: stringOr(hangulOnly(judged?.headline_ko), `${opts.card.name}: ${title}`),
+      summary_en: stringOr(judged?.brief_en, `${title}. ${lead.hypothesis.why_humans_miss}`),
+      summary_ko: stringOr(hangulOnly(judged?.brief_ko), stringOr(hangulOnly(judged?.headline_ko), `${opts.card.name}: ${title}`)),
+    }
+  } else if (baseline.length) {
+    summaries.headline_en = `${opts.card.name}: only baseline risks this run`
+    summaries.summary_en = `Every possibility for ${opts.card.name} this run was on the obvious list or already reported.`
+    summaries.summary_ko = `${opts.card.name}: 이번 실행의 가능성은 모두 이미 알려진 기본 위험이었다.`
+    summaries.headline_ko = `${opts.card.name}: 기본 위험만 확인`
+  }
+  const everyGroup = scored.map((item) => item.hypothesis)
+  const noveltyCounts = {
+    only_us: everyGroup.filter((row) => row.novelty === 'only_us').length,
+    also_seen_elsewhere: everyGroup.filter((row) => row.novelty === 'also_seen_elsewhere').length,
   }
 
   let result: EngineResult | null = null
@@ -453,6 +543,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       ...summaries,
       map_focus: { lat: opts.card.lat, lon: opts.card.lon, zoom: opts.card.level === 0 ? 5 : 7 },
       partial,
+      baseline_risks: baselineRisks,
+      coverage: coverageCounts(coverage),
+      novelty_counts: noveltyCounts,
+      rejected,
+      obvious: obvious.map((row) => row.line),
     }
     const parsed = engineResultSchema.safeParse(candidate)
     if (!parsed.success) {
@@ -491,40 +586,9 @@ function stringOr(value: unknown, fallback: string): string {
   return typeof value === 'string' && value.trim() ? value.trim() : fallback
 }
 
-function draftFromHunter(row: unknown, model: string, horizon: Horizon, index: number): Draft | null {
-  const record = asRecord(row)
-  if (!record || typeof record.title !== 'string' || !record.title.trim()) return null
-  const chainRaw = Array.isArray(record.chain) ? record.chain : []
-  const chain = chainRaw
-    .map((step) => {
-      const item = asRecord(step)
-      if (!item || typeof item.step !== 'string' || !item.step.trim()) return null
-      return { step: item.step.trim(), cascade_id: typeof item.cascade_id === 'string' ? item.cascade_id : null }
-    })
-    .filter((step): step is { step: string; cascade_id: string | null } => step !== null)
-  const evidenceRaw = Array.isArray(record.evidence) ? record.evidence : []
-  const evidence = evidenceRaw
-    .map((item) => {
-      const entry = asRecord(item)
-      if (!entry || typeof entry.type !== 'string' || typeof entry.ref !== 'string') return null
-      const url = typeof entry.url === 'string' ? entry.url : undefined
-      return url ? { type: entry.type, ref: entry.ref, url } : { type: entry.type, ref: entry.ref }
-    })
-    .filter((item): item is { type: string; ref: string; url?: string } => item !== null)
-  return {
-    id: `h${index}`,
-    title: record.title.trim(),
-    chain: chain.length > 0 ? chain : [{ step: record.title.trim(), cascade_id: null }],
-    why_humans_miss: stringOr(record.why_humans_miss, 'The departments that hold the pieces of this possibility do not share one desk.'),
-    evidence,
-    what_to_do: stringList(record.what_to_do).length > 0
-      ? stringList(record.what_to_do)
-      : ['Check the official links and local radio before you travel, and keep drinking water in the house.'],
-    official_links: linkList(record.official_links),
-    proposed_by: [model],
-    weakness_notes: [],
-    weakness: 'low',
-  }
+/** The _ko fields must be Korean; models sometimes write the local language there instead. */
+export function hangulOnly(value: unknown): string {
+  return typeof value === 'string' && /[\uAC00-\uD7A3]/.test(value) ? value : ''
 }
 
 function linkList(value: unknown): Array<{ label: string; url: string }> {
@@ -552,13 +616,45 @@ export function applyWeakness(drafts: Draft[], notes: unknown): void {
   })
 }
 
-export function applyJudgeGroups(
-  drafts: Draft[],
-  groups: unknown,
-): Array<{ draft: Draft; outsider: boolean; rank: number; sourceIds: string[] }> {
+export interface JudgeScore {
+  non_obviousness: number | null
+  on_obvious_list: boolean
+  twist: string
+  reported_as_news: string
+  headline_ko: string
+  headline_en: string
+  brief_ko: string
+  brief_en: string
+}
+
+/** One merged group. outsider is true when the judge left the ids out of every group. */
+export interface Placed {
+  draft: Draft
+  outsider: boolean
+  rank: number
+  sourceIds: string[]
+  judge: JudgeScore | null
+}
+
+function judgeScoreOf(record: Record<string, unknown>): JudgeScore {
+  const raw = typeof record.non_obviousness === 'number' ? record.non_obviousness : Number(record.non_obviousness)
+  const text = (value: unknown) => (typeof value === 'string' ? value.trim() : '')
+  return {
+    non_obviousness: Number.isFinite(raw) && record.non_obviousness != null ? Math.min(1, Math.max(0, raw)) : null,
+    on_obvious_list: record.on_obvious_list === true,
+    twist: text(record.twist),
+    reported_as_news: /^https?:\/\//i.test(text(record.reported_as_news)) ? text(record.reported_as_news) : '',
+    headline_ko: text(record.headline_ko),
+    headline_en: text(record.headline_en),
+    brief_ko: text(record.brief_ko),
+    brief_en: text(record.brief_en),
+  }
+}
+
+export function applyJudgeGroups(drafts: Draft[], groups: unknown): Placed[] {
   const byId = new Map(drafts.map((draft) => [draft.id, draft]))
   const used = new Set<string>()
-  const placed: Array<{ draft: Draft; outsider: boolean; rank: number; sourceIds: string[] }> = []
+  const placed: Placed[] = []
   const rows = Array.isArray(groups) ? groups : []
   rows.forEach((row, index) => {
     const record = asRecord(row)
@@ -568,14 +664,57 @@ export function applyJudgeGroups(
     ids.forEach((id) => used.add(id))
     const merged = mergeDrafts(ids.map((id) => byId.get(id)!), record)
     const rank = typeof record.rank === 'number' ? record.rank : index + 1
-    const outsider = record.outsider === true || rank > 3
-    placed.push({ draft: merged, outsider, rank, sourceIds: ids })
+    placed.push({ draft: merged, outsider: false, rank, sourceIds: ids, judge: judgeScoreOf(record) })
   })
   for (const draft of drafts) {
     if (used.has(draft.id)) continue
-    placed.push({ draft, outsider: true, rank: placed.length + 1, sourceIds: [draft.id] })
+    placed.push({ draft, outsider: true, rank: placed.length + 1, sourceIds: [draft.id], judge: null })
   }
   return placed
+}
+
+/** Code check that the same hazard and a named entity are already in a recent coverage item. */
+export function reportedIn(draft: Draft, card: Pick<EngineCard, 'name' | 'country'>, coverage: CoverageItem[], now: Date): CoverageItem | null {
+  const words = entityWords(draft, card)
+  if (!words.size) return null
+  for (const item of coverage) {
+    if (!withinDays(item.date, now, REPORTED_DAYS) || !sameHazard(draft.hazards, item.hazards)) continue
+    const title = ` ${normalizeName(item.title)} `
+    if ([...words].some((word) => title.includes(` ${word} `))) return item
+  }
+  return null
+}
+
+/** Judge fallback: a single-hazard possibility already on the obvious list. */
+function obviousByCode(draft: Draft, obvious: ObviousEntry[]): boolean {
+  const known = new Set(obvious.flatMap((row) => row.hazards))
+  return draft.hazards.length <= 1 && draft.hazards.every((hazard) => known.has(hazard))
+}
+
+/**
+ * 0 when reported (a judge url must be one the run saw: search items, coverage, or hypothesis links),
+ * or on the obvious list without a twist. Otherwise the judge score, else a code fallback.
+ */
+export function obviousnessOf(
+  row: Placed,
+  card: EngineCard,
+  obvious: ObviousEntry[],
+  coverage: CoverageItem[],
+  now: Date,
+  knownUrls: Set<string> = new Set(coverage.map((item) => item.url)),
+): { non: number; reason: string } {
+  const reported = reportedIn(row.draft, card, coverage, now)
+  const judgeUrl = row.judge?.reported_as_news ?? ''
+  if (judgeUrl && knownUrls.has(judgeUrl)) return { non: 0, reason: `reported as news: ${judgeUrl}` }
+  if (reported) return { non: 0, reason: `reported as news (${reported.source}): ${reported.url}` }
+  if (row.judge) {
+    if (row.judge.on_obvious_list && !row.judge.twist) return { non: 0, reason: 'on the obvious list without a twist' }
+    if (row.judge.non_obviousness != null) {
+      return { non: row.judge.non_obviousness, reason: row.judge.non_obviousness === 0 ? 'judge scored 0' : '' }
+    }
+  }
+  if (obviousByCode(row.draft, obvious)) return { non: 0, reason: 'on the obvious list (code check)' }
+  return { non: 0.5, reason: 'judge did not score; code default 0.5' }
 }
 
 function mergeDrafts(rows: Draft[], override: Record<string, unknown>): Draft {
@@ -599,17 +738,33 @@ function mergeDrafts(rows: Draft[], override: Record<string, unknown>): Draft {
     proposed_by: [...new Set(rows.flatMap((row) => row.proposed_by))],
     weakness_notes: rows.flatMap((row) => row.weakness_notes),
     weakness: rows.some((row) => row.weakness === 'high') ? 'high' : rows.some((row) => row.weakness === 'medium') ? 'medium' : 'low',
+    hazards: [...new Set(rows.flatMap((row) => row.hazards))],
+    departments: [...new Set(rows.flatMap((row) => row.departments))],
+    entities: [...new Set(rows.flatMap((row) => row.entities))],
+    lead_time_days: {
+      min: Math.min(...rows.map((row) => row.lead_time_days.min)),
+      max: Math.max(...rows.map((row) => row.lead_time_days.max)),
+    },
+    early_indicators: [...new Set(rows.flatMap((row) => row.early_indicators))].slice(0, 2),
   }
 }
 
-function toHypothesis(draft: Draft, outsider: boolean, horizon: Horizon, items: SearchItem[]): Hypothesis {
-  const departments = departmentsTouched(draft)
+function toHypothesis(
+  draft: Draft,
+  outsider: boolean,
+  horizon: Horizon,
+  coverage: CoverageItem[],
+  nonObviousness: number,
+  twist: string,
+): Hypothesis {
+  const departments = new Set<string>([...draft.departments, ...departmentsTouched(draft)])
   const structure = structureOf({
     hunters: draft.proposed_by.length,
-    departments: departments.length,
+    departments: departments.size,
     weakness: draft.weakness,
     evidence: draft.evidence.length,
   })
+  const novelty = noveltyFor(draft.hazards, coverage)
   const hypothesis: Hypothesis = {
     title: draft.title,
     chain: draft.chain,
@@ -621,10 +776,20 @@ function toHypothesis(draft: Draft, outsider: boolean, horizon: Horizon, items: 
     official_links: draft.official_links,
     proposed_by: draft.proposed_by,
     weakness_notes: draft.weakness_notes,
-    novelty: noveltyOf(draft.title, items),
+    novelty: novelty.novelty,
     stage: structure.stage,
     confidence: structure.confidence,
     outsider,
+    hazards: draft.hazards,
+    departments: [...departments],
+    entities: draft.entities,
+    mechanism: draft.mechanism,
+    lead_time_days: draft.lead_time_days,
+    early_indicators: draft.early_indicators,
+    falsifier: draft.falsifier,
+    non_obviousness: Math.round(nonObviousness * 100) / 100,
+    twist: twist || undefined,
+    novelty_match: novelty.match,
   }
   return hypothesisSchema.parse(hypothesis)
 }

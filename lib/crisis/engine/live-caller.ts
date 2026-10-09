@@ -33,6 +33,8 @@ export function liveCaller(): ModelCaller {
         searchItems: result.searchItems
           ? normalizeSearchItems(result.searchItems, call.slot, new Date())
           : undefined,
+        searchOrigin: result.searchOrigin,
+        finishReason: result.finishReason,
       }
     },
   }

@@ -19,7 +19,7 @@ interface RegionRow {
   centroid: { type: string; coordinates: [number, number] } | string | null
 }
 
-function centroidLonLat(centroid: RegionRow['centroid']): { lon: number; lat: number } | null {
+export function centroidLonLat(centroid: RegionRow['centroid']): { lon: number; lat: number } | null {
   if (!centroid) return null
   if (typeof centroid === 'object' && Array.isArray(centroid.coordinates)) {
     const [lon, lat] = centroid.coordinates

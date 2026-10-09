@@ -8,6 +8,7 @@ import {
   FOOD,
   GDACS,
   INTERNET,
+  OBSERVED_RAIN,
   QUAKE,
   RAIN,
   RIVER,
@@ -33,6 +34,26 @@ export function rainComponent(precipMm: Array<number | null> | null | undefined)
   }
   if (maxDay >= RAIN.dayMm) value = Math.max(value, RAIN.dayValue)
   return component('rain', value, { sum_mm: sum, max_day_mm: maxDay })
+}
+
+export interface ObservedRain {
+  sum3: number
+  maxDay: number
+  days: string[]
+  runs: string[]
+}
+
+/** Forecast high but three observed days low: x0.8. Observed heavy rain only marks the forecast confirmed. */
+export function observedRainAdjust(rain: TriggerComponent, observed: ObservedRain | null): TriggerComponent {
+  if (!observed) return rain
+  const raw = { ...rain.raw, observed_3d_mm: observed.sum3, observed_max_day_mm: observed.maxDay, observed_days: observed.days, observed_runs: observed.runs }
+  if (rain.value >= OBSERVED_RAIN.forecastHigh && observed.sum3 < OBSERVED_RAIN.lowSumMm) {
+    return component('rain', rain.value * OBSERVED_RAIN.downgrade, { ...raw, observed: 'downgraded' })
+  }
+  if (observed.sum3 >= OBSERVED_RAIN.confirmSumMm || observed.maxDay >= RAIN.dayMm) {
+    return component('rain', rain.value, { ...raw, observed: 'confirmed' })
+  }
+  return component('rain', rain.value, { ...raw, observed: 'neutral' })
 }
 
 function seriesMedian(values: number[]): number {
@@ -234,8 +255,23 @@ export function silenceComponent(opts: {
   return component('silence', scored.value, scored.raw)
 }
 
+/** Active when IODA or Cloudflare reports an outage (max of the two). Corroborated when both do. */
 export function internetComponent(active: boolean, raw: Record<string, unknown> = {}): TriggerComponent {
   return component('internet', active ? INTERNET.value : 0, raw)
+}
+
+export function internetRaw(sources: string[]): Record<string, unknown> {
+  const ioda = sources.includes('ioda')
+  const cloudflare = sources.includes('cloudflare')
+  return { sources: [...sources].sort(), ioda, cloudflare, corroborated: ioda && cloudflare }
+}
+
+/** Cloudflare outages stay active while open (no end date) or until their end is inside the window. */
+export function outageActive(opts: { source: string; eventTime: string | null; until: string | null }, sinceIso: string): boolean {
+  const start = opts.eventTime ?? sinceIso
+  if (start >= sinceIso) return true
+  if (opts.source !== 'cloudflare') return false
+  return opts.until == null || opts.until >= sinceIso
 }
 
 export function advisoryComponent(opts: { changed: boolean; diverge: boolean }): TriggerComponent {

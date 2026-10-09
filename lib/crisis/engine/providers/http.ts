@@ -49,6 +49,7 @@ export async function postJson(opts: {
   body: Record<string, unknown>
   timeoutMs: number
 }): Promise<{ status: number; json: Record<string, unknown> }> {
+  const started = Date.now()
   const res = await fetch(opts.url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', ...opts.headers },
@@ -56,8 +57,20 @@ export async function postJson(opts: {
     signal: AbortSignal.timeout(opts.timeoutMs),
   })
   const contentType = res.headers.get('content-type') ?? ''
-  const raw = await res.text().catch(() => '')
-  const head = raw.slice(0, 400)
+  const headersMs = Date.now() - started
+  let raw: string
+  try {
+    raw = await res.text()
+  } catch (error: unknown) {
+    const name = error instanceof Error ? error.name : 'Error'
+    const message = error instanceof Error ? error.message : String(error)
+    console.warn(`provider HTTP ${res.status} body read failed after headers at ${headersMs}ms: ${name} ${message}`)
+    throw new ProviderHttpError(
+      res.status,
+      `HTTP ${res.status} body read failed after headers (${name}${name === 'TimeoutError' || name === 'AbortError' ? `, timeout ${opts.timeoutMs}ms` : ''}): ${message}`,
+    )
+  }
+  const head = raw.trim().slice(0, 400)
   if (!res.ok) {
     console.warn(`provider HTTP ${res.status} content-type=${contentType} body_head=${head}`)
     throw new ProviderHttpError(

@@ -11,6 +11,19 @@ export const RAIN = {
   dayValue: 0.5,
 }
 
+/** IMERG observed rain against the forecast rain component (stage >= 2 regions only). */
+export const OBSERVED_RAIN = {
+  /** Forecast rain counts as high from this component value. */
+  forecastHigh: 0.5,
+  /** Three observed days below this total downgrade a high forecast. */
+  lowSumMm: 20,
+  downgrade: 0.8,
+  /** Three observed days at or above this total, or one day at RAIN.dayMm, confirm the forecast. */
+  confirmSumMm: 60,
+  /** Older observations are ignored. */
+  maxAgeDays: 5,
+}
+
 export const RIVER = {
   ratioSoft: 2,
   ratioHard: 3,

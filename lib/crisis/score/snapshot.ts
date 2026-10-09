@@ -21,11 +21,12 @@ import type { EventPoint } from '../events/link'
 import { politeFetch } from '../ingest/fetch'
 import { advisoryPairDiverges } from './advisory'
 import { asRecord, finite } from './math'
-import { ADVISORY, INTERNET, RAIN, WIKI } from './thresholds'
+import { ADVISORY, INTERNET, OBSERVED_RAIN, RAIN, WIKI } from './thresholds'
 import { forecastRainFired, } from './vector-watch'
 import { eventIsOlderThan, loadWikiYearCache, lookupWikiEventYear, saveWikiYearCache } from './wikidata'
 import { classifyWikiTitle, wikiArticleTitle } from './wiki'
 import type { CampSite, DamSite, PlantSite, PointEvent, QuakeEvent, RelatedSignal, UrbanCentre } from './types'
+import { outageActive, type ObservedRain } from './trigger'
 
 export interface ScoreRegion {
   id: number
@@ -59,6 +60,8 @@ export interface RegionInputs {
   informCoping: number | null
   ipc: number | null
   internet: boolean
+  internetSources: string[]
+  observedRain: ObservedRain | null
   wiki: boolean
   wikiTitle: string | null
   advisoryChange: boolean
@@ -87,8 +90,20 @@ export interface ScoreSnapshot {
   wikiDropped: string[]
   wikiByIso: Map<string, { natural: string[]; human: string[]; health: string[] }>
   enso: { status: string; anomaly: number | null } | null
+  oil: OilContext | null
   observations: EventPoint[]
   rainDays: Map<number, string[]>
+}
+
+export interface OilQuote {
+  value: number
+  day: string
+  change30: number | null
+}
+
+export interface OilContext {
+  brent: OilQuote | null
+  wti: OilQuote | null
 }
 
 function centroidLonLat(centroid: unknown): { lon: number; lat: number } | null {
@@ -144,6 +159,8 @@ function emptyInputs(): RegionInputs {
     informCoping: null,
     ipc: null,
     internet: false,
+    internetSources: [],
+    observedRain: null,
     wiki: false,
     wikiTitle: null,
     advisoryChange: false,
@@ -505,8 +522,13 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       const alert = String(raw.color_code ?? raw.alert_level ?? '')
       volcanoes.push({ lat: row.lat, lon: row.lon, event_time: row.event_time, alert })
     } else if (row.signal_type === 'internet_outage') {
-      const t = row.event_time ?? sinceInternet
-      if (t >= sinceInternet) inheritCountry(row.country_iso3, (cur) => { cur.internet = true })
+      const until = typeof raw.until === 'string' ? raw.until : null
+      if (outageActive({ source: row.source, eventTime: row.event_time, until }, sinceInternet)) {
+        inheritCountry(row.country_iso3, (cur) => {
+          cur.internet = true
+          if (!cur.internetSources.includes(row.source)) cur.internetSources.push(row.source)
+        })
+      }
     } else if (row.signal_type === 'wiki_new_top' && (row.event_time ?? '') >= sinceWiki) {
       const stored = row.title ?? ''
       const title = wikiArticleTitle(stored)
@@ -706,6 +728,9 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     }
   }
 
+  for (const [id, observed] of await loadObservedRain(client, now)) put(id).observedRain = observed
+  const oil = await loadOil(client, now)
+
   return {
     day,
     regions,
@@ -728,9 +753,100 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     wikiDropped,
     wikiByIso,
     enso,
+    oil,
     observations,
     rainDays: await loadRainDays(client, now),
   }
+}
+
+/** Latest IMERG three-day total per region, with the daily values it was built from. */
+export function observedRainFromRows(
+  rows: Array<{ region_id: number; metric: string; valid_time: string; value: number | null; detail: unknown; issued_at: string }>,
+): Map<number, ObservedRain> {
+  const daily = new Map<string, { value: number; issued: string }>()
+  const latest3 = new Map<number, { valid: string; issued: string; value: number; days: string[]; runs: string[] }>()
+  for (const row of rows) {
+    const id = Number(row.region_id)
+    const value = finite(row.value)
+    if (value == null) continue
+    const day = String(row.valid_time).slice(0, 10)
+    if (row.metric === 'imerg_precip_1d') {
+      const key = `${id}|${day}`
+      const prev = daily.get(key)
+      if (!prev || row.issued_at >= prev.issued) daily.set(key, { value, issued: row.issued_at })
+    } else if (row.metric === 'imerg_precip_3d') {
+      const prev = latest3.get(id)
+      if (!prev || day > prev.valid || (day === prev.valid && row.issued_at >= prev.issued)) {
+        const detail = asRecord(row.detail) ?? {}
+        const days = Array.isArray(detail.days) ? detail.days.map(String) : []
+        const runs = Array.isArray(detail.runs) ? detail.runs.map(String) : []
+        latest3.set(id, { valid: day, issued: row.issued_at, value, days, runs })
+      }
+    }
+  }
+  const out = new Map<number, ObservedRain>()
+  for (const [id, row] of latest3) {
+    const values = row.days.map((day) => daily.get(`${id}|${day}`)?.value).filter((value): value is number => value != null)
+    out.set(id, { sum3: row.value, maxDay: values.length ? Math.max(...values) : 0, days: row.days, runs: row.runs })
+  }
+  return out
+}
+
+async function loadObservedRain(client: SupabaseClient, now: Date): Promise<Map<number, ObservedRain>> {
+  const since = new Date(now.getTime() - OBSERVED_RAIN.maxAgeDays * 86_400_000).toISOString()
+  try {
+    const rows = await pageSelect<{ region_id: number; metric: string; valid_time: string; value: number | null; detail: unknown; issued_at: string }>(
+      client,
+      'crisis_region_metrics',
+      'region_id, metric, valid_time, value, detail, issued_at',
+      (q) => q.in('metric', ['imerg_precip_1d', 'imerg_precip_3d']).gte('valid_time', since),
+    )
+    return observedRainFromRows(rows)
+  } catch {
+    return new Map()
+  }
+}
+
+export function oilFromRows(rows: Array<{ metric: string; valid_time: string; value: number | null }>): OilContext | null {
+  const quote = (metric: string): OilQuote | null => {
+    const series = rows
+      .filter((row) => row.metric === metric && finite(row.value) != null)
+      .map((row) => ({ day: String(row.valid_time).slice(0, 10), value: row.value as number }))
+      .sort((a, b) => b.day.localeCompare(a.day))
+    const head = series[0]
+    if (!head) return null
+    const cutoff = new Date(Date.parse(`${head.day}T00:00:00Z`) - 30 * 86_400_000).toISOString().slice(0, 10)
+    const base = series.find((row) => row.day <= cutoff)
+    const change30 = base && base.value > 0 ? Math.round(((head.value - base.value) / base.value) * 1000) / 10 : null
+    return { value: head.value, day: head.day, change30 }
+  }
+  const brent = quote('brent_usd')
+  const wti = quote('wti_usd')
+  return brent || wti ? { brent, wti } : null
+}
+
+async function loadOil(client: SupabaseClient, now: Date): Promise<OilContext | null> {
+  const since = new Date(now.getTime() - 50 * 86_400_000).toISOString()
+  const { data, error } = await client
+    .from('crisis_global_metrics')
+    .select('metric, valid_time, value')
+    .in('metric', ['brent_usd', 'wti_usd'])
+    .eq('source', 'eia')
+    .gte('valid_time', since)
+    .limit(500)
+  if (error) return null
+  return oilFromRows((data ?? []) as Array<{ metric: string; valid_time: string; value: number | null }>)
+}
+
+export function oilContextLine(oil: OilContext | null): string | null {
+  if (!oil) return null
+  const part = (label: string, quote: OilQuote | null) => {
+    if (!quote) return null
+    const change = quote.change30 == null ? '' : `, ${quote.change30 >= 0 ? '+' : ''}${quote.change30}% vs 30d`
+    return `${label} $${quote.value.toFixed(2)} (${quote.day}${change})`
+  }
+  const parts = [part('Brent', oil.brent), part('WTI', oil.wti)].filter(Boolean)
+  return parts.length ? `oil: ${parts.join('; ')} [EIA]` : null
 }
 
 async function loadRainDays(client: SupabaseClient, now: Date): Promise<Map<number, string[]>> {

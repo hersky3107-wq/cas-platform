@@ -31,6 +31,8 @@ export interface ResolvedRoster {
 }
 
 const REASONING_MINIMAL = { reasoning: { effort: 'minimal' } }
+/** Qwen 3.5 Plus and DeepSeek V3.2 ignore effort=minimal on OpenRouter and reason for 2k-5k tokens. */
+const REASONING_OFF = { reasoning: { enabled: false } }
 const XAI_REASONING_LOW = { reasoning_effort: 'low' }
 
 function slot(partial: RosterSlot): RosterSlot {
@@ -129,8 +131,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       provider: 'openrouter',
       brand: 'Qwen',
       search: false,
-      extraBody: REASONING_MINIMAL,
-      reasoning: true,
+      extraBody: REASONING_OFF,
     }),
     slot({
       role: 'hunter',
@@ -139,8 +140,7 @@ export function resolveRoster(env: NodeJS.ProcessEnv = process.env): ResolvedRos
       provider: 'openrouter',
       brand: 'DeepSeek',
       search: false,
-      extraBody: REASONING_MINIMAL,
-      reasoning: true,
+      extraBody: REASONING_OFF,
     }),
     slot({
       role: 'hunter',

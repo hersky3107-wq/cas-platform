@@ -11,7 +11,8 @@ import { vectorDiseaseContext } from './vector-watch'
 import { printTop30 } from './print'
 import { calibrationReport } from './report'
 import { loadSlowBurn } from './slowburn-load'
-import { loadScoreSnapshot, watchlistIso3 } from './snapshot'
+import { loadScoreSnapshot, oilContextLine, watchlistIso3 } from './snapshot'
+import { isOilDependentIso3 } from '../config/oil'
 import { COMPONENT_FAMILY, CYCLONE, SCORE_SCHEDULE_MINUTES, SCORE_SOURCE } from './thresholds'
 import {
   advisoryComponent,
@@ -23,6 +24,8 @@ import {
   foodComponent,
   gdacsComponent,
   internetComponent,
+  internetRaw,
+  observedRainAdjust,
   quakeComponent,
   rainComponent,
   riverComponent,
@@ -74,7 +77,7 @@ export async function runLayer1Score(
     const naturalTitles = naturalTitlesForCoast(wiki?.natural ?? [], region.lat, region.lon)
     if (naturalTitles[0]) naturalTitleByRegion.set(region.id, naturalTitles[0])
     let components = [
-      rainComponent(input.precip),
+      observedRainAdjust(rainComponent(input.precip), input.observedRain),
       riverComponent({
         discharge: input.discharge,
         ratioTo30d: input.ratioTo30d,
@@ -100,7 +103,7 @@ export async function runLayer1Score(
         series: input.gdeltSeries,
         now,
       }),
-      internetComponent(input.internet),
+      internetComponent(input.internet, internetRaw(input.internetSources)),
       advisoryComponent({ changed: input.advisoryChange, diverge: input.advisoryDiverge }),
       foodComponent(input.ipc),
     ]
@@ -159,6 +162,8 @@ export async function runLayer1Score(
     }
     const vector = vectorDiseaseContext(snap.rainDays.get(region.id) ?? [], now)
     if (vector) context.push(vector)
+    const oilLine = isConflictWatchlistIso3(region.iso3) || isOilDependentIso3(region.iso3) ? oilContextLine(snap.oil) : null
+    if (oilLine) context.push(oilLine)
     const extra = snap.plants
       .filter((plant) => plant.region_id === region.id && (plant.kind === 'chemical_plant' || plant.kind === 'port'))
       .slice(0, 3)

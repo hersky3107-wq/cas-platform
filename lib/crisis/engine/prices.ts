@@ -29,18 +29,18 @@ export const TYPICAL_OUTPUT_TOKENS: Record<EngineRole, number> = {
   dept_analyst: 400,
   query_writer: 180,
   search: 700,
-  hunter: 700,
+  hunter: 900,
   red_team: 400,
-  judge: 1100,
+  judge: 2500,
 }
 
 export const TOKEN_CAPS: Record<EngineRole, { in: number; out: number }> = {
   dept_analyst: { in: 4000, out: 1200 },
   query_writer: { in: 2000, out: 400 },
   search: { in: 2500, out: 1200 },
-  hunter: { in: 6000, out: 3000 },
-  red_team: { in: 6000, out: 1000 },
-  judge: { in: 8000, out: 4000 },
+  hunter: { in: 9000, out: 3000 },
+  red_team: { in: 6000, out: 1800 },
+  judge: { in: 14000, out: 9000 },
 }
 
 /** Added on top of the role output cap for models that spend tokens on reasoning. */
@@ -54,9 +54,9 @@ export const ROLE_TIMEOUT_MS: Record<EngineRole, number> = {
   dept_analyst: 45_000,
   query_writer: 30_000,
   search: 150_000,
-  hunter: 60_000,
-  red_team: 45_000,
-  judge: 90_000,
+  hunter: 150_000,
+  red_team: 120_000,
+  judge: 150_000,
 }
 
 export const DEFAULT_COST_CAP_USD = 1.5

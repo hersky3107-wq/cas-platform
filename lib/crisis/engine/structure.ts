@@ -1,5 +1,4 @@
 import type { Department, Hypothesis } from './schema'
-import type { SearchItem } from './search-items'
 
 const KEY_DEPARTMENT: Record<string, Department> = {
   rain: 'natural-hydro',
@@ -27,21 +26,6 @@ const KEY_DEPARTMENT: Record<string, Department> = {
   enso: 'infrastructure-economy',
 }
 
-const MAINSTREAM = [
-  'gdacs.org',
-  'metaculus.com',
-  'reuters.com',
-  'bbc.com',
-  'bbc.co.uk',
-  'apnews.com',
-  'afp.com',
-  'reliefweb.int',
-  'who.int',
-  'nhc.noaa.gov',
-  'metoffice.gov.uk',
-  'jma.go.jp',
-]
-
 export type Weakness = 'low' | 'medium' | 'high'
 
 export function departmentsTouched(hypothesis: Pick<Hypothesis, 'evidence'>): Department[] {
@@ -67,37 +51,6 @@ export function structureOf(input: {
   const stage = (score >= 6 ? 5 : score >= 5 ? 4 : score >= 3 ? 3 : score >= 2 ? 2 : 1) as 1 | 2 | 3 | 4 | 5
   const confidence = stage >= 4 ? 'high' : stage >= 3 ? 'medium' : 'low'
   return { stage, confidence, possibility: confidence }
-}
-
-function hostOf(url: string): string {
-  try {
-    return new URL(url).hostname.replace(/^www\./, '')
-  } catch {
-    return ''
-  }
-}
-
-function words(text: string): Set<string> {
-  return new Set(
-    text
-      .toLowerCase()
-      .split(/[^a-z0-9]+/)
-      .filter((word) => word.length > 4),
-  )
-}
-
-export function noveltyOf(title: string, items: SearchItem[]): 'only_us' | 'also_seen_elsewhere' {
-  const titleWords = words(title)
-  for (const item of items) {
-    if (item.past) continue
-    const host = hostOf(item.url)
-    if (!MAINSTREAM.some((domain) => host === domain || host.endsWith(`.${domain}`))) continue
-    const overlap = [...words(item.title)].filter((word) => titleWords.has(word))
-    if (overlap.length >= 2 || (titleWords.size > 0 && overlap.length >= 1 && title.length < 40)) {
-      return 'also_seen_elsewhere'
-    }
-  }
-  return 'only_us'
 }
 
 export function weaknessOf(note: string, severity: string | undefined): Weakness {
