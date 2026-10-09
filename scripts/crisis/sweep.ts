@@ -9,6 +9,8 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { CRISIS_SOURCES, sourceByKey } from '../../lib/crisis/ingest/registry'
 import { isDue, loadState, runSource } from '../../lib/crisis/ingest/run'
+import { runLayer1Score } from '../../lib/crisis/score/job'
+import { SCORE_SOURCE } from '../../lib/crisis/score/thresholds'
 import { supabaseAdmin } from '../../lib/supabase/server'
 
 const LOOP_MS = 60_000
@@ -52,8 +54,32 @@ function argValue(flag: string): string | null {
   return hit ? hit.slice(prefix.length) : null
 }
 
+async function maybeScore(opts: { dryRun: boolean; force: boolean; now: Date; afterForecast: boolean }): Promise<void> {
+  if (!opts.force && !opts.afterForecast && !opts.dryRun) {
+    const state = await loadState(supabaseAdmin, SCORE_SOURCE)
+    if (!isDue(state, opts.now, false)) return
+  }
+  const result = await runLayer1Score(supabaseAdmin, { dryRun: opts.dryRun, now: opts.now })
+  console.log(
+    JSON.stringify({
+      at: opts.now.toISOString(),
+      source: SCORE_SOURCE,
+      status: 'ok',
+      rowsIn: result.scored,
+      rowsWritten: opts.dryRun ? 0 : result.scored + result.cards,
+      cards: result.cards,
+      neighbors: result.neighborSource,
+    }),
+  )
+}
+
 async function pass(opts: { dryRun: boolean; only: string | null }): Promise<void> {
   const now = new Date()
+  if (opts.only === SCORE_SOURCE) {
+    await maybeScore({ dryRun: opts.dryRun, force: true, now, afterForecast: false })
+    return
+  }
+
   const sources = opts.only
     ? [sourceByKey(opts.only)].filter((item): item is NonNullable<typeof item> => Boolean(item))
     : CRISIS_SOURCES
@@ -61,6 +87,7 @@ async function pass(opts: { dryRun: boolean; only: string | null }): Promise<voi
     throw new Error(`unknown source ${opts.only}`)
   }
 
+  let forecastRan = false
   for (const source of sources) {
     if (!opts.only && !opts.dryRun) {
       const state = await loadState(supabaseAdmin, source.key)
@@ -77,6 +104,17 @@ async function pass(opts: { dryRun: boolean; only: string | null }): Promise<voi
         ...summary,
       }),
     )
+    if (
+      (source.key === 'openmeteo_forecast' || source.key === 'glofas') &&
+      !summary.skipped &&
+      (summary.status === 'ok' || summary.status === 'partial')
+    ) {
+      forecastRan = true
+    }
+  }
+
+  if (!opts.only && !opts.dryRun) {
+    await maybeScore({ dryRun: false, force: false, now, afterForecast: forecastRan })
   }
 }
 

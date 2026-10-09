@@ -1,0 +1,262 @@
+import { clamp, combineOr, finite, haversineKm, hoursBetween, percentileThreshold } from './math'
+import {
+  ADVISORY,
+  COMPONENT_DEPARTMENT,
+  CONFLICT,
+  CYCLONE,
+  FIRE,
+  FOOD,
+  GDACS,
+  INTERNET,
+  QUAKE,
+  RAIN,
+  RIVER,
+  SILENCE,
+  VOLCANO,
+  WIKI,
+} from './thresholds'
+import type { PointEvent, QuakeEvent, TriggerComponent } from './types'
+
+function component(key: string, value: number, raw: Record<string, unknown>): TriggerComponent {
+  return { key, department: COMPONENT_DEPARTMENT[key] ?? 'other', value: clamp(value), raw }
+}
+
+export function rainComponent(precipMm: Array<number | null> | null | undefined): TriggerComponent {
+  const days = (precipMm ?? []).filter((value): value is number => value != null && Number.isFinite(value))
+  const sum = days.reduce((acc, value) => acc + value, 0)
+  const maxDay = days.reduce((acc, value) => Math.max(acc, value), 0)
+  let value = 0
+  if (sum >= RAIN.sumHardMm) value = RAIN.sumHardValue
+  else if (sum >= RAIN.sumSoftMm) {
+    value = RAIN.sumSoftValue +
+      ((sum - RAIN.sumSoftMm) / (RAIN.sumHardMm - RAIN.sumSoftMm)) * (RAIN.sumHardValue - RAIN.sumSoftValue)
+  }
+  if (maxDay >= RAIN.dayMm) value = Math.max(value, RAIN.dayValue)
+  return component('rain', value, { sum_mm: sum, max_day_mm: maxDay })
+}
+
+export function riverComponent(opts: {
+  discharge: Array<number | null> | null | undefined
+  ratioTo30d?: Array<number | null> | null
+}): TriggerComponent {
+  const ratios = (opts.ratioTo30d ?? []).filter((value): value is number => value != null && Number.isFinite(value))
+  const discharge = (opts.discharge ?? []).filter((value): value is number => value != null && Number.isFinite(value))
+  let ratio: number | null = null
+  let used = 'none'
+  if (ratios.length) {
+    ratio = Math.max(...ratios)
+    used = 'ratio_to_30d_mean'
+  } else if (discharge.length >= 2 && discharge[0] > 0) {
+    ratio = Math.max(...discharge.slice(1)) / discharge[0]
+    used = 'max_next7_over_today'
+  }
+  let value = 0
+  if (ratio != null) {
+    if (ratio >= RIVER.ratioHard) value = RIVER.hardValue
+    else if (ratio >= RIVER.ratioSoft) {
+      value = RIVER.softValue +
+        ((ratio - RIVER.ratioSoft) / (RIVER.ratioHard - RIVER.ratioSoft)) * (RIVER.hardValue - RIVER.softValue)
+    }
+  }
+  return component('river', value, { ratio, used })
+}
+
+export function cycloneComponent(
+  lat: number,
+  lon: number,
+  now: Date,
+  tracks: PointEvent[],
+): TriggerComponent {
+  let bestKm = Infinity
+  let hits = 0
+  const horizon = now.getTime() + CYCLONE.horizonDays * 86_400_000
+  for (const point of tracks) {
+    const t = point.event_time ? Date.parse(point.event_time) : now.getTime()
+    if (!Number.isFinite(t) || t < now.getTime() - 86_400_000 || t > horizon) continue
+    const km = haversineKm(lat, lon, point.lat, point.lon)
+    hits += 1
+    if (km < bestKm) bestKm = km
+  }
+  let value = 0
+  if (Number.isFinite(bestKm) && bestKm <= CYCLONE.closeKm) value = CYCLONE.closeValue
+  else if (Number.isFinite(bestKm) && bestKm <= CYCLONE.nearKm) value = CYCLONE.nearValue
+  return component('cyclone', value, { nearest_km: Number.isFinite(bestKm) ? bestKm : null, points: hits })
+}
+
+export function quakeComponent(lat: number, lon: number, now: Date, events: QuakeEvent[]): TriggerComponent {
+  let best: { mag: number; km: number } | null = null
+  let swarm = 0
+  const week = now.getTime() - QUAKE.days * 86_400_000
+  const swarmFrom = now.getTime() - QUAKE.swarmHours * 3_600_000
+  for (const event of events) {
+    const t = event.event_time ? Date.parse(event.event_time) : NaN
+    if (Number.isFinite(t) && t < week) continue
+    const km = haversineKm(lat, lon, event.lat, event.lon)
+    if (km <= QUAKE.nearKm && (!best || event.mag > best.mag || (event.mag === best.mag && km < best.km))) {
+      best = { mag: event.mag, km }
+    }
+    if (event.source === 'emsc' && km <= QUAKE.swarmKm && (!Number.isFinite(t) || t >= swarmFrom)) swarm += 1
+  }
+  let value = 0
+  if (best && best.mag >= QUAKE.magHard) value = QUAKE.magHardValue
+  else if (best && best.mag >= QUAKE.magSoft) value = QUAKE.magSoftValue
+  if (swarm >= QUAKE.swarmCount) value = Math.max(value, QUAKE.swarmValue)
+  return component('quake', value, { mag: best?.mag ?? null, km: best?.km ?? null, swarm })
+}
+
+function alertValue(alert: string | null | undefined, orange: number, red: number): number {
+  const key = (alert ?? '').trim().toLowerCase()
+  if (key === 'red') return red
+  if (key === 'orange' || key === 'amber') return orange
+  return 0
+}
+
+export function gdacsComponent(
+  lat: number,
+  lon: number,
+  regionId: number,
+  iso3: string | null,
+  now: Date,
+  events: PointEvent[],
+): TriggerComponent {
+  let value = 0
+  let used: string | null = null
+  const since = now.getTime() - GDACS.days * 86_400_000
+  for (const event of events) {
+    const t = event.event_time ? Date.parse(event.event_time) : now.getTime()
+    if (Number.isFinite(t) && t < since) continue
+    const near =
+      event.region_id === regionId ||
+      (iso3 && event.country_iso3 === iso3) ||
+      haversineKm(lat, lon, event.lat, event.lon) <= GDACS.nearKm
+    if (!near) continue
+    const next = alertValue(event.alert, GDACS.orangeValue, GDACS.redValue)
+    if (next > value) {
+      value = next
+      used = event.alert ?? null
+    }
+  }
+  return component('gdacs', value, { alert: used })
+}
+
+export function volcanoComponent(
+  lat: number,
+  lon: number,
+  now: Date,
+  events: PointEvent[],
+): TriggerComponent {
+  let value = 0
+  let used: string | null = null
+  const since = now.getTime() - VOLCANO.days * 86_400_000
+  for (const event of events) {
+    const t = event.event_time ? Date.parse(event.event_time) : now.getTime()
+    if (Number.isFinite(t) && t < since) continue
+    if (haversineKm(lat, lon, event.lat, event.lon) > VOLCANO.nearKm) continue
+    const next = alertValue(event.alert, VOLCANO.orangeValue, VOLCANO.redValue)
+    if (next > value) {
+      value = next
+      used = event.alert ?? null
+    }
+  }
+  return component('volcano', value, { alert: used })
+}
+
+export function fireComponent(opts: {
+  frpSum: number
+  top1Cut: number | null
+  watchlist: boolean
+}): TriggerComponent {
+  let value = 0
+  if (opts.top1Cut != null && opts.frpSum > 0 && opts.frpSum >= opts.top1Cut) value = FIRE.topValue
+  if (opts.watchlist) value = Math.max(value, FIRE.watchlistValue)
+  return component('fire', value, { frp_sum: opts.frpSum, watchlist: opts.watchlist, top1_cut: opts.top1Cut })
+}
+
+export function conflictComponent(opts: {
+  conflictCount: number
+  mean30d: number | null
+  historyDays: number
+  absCut: number | null
+}): TriggerComponent {
+  let value = 0
+  let ratio: number | null = null
+  if (opts.historyDays >= CONFLICT.minHistoryDays && opts.mean30d != null && opts.mean30d > 0) {
+    ratio = opts.conflictCount / opts.mean30d
+    if (ratio >= CONFLICT.ratioHard) value = CONFLICT.hardValue
+    else if (ratio >= CONFLICT.ratioSoft) {
+      value = CONFLICT.softValue +
+        ((ratio - CONFLICT.ratioSoft) / (CONFLICT.ratioHard - CONFLICT.ratioSoft)) * (CONFLICT.hardValue - CONFLICT.softValue)
+    }
+  } else if (opts.absCut != null && opts.conflictCount > 0 && opts.conflictCount >= opts.absCut) {
+    value = CONFLICT.absValue
+  }
+  return component('conflict', value, {
+    count: opts.conflictCount,
+    mean_30d: opts.mean30d,
+    history_days: opts.historyDays,
+    ratio,
+  })
+}
+
+export function silenceComponent(opts: {
+  totalEvents: number
+  mean30d: number | null
+  historyDays: number
+}): TriggerComponent {
+  let value = 0
+  const fraction = opts.mean30d != null && opts.mean30d > 0 ? opts.totalEvents / opts.mean30d : null
+  if (opts.historyDays >= SILENCE.minHistoryDays && fraction != null && fraction < SILENCE.fraction) {
+    value = SILENCE.value
+  }
+  return component('silence', value, {
+    total_events: opts.totalEvents,
+    mean_30d: opts.mean30d,
+    fraction,
+    history_days: opts.historyDays,
+  })
+}
+
+export function internetComponent(active: boolean, raw: Record<string, unknown> = {}): TriggerComponent {
+  return component('internet', active ? INTERNET.value : 0, raw)
+}
+
+export function advisoryComponent(opts: { changed: boolean; diverge: boolean }): TriggerComponent {
+  let value = 0
+  if (opts.changed) value = ADVISORY.changeValue
+  if (opts.diverge) value = Math.max(value, ADVISORY.divergeValue)
+  return component('advisory', value, { change: opts.changed, diverge: opts.diverge })
+}
+
+export function wikiComponent(freshHazard: boolean, title: string | null = null): TriggerComponent {
+  return component('wiki', freshHazard ? WIKI.value : 0, { title })
+}
+
+export function foodComponent(ipc: number | null): TriggerComponent {
+  let value = 0
+  if (ipc != null && ipc >= FOOD.ipcHard) value = FOOD.hardValue
+  else if (ipc != null && ipc >= FOOD.ipcSoft) value = FOOD.softValue
+  return component('food', value, { ipc })
+}
+
+export function combineTrigger(components: TriggerComponent[]): number {
+  return combineOr(components.map((row) => row.value))
+}
+
+export function fireCuts(frpByRegion: Map<number, number>): number | null {
+  return percentileThreshold([...frpByRegion.values()], FIRE.topPercentile)
+}
+
+export function conflictAbsCut(counts: number[]): number | null {
+  return percentileThreshold(counts.filter((value) => value > 0), CONFLICT.absTopPercentile)
+}
+
+export function isActiveOutage(eventTime: string | null | undefined, now: Date): boolean {
+  if (!eventTime) return true
+  const t = Date.parse(eventTime)
+  if (!Number.isFinite(t)) return true
+  return hoursBetween(now, new Date(t)) <= INTERNET.activeHours
+}
+
+export function finiteMetric(value: unknown): number | null {
+  return finite(value)
+}
