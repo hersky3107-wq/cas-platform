@@ -1,8 +1,8 @@
-import { buildDedupeKey } from '../dedupe'
 import { asArray, asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import { toIso3 } from '../iso'
 import { loadCountryIdByIso3 } from '../regions'
 import type { CrisisSource, IngestFetchResult, NormalizedSignal } from '../types'
+import { collapseSignals } from '../upsert'
 
 /** Official IODA v2 outage endpoints (https://api.ioda.inetintel.cc.gatech.edu/v2/). */
 export const IODA_ALERTS_URL = 'https://api.ioda.inetintel.cc.gatech.edu/v2/outages/alerts'
@@ -17,6 +17,25 @@ function levelScore(level: string | null): number | null {
   if (key === 'normal' || key === 'minor') return 2
   if (key === 'watch' || key === 'info') return 1
   return null
+}
+
+function datasourceLabel(value: unknown): string {
+  if (typeof value === 'string') return value
+  if (Array.isArray(value)) return value.map(datasourceLabel).filter(Boolean).sort().join('+')
+  const rec = asRecord(value)
+  if (typeof rec?.name === 'string') return rec.name
+  if (value == null) return ''
+  return String(value)
+}
+
+/** Stable key: entity type, entity code, datasource, alert/event start. */
+export function iodaDedupeKey(parts: {
+  entityType: string | null
+  entityCode: string | null
+  datasource: string
+  start: string | null
+}): string {
+  return ['ioda', 'internet_outage', parts.entityType ?? '', parts.entityCode ?? '', parts.datasource, parts.start ?? ''].join('|')
 }
 
 function entityOf(rec: Record<string, unknown>): { code: string | null; type: string | null; name: string | null } {
@@ -63,7 +82,7 @@ export function normalizeIodaOutages(
     const score = finiteNumber(row.score ?? row.value ?? row.severity) ?? levelScore(typeof row.level === 'string' ? row.level : null)
     const from = isoTime(row.from ?? row.start ?? row.time)
     const until = isoTime(row.until ?? row.end)
-    const id = [kind, entity.type, entity.code, from, row.datasource ?? ''].join('|')
+    const datasource = datasourceLabel(row.datasource ?? row.datasources)
     const regionId = iso3 ? countryIds.get(iso3) ?? null : null
     out.push({
       department: 'connectivity',
@@ -80,7 +99,7 @@ export function normalizeIodaOutages(
         entity_code: entity.code,
         entity_name: entity.name,
         level: row.level ?? null,
-        datasource: row.datasource ?? row.datasources ?? null,
+        datasource,
         from,
         until,
         region_id: regionId,
@@ -89,7 +108,12 @@ export function normalizeIodaOutages(
       unit_raw: 'ioda_score',
       event_time: from,
       url: 'https://ioda.inetintel.cc.gatech.edu/',
-      dedupe_key: buildDedupeKey({ source: 'ioda', signalType: 'internet_outage', id, eventTime: from }),
+      dedupe_key: iodaDedupeKey({
+        entityType: entity.type,
+        entityCode: entity.code,
+        datasource,
+        start: from,
+      }),
     })
   }
   return out
@@ -121,23 +145,26 @@ export const iodaSource: CrisisSource = {
     if (!alerts.ok) notes.push(`alerts HTTP ${alerts.status}`)
     else signals.push(...normalizeIodaOutages(alerts.data, 'alert', countryIds))
 
-    if (!ctx.dryRun) {
-      const events = await politeFetch(`${IODA_EVENTS_URL}?${qs}`, {
-        sourceKey: 'ioda',
-        minIntervalMs: 1500,
-      })
-      httpCalls += 1
-      if (!events.ok) notes.push(`events HTTP ${events.status}`)
-      else signals.push(...normalizeIodaOutages(events.data, 'event', countryIds))
-    }
+    const events = await politeFetch(`${IODA_EVENTS_URL}?${qs}`, {
+      sourceKey: 'ioda',
+      minIntervalMs: 1500,
+    })
+    httpCalls += 1
+    if (!events.ok) notes.push(`events HTTP ${events.status}`)
+    else signals.push(...normalizeIodaOutages(events.data, 'event', countryIds))
 
-    if (!signals.length && notes.length) {
+    const collapsed = collapseSignals(signals)
+    const removed = signals.length - collapsed.length
+    if (removed) ctx.log(`[ioda] collapsed ${removed} duplicates`)
+    if (!collapsed.length && notes.length) {
       return { httpCalls, error: notes.join('; ') }
     }
     return {
       httpCalls,
-      signals,
-      quotaNote: notes.length ? notes.join('; ') : `alerts+${ctx.dryRun ? 'skip-events' : 'events'} n=${signals.length}`,
+      signals: collapsed,
+      quotaNote: [`n=${collapsed.length}`, removed ? `collapsed=${removed}` : null, notes.join('; ') || null]
+        .filter(Boolean)
+        .join('; '),
     }
   },
 }

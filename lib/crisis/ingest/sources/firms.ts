@@ -1,11 +1,14 @@
 import { isConflictWatchlistIso3 } from '../../config/watchlist'
 import { assignLatLonBatch } from '../assign'
 import { buildDedupeKey } from '../dedupe'
-import { finiteNumber, isoTime, politeFetch } from '../fetch'
+import { asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
+import { loadStateSafe } from '../regions'
 import type { CrisisSource, IngestFetchResult, NormalizedDaily, NormalizedSignal } from '../types'
 
 export const FIRMS_ROW_CAP = 20_000
 export const FIRMS_KEEP_FRP_MW = 100
+export const FIRMS_LOW_VOLUME_ABS = 3_000
+export const FIRMS_LOW_VOLUME_RATIO = 0.3
 export const FIRMS_AREA = 'world'
 export const FIRMS_DAY_RANGE = 1
 /** NOAA-20 first: the 2026-10-08 SNPP world/1 call returned a header and zero detections. */
@@ -183,6 +186,42 @@ export function normalizeFirmsCsv(csv: string, cap = FIRMS_ROW_CAP): { signals: 
   return { signals: firmsDetectionsToSignals(assigned), before, capped }
 }
 
+export function firmsMedian(values: number[]): number | null {
+  if (!values.length) return null
+  const sorted = [...values].sort((a, b) => a - b)
+  const mid = Math.floor(sorted.length / 2)
+  if (sorted.length % 2) return sorted[mid]
+  return (sorted[mid - 1] + sorted[mid]) / 2
+}
+
+/** Low when below 30% of the trailing median, or below 3000 with no history. */
+export function firmsVolumeIsLow(count: number, history: number[]): boolean {
+  const median = firmsMedian(history)
+  if (median == null) return count < FIRMS_LOW_VOLUME_ABS
+  return count < FIRMS_LOW_VOLUME_RATIO * median
+}
+
+export function firmsDedupeKey(row: FirmsDetection): string {
+  return `${row.lat.toFixed(2)}|${row.lon.toFixed(2)}|${row.acq_date ?? ''}|${row.acq_time ?? ''}`
+}
+
+export function dedupeFirmsDetections(rows: FirmsDetection[]): FirmsDetection[] {
+  const map = new Map<string, FirmsDetection>()
+  for (const row of rows) {
+    const key = firmsDedupeKey(row)
+    const prev = map.get(key)
+    if (!prev || row.frp > prev.frp) map.set(key, row)
+  }
+  return [...map.values()]
+}
+
+function sensorHistory(cursor: Record<string, unknown> | null, sensor: string): number[] {
+  const bag = asRecord(cursor?.firms_sensor_counts)
+  const raw = bag?.[sensor]
+  if (!Array.isArray(raw)) return []
+  return raw.filter((item): item is number => typeof item === 'number' && Number.isFinite(item)).slice(-7)
+}
+
 export function countFirmsCsv(csv: string): { before: number; after: number } {
   const { detections, before } = parseFirmsDetections(csv)
   return { before, after: detections.length }
@@ -196,8 +235,18 @@ export const firmsSource: CrisisSource = {
   requiredEnv: ['FIRMS_MAP_KEY'],
   async fetch(ctx): Promise<IngestFetchResult> {
     const key = ctx.env.FIRMS_MAP_KEY!.trim()
+    const state = await loadStateSafe(ctx.client, 'firms')
+    const historyBag: Record<string, number[]> = {}
+    const prior = asRecord(state?.cursor?.firms_sensor_counts)
+    if (prior) {
+      for (const [sensor, values] of Object.entries(prior)) {
+        if (Array.isArray(values)) historyBag[sensor] = values.filter((item): item is number => typeof item === 'number')
+      }
+    }
     let httpCalls = 0
     const notes: string[] = []
+    const collected: FirmsDetection[] = []
+    let capped = false
     for (const sensor of FIRMS_SOURCES) {
       const res = await politeFetch(firmsUrl(key, sensor), {
         sourceKey: 'firms',
@@ -214,60 +263,63 @@ export const firmsSource: CrisisSource = {
       if (/invalid api call|invalid.*key|unauthorized/i.test(res.text)) {
         return { httpCalls, error: 'FIRMS rejected MAP_KEY' }
       }
-      const { detections, before, capped } = parseFirmsDetections(res.text)
-      ctx.log(`[firms] ${sensor} rows_before=${before} after_confidence=${detections.length}${capped ? ' capped' : ''}`)
-      if (before === 0) {
+      const parsed = parseFirmsDetections(res.text)
+      const history = sensorHistory(state?.cursor ?? null, sensor)
+      const low = firmsVolumeIsLow(parsed.before, history)
+      ctx.log(`[firms] ${sensor} rows=${parsed.before} after_confidence=${parsed.detections.length} low=${low}`)
+      notes.push(`${sensor}=${parsed.before}`)
+      historyBag[sensor] = [...history, parsed.before].slice(-7)
+      if (parsed.capped) capped = true
+      if (parsed.before === 0) {
         notes.push(`${sensor} header only`)
         continue
       }
-
-      let assigned: AssignedFirmsDetection[] = detections.map((row) => ({
-        ...row,
-        region_id: null,
-        country_iso3: null,
-      }))
-      try {
-        const hits = await assignLatLonBatch(
-          ctx.client,
-          detections.map((row, i) => ({ i, lat: row.lat, lon: row.lon })),
-        )
-        assigned = detections.map((row, i) => {
-          const hit = hits.get(i)
-          return {
-            ...row,
-            region_id: hit?.region_id ?? null,
-            country_iso3: hit?.country_iso3 ?? null,
-          }
-        })
-      } catch (error) {
-        const message = error instanceof Error ? error.message : String(error)
-        ctx.log(`[firms] assign skipped: ${message}`)
-        notes.push('assign unavailable')
-      }
-
-      const daily = aggregateFirmsDaily(assigned)
-      const keepers = assigned.filter((row) => shouldKeepFirmsPoint(row.frp, row.country_iso3))
-      const signals = firmsDetectionsToSignals(keepers)
-      ctx.log(`[firms] aggregated=${daily.length} kept_raw=${keepers.length} dropped=${assigned.length - keepers.length}`)
-      return {
-        httpCalls,
-        signals,
-        daily,
-        quotaNote: [
-          capped ? `capped at ${FIRMS_ROW_CAP}` : null,
-          `sensor=${sensor}`,
-          `before=${before}`,
-          `aggregated=${daily.length}`,
-          `kept=${keepers.length}`,
-          `dropped=${assigned.length - keepers.length}`,
-        ].filter(Boolean).join('; '),
-      }
+      collected.push(...parsed.detections)
+      if (!low) break
     }
+
+    const merged = dedupeFirmsDetections(collected)
+    let assigned: AssignedFirmsDetection[] = merged.map((row) => ({
+      ...row,
+      region_id: null,
+      country_iso3: null,
+    }))
+    try {
+      const hits = await assignLatLonBatch(
+        ctx.client,
+        merged.map((row, i) => ({ i, lat: row.lat, lon: row.lon })),
+      )
+      assigned = merged.map((row, i) => {
+        const hit = hits.get(i)
+        return {
+          ...row,
+          region_id: hit?.region_id ?? null,
+          country_iso3: hit?.country_iso3 ?? null,
+        }
+      })
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      ctx.log(`[firms] assign skipped: ${message}`)
+      notes.push('assign unavailable')
+    }
+
+    const daily = aggregateFirmsDaily(assigned)
+    const keepers = assigned.filter((row) => shouldKeepFirmsPoint(row.frp, row.country_iso3))
+    const signals = firmsDetectionsToSignals(keepers)
+    ctx.log(`[firms] merged=${merged.length} aggregated=${daily.length} kept_raw=${keepers.length} dropped=${assigned.length - keepers.length}`)
     return {
       httpCalls,
-      signals: [],
-      daily: [],
-      quotaNote: notes.join('; ') || 'no FIRMS rows',
+      signals,
+      daily,
+      cursor: { firms_sensor_counts: historyBag },
+      quotaNote: [
+        capped ? `capped at ${FIRMS_ROW_CAP}` : null,
+        `sensors=${notes.filter((note) => note.includes('=')).join(',')}`,
+        `merged=${merged.length}`,
+        `aggregated=${daily.length}`,
+        `kept=${keepers.length}`,
+        `dropped=${assigned.length - keepers.length}`,
+      ].filter(Boolean).join('; '),
     }
   },
 }

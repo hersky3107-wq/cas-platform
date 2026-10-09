@@ -15,8 +15,17 @@ export function wikiTopUrl(project: string, day: Date): string {
   return `https://wikimedia.org/api/rest_v1/metrics/pageviews/top/${project}/all-access/${y}/${m}/${d}`
 }
 
+export function utcDaysAgo(now: Date, days: number): Date {
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - days))
+}
+
 export function utcYesterday(now: Date): Date {
-  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 1))
+  return utcDaysAgo(now, 1)
+}
+
+/** Yesterday, then the day before. Pageview tops often 404 until the UTC day closes. */
+export function wikiDaysToTry(now: Date): Date[] {
+  return [utcDaysAgo(now, 1), utcDaysAgo(now, 2)]
 }
 
 export interface WikiTopArticle {
@@ -104,75 +113,87 @@ export const wikiTopSource: CrisisSource = {
       if (typeof value === 'string') seen[key] = value
     }
 
-    const day = utcYesterday(ctx.now)
-    const dayKey = day.toISOString().slice(0, 10)
-    const projects = ctx.dryRun ? WIKI_PROJECTS.slice(0, 1) : WIKI_PROJECTS
+    const days = wikiDaysToTry(ctx.now)
+    const projects = WIKI_PROJECTS
     let httpCalls = 0
-    const matchesByCountry = new Map<string, WikiMatch[]>()
+    const matchesByBucket = new Map<string, { iso3: string; day: string; matches: WikiMatch[] }>()
     const signals: NormalizedSignal[] = []
-    const notes: string[] = []
+    const unavailable: string[] = []
+    let usedDay = days[0]?.toISOString().slice(0, 10) ?? ctx.now.toISOString().slice(0, 10)
 
     for (const project of projects) {
-      const url = wikiTopUrl(project, day)
-      const res = await politeFetch(url, {
-        sourceKey: 'wiki_top',
-        minIntervalMs: 200,
-        headers: {
-          'Api-User-Agent': 'AIMANI-CrisisIngest/2B2 (crisis ingest; wiki_top)',
-        },
-      })
-      httpCalls += 1
-      if (!res.ok) {
-        notes.push(`${project} HTTP ${res.status}`)
-        continue
-      }
-      const articles = normalizeWikiTop(res.data)
-      const matches = matchWikiArticles(articles, project)
-      const iso3 = WIKI_PROJECT_ISO3[project as WikiProject]
-      if (iso3) {
-        const list = matchesByCountry.get(iso3) ?? []
-        list.push(...matches)
-        matchesByCountry.set(iso3, list)
-      }
-      for (const match of matches) {
-        const key = seenKey(project, match.title)
-        const prior = seen[key]
-        if (!prior) {
-          signals.push({
-            department: 'media',
-            source: 'wiki_top',
-            signal_type: 'wiki_new_top',
-            title: `${match.title} (${project})`,
-            lat: null,
-            lon: null,
-            country_iso3: iso3 ?? null,
-            value_num: match.views,
-            value_raw: { ...match, day: dayKey },
-            unit_raw: 'pageviews',
-            event_time: `${dayKey}T00:00:00.000Z`,
-            url: `https://${project}/wiki/${encodeURIComponent(match.title.replace(/ /g, '_'))}`,
-            dedupe_key: buildDedupeKey({
-              source: 'wiki_top',
-              signalType: 'wiki_new_top',
-              id: `${project}|${match.title}|${dayKey}`,
-              eventTime: dayKey,
-            }),
-          })
+      let got = false
+      for (const day of days) {
+        const dayKey = day.toISOString().slice(0, 10)
+        const res = await politeFetch(wikiTopUrl(project, day), {
+          sourceKey: 'wiki_top',
+          minIntervalMs: 200,
+          headers: {
+            'Api-User-Agent': 'AIMANI-CrisisIngest/2B2 (crisis ingest; wiki_top)',
+          },
+        })
+        httpCalls += 1
+        if (res.status === 404) continue
+        if (!res.ok) {
+          ctx.log(`[wiki_top] ${project} ${dayKey} HTTP ${res.status}`)
+          continue
         }
-        seen[key] = dayKey
+        got = true
+        usedDay = dayKey
+        const articles = normalizeWikiTop(res.data)
+        const matches = matchWikiArticles(articles, project)
+        const iso3 = WIKI_PROJECT_ISO3[project as WikiProject]
+        if (iso3 && matches.length) {
+          const bucketKey = `${iso3}|${dayKey}`
+          const bucket = matchesByBucket.get(bucketKey) ?? { iso3, day: dayKey, matches: [] }
+          bucket.matches.push(...matches)
+          matchesByBucket.set(bucketKey, bucket)
+        }
+        for (const match of matches) {
+          const key = seenKey(project, match.title)
+          const prior = seen[key]
+          if (!prior) {
+            signals.push({
+              department: 'media',
+              source: 'wiki_top',
+              signal_type: 'wiki_new_top',
+              title: `${match.title} (${project})`,
+              lat: null,
+              lon: null,
+              country_iso3: iso3 ?? null,
+              value_num: match.views,
+              value_raw: { ...match, day: dayKey },
+              unit_raw: 'pageviews',
+              event_time: `${dayKey}T00:00:00.000Z`,
+              url: `https://${project}/wiki/${encodeURIComponent(match.title.replace(/ /g, '_'))}`,
+              dedupe_key: buildDedupeKey({
+                source: 'wiki_top',
+                signalType: 'wiki_new_top',
+                id: `${project}|${match.title}|${dayKey}`,
+                eventTime: dayKey,
+              }),
+            })
+          }
+          seen[key] = dayKey
+        }
+        break
+      }
+      if (!got) {
+        unavailable.push(project)
+        ctx.log(`[wiki_top] ${project} unavailable`)
       }
     }
 
     const daily: NormalizedDaily[] = []
-    for (const [iso3, matches] of matchesByCountry) {
-      const regionId = countryIds.get(iso3)
+    for (const bucket of matchesByBucket.values()) {
+      const regionId = countryIds.get(bucket.iso3)
       if (regionId == null) continue
       daily.push({
         region_id: regionId,
-        day: dayKey,
+        day: bucket.day,
         source: 'wiki',
         stats: {
-          matches: matches.map((row) => ({
+          matches: bucket.matches.map((row) => ({
             title: row.title,
             rank: row.rank,
             views: row.views,
@@ -185,17 +206,18 @@ export const wikiTopSource: CrisisSource = {
       })
     }
 
+    const matchCount = [...matchesByBucket.values()].reduce((n, bucket) => n + bucket.matches.length, 0)
     return {
       httpCalls,
       daily,
       signals,
-      cursor: { seen: pruneSeen(seen, dayKey), last_day: dayKey },
+      cursor: { seen: pruneSeen(seen, usedDay), last_day: usedDay, unavailable },
       quotaNote: [
         `projects=${projects.length}`,
-        `matches=${[...matchesByCountry.values()].reduce((n, rows) => n + rows.length, 0)}`,
+        `matches=${matchCount}`,
         `new_top=${signals.length}`,
-        notes.length ? notes.join('; ') : null,
-      ].filter(Boolean).join('; '),
+        `unavailable=${unavailable.length ? unavailable.join(',') : 'none'}`,
+      ].join('; '),
     }
   },
 }

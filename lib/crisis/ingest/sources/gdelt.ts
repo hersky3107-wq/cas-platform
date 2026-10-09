@@ -1,6 +1,7 @@
 import JSZip from 'jszip'
 import { assignLatLonBatch } from '../assign'
 import { asRecord, finiteNumber, politeFetch } from '../fetch'
+import { ISO2_TO_ISO3 } from '../iso'
 import { loadCountryIdByIso3, loadStateSafe } from '../regions'
 import type { CrisisSource, IngestFetchResult, NormalizedDaily } from '../types'
 
@@ -50,8 +51,28 @@ export function gdeltFipsToIso3(code: string | null | undefined): string | null 
   if (!code) return null
   const key = code.trim().toUpperCase()
   if (key.length !== 2) return null
-  return GDELT_FIPS_TO_ISO3[key] ?? null
+  return GDELT_FIPS_TO_ISO3[key] ?? ISO2_TO_ISO3[key] ?? null
 }
+
+/**
+ * GDELT 2.0 Event codebook, 61 tab-separated fields, 0-based.
+ * http://data.gdeltproject.org/documentation/GDELT-Event_Codebook-V2.0.pdf
+ * ActionGeo_Lat/Long are 57/58 in the 1-based codebook (56/57 here), not the country code.
+ */
+export const GDELT_COL = {
+  SQLDATE: 1,
+  EventRootCode: 28,
+  GoldsteinScale: 30,
+  NumSources: 32,
+  AvgTone: 34,
+  ActionGeo_Type: 51,
+  ActionGeo_FullName: 52,
+  ActionGeo_CountryCode: 53,
+  ActionGeo_ADM1Code: 54,
+  ActionGeo_ADM2Code: 55,
+  ActionGeo_Lat: 56,
+  ActionGeo_Long: 57,
+} as const
 
 export function parseGdeltLastupdate(text: string): string | null {
   for (const line of text.split(/\r?\n/)) {
@@ -73,30 +94,44 @@ export interface GdeltEventRow {
   day: string | null
 }
 
-function looksLikeLat(value: string): boolean {
-  const n = Number(value)
-  return Number.isFinite(n) && Math.abs(n) <= 90 && value.includes('.')
+function coord(value: string | undefined, limit: number): number | null {
+  const n = finiteNumber(value)
+  if (n == null || Math.abs(n) > limit) return null
+  return n
 }
 
-/** GDELT 2.0 Events TSV. ActionGeo lat/lon is 53/54 (no ADM2) or 54/55 (with ADM2). */
+export function describeGdeltRow(line: string): string {
+  const cols = line.split('\t')
+  const at = (index: number) => cols[index] ?? ''
+  return [
+    `ncols=${cols.length}`,
+    `EventRootCode=${at(GDELT_COL.EventRootCode)}`,
+    `GoldsteinScale=${at(GDELT_COL.GoldsteinScale)}`,
+    `NumSources=${at(GDELT_COL.NumSources)}`,
+    `AvgTone=${at(GDELT_COL.AvgTone)}`,
+    `ActionGeo_Type=${at(GDELT_COL.ActionGeo_Type)}`,
+    `ActionGeo_CountryCode=${at(GDELT_COL.ActionGeo_CountryCode)}`,
+    `ActionGeo_ADM1Code=${at(GDELT_COL.ActionGeo_ADM1Code)}`,
+    `ActionGeo_Lat=${at(GDELT_COL.ActionGeo_Lat)}`,
+    `ActionGeo_Long=${at(GDELT_COL.ActionGeo_Long)}`,
+  ].join(' ')
+}
+
+/** GDELT 2.0 Events TSV. Lat/lon are codebook fields 57/58 (0-based 56/57). */
 export function parseGdeltExportTsv(text: string): GdeltEventRow[] {
   const out: GdeltEventRow[] = []
   for (const line of text.split(/\r?\n/)) {
     if (!line.trim()) continue
     const cols = line.split('\t')
-    if (cols.length < 35) continue
-    const root = (cols[28] ?? '').trim() || null
-    const goldstein = finiteNumber(cols[30])
-    const sources = finiteNumber(cols[32]) ?? 0
-    const tone = finiteNumber(cols[34])
-    const fips = (cols[51] ?? '').trim() || null
-    let lat = finiteNumber(cols[53])
-    let lon = finiteNumber(cols[54])
-    if (cols.length >= 56 && !looksLikeLat(cols[53] ?? '') && looksLikeLat(cols[54] ?? '')) {
-      lat = finiteNumber(cols[54])
-      lon = finiteNumber(cols[55])
-    }
-    const sqlDate = (cols[1] ?? '').trim()
+    if (cols.length <= GDELT_COL.ActionGeo_Long) continue
+    const root = (cols[GDELT_COL.EventRootCode] ?? '').trim() || null
+    const goldstein = finiteNumber(cols[GDELT_COL.GoldsteinScale])
+    const sources = finiteNumber(cols[GDELT_COL.NumSources]) ?? 0
+    const tone = finiteNumber(cols[GDELT_COL.AvgTone])
+    const fips = (cols[GDELT_COL.ActionGeo_CountryCode] ?? '').trim() || null
+    const lat = coord(cols[GDELT_COL.ActionGeo_Lat], 90)
+    const lon = coord(cols[GDELT_COL.ActionGeo_Long], 180)
+    const sqlDate = (cols[GDELT_COL.SQLDATE] ?? '').trim()
     const day = /^\d{8}$/.test(sqlDate) ? `${sqlDate.slice(0, 4)}-${sqlDate.slice(4, 6)}-${sqlDate.slice(6, 8)}` : null
     out.push({ root, goldstein, tone, sources, lat, lon, fips, day })
   }
@@ -220,8 +255,10 @@ export const gdeltEventsSource: CrisisSource = {
       return { httpCalls: 2, error: zipRes.error ?? `HTTP ${zipRes.status}` }
     }
     const tsv = await unzipGdeltExport(zipRes.data)
+    const firstLine = tsv.split(/\r?\n/).find((line) => line.trim()) ?? ''
     const events = parseGdeltExportTsv(tsv)
-    ctx.log(`[gdelt_events] export=${exportUrl} events=${events.length}`)
+    const withCoords = events.filter((row) => row.lat != null && row.lon != null).length
+    ctx.log(`[gdelt_events] export=${exportUrl} events=${events.length} ${describeGdeltRow(firstLine)}`)
 
     const unique = new Map<string, { i: number; lat: number; lon: number }>()
     const points: Array<{ i: number; lat: number; lon: number }> = []
@@ -236,15 +273,33 @@ export const gdeltEventsSource: CrisisSource = {
     }
 
     let assigned = new Map<number, { region_id: number; country_iso3: string | null }>()
+    let assignError: string | null = null
     try {
       assigned = await assignLatLonBatch(ctx.client, points)
     } catch (error) {
-      ctx.log(`[gdelt_events] assign skipped: ${error instanceof Error ? error.message : error}`)
+      assignError = error instanceof Error ? error.message : String(error)
     }
-    const countryIds = await loadCountryIdByIso3(ctx.client).catch(() => new Map<string, number>())
+    const sample = [...assigned.entries()]
+      .slice(0, 3)
+      .map(([index, hit]) => `${index}:${hit.region_id}/${hit.country_iso3 ?? '-'}`)
+      .join(',')
+    ctx.log(
+      `[gdelt_events] usable_latlon=${withCoords} sent=${points.length} rpc=${assigned.size} rpc_first=${sample || '-'}`,
+    )
+    if (assignError) ctx.log(`[gdelt_events] rpc error: ${assignError}`)
+
+    let countryIds = new Map<string, number>()
+    let countryError: string | null = null
+    try {
+      countryIds = await loadCountryIdByIso3(ctx.client)
+    } catch (error) {
+      countryError = error instanceof Error ? error.message : String(error)
+      ctx.log(`[gdelt_events] country lookup error: ${countryError}`)
+    }
 
     const aggs = new Map<string, GdeltAgg>()
     const pointByCoord = unique
+    let fipsFallback = 0
     for (const row of events) {
       const day = row.day ?? ctx.now.toISOString().slice(0, 10)
       let regionId: number | null = null
@@ -255,6 +310,7 @@ export const gdeltEventsSource: CrisisSource = {
       if (regionId == null) {
         const iso3 = gdeltFipsToIso3(row.fips)
         regionId = iso3 ? countryIds.get(iso3) ?? null : null
+        if (regionId != null) fipsFallback += 1
       }
       if (regionId == null) continue
       const key = `${regionId}|${day}`
@@ -304,11 +360,14 @@ export const gdeltEventsSource: CrisisSource = {
       for (const agg of aggs.values()) daily.push(gdeltAggToDaily(agg, null))
     }
 
+    const mapError = assignError ?? countryError
+    ctx.log(`[gdelt_events] regions=${daily.length} fips_fallback_events=${fipsFallback}`)
     return {
       httpCalls: 2,
       daily,
       cursor: { last_export: exportUrl },
-      quotaNote: `export=${exportUrl.split('/').pop()} events=${events.length} regions=${daily.length}`,
+      error: mapError ?? undefined,
+      quotaNote: `export=${exportUrl.split('/').pop()} events=${events.length} regions=${daily.length} usable_latlon=${withCoords} sent=${points.length} rpc=${assigned.size} fips_fallback=${fipsFallback}`,
     }
   },
 }

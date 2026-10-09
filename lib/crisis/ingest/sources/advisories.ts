@@ -88,16 +88,55 @@ const STATE_NAME_ISO3: Record<string, string> = {
   'united kingdom': 'GBR', 'united states': 'USA', uruguay: 'URY', uzbekistan: 'UZB',
   venezuela: 'VEN', vietnam: 'VNM', yemen: 'YEM', zambia: 'ZMB', zimbabwe: 'ZWE',
   'west bank': 'PSE', gaza: 'PSE', 'palestinian territories': 'PSE', palestine: 'PSE',
+  andorra: 'AND', anguilla: 'AIA', antarctica: 'ATA', 'antigua and barbuda': 'ATG',
+  aruba: 'ABW', barbados: 'BRB', bermuda: 'BMU', bhutan: 'BTN', bonaire: 'BES',
+  'british virgin islands': 'VGB', brunei: 'BRN', 'cabo verde': 'CPV', 'cape verde': 'CPV',
+  'cayman islands': 'CYM', comoros: 'COM', curacao: 'CUW', dominica: 'DMA',
+  'dominican republic': 'DOM', 'equatorial guinea': 'GNQ',
+  'federated states of micronesia': 'FSM', micronesia: 'FSM',
+  'french guiana': 'GUF', 'french polynesia': 'PYF', 'french saint martin': 'MAF',
+  greenland: 'GRL', grenada: 'GRD', guadeloupe: 'GLP', 'guinea-bissau': 'GNB',
+  guyana: 'GUY', 'hong kong': 'HKG', 'kingdom of denmark': 'DNK', kiribati: 'KIR',
+  kosovo: 'XKX', lesotho: 'LSO', liechtenstein: 'LIE', macau: 'MAC', maldives: 'MDV',
+  malta: 'MLT', 'marshall islands': 'MHL', martinique: 'MTQ', mauritius: 'MUS',
+  montserrat: 'MSR', nauru: 'NRU', 'new caledonia': 'NCL', 'new zealand': 'NZL',
+  palau: 'PLW', 'republic of congo': 'COG', 'republic of the congo': 'COG',
+  'saba and sint eustatius': 'BES', 'saint barthelemy': 'BLM', 'st barthelemy': 'BLM',
+  'saint kitts and nevis': 'KNA', 'saint lucia': 'LCA',
+  'saint vincent and the grenadines': 'VCT', samoa: 'WSM', seychelles: 'SYC',
+  'sint maarten': 'SXM', 'solomon islands': 'SLB', suriname: 'SUR',
+  'sao tome and principe': 'STP', bahamas: 'BHS', 'kyrgyz republic': 'KGZ',
+  'turks and caicos islands': 'TCA', tuvalu: 'TUV', vanuatu: 'VUT',
 }
 
-function nameToIso3(name: string): string | null {
-  const key = name.trim().toLowerCase().replace(/[.]/g, '')
+export function advisoryAliasKey(name: string): string {
+  return name
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[’‘]/g, "'")
+    .replace(/\./g, '')
+    .replace(/ travel advisory$/g, '')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
+export function nameToIso3(name: string): string | null {
+  const key = advisoryAliasKey(name)
   if (STATE_NAME_ISO3[key]) return STATE_NAME_ISO3[key]
+  const withoutThe = key.replace(/^the\s+/, '')
+  if (STATE_NAME_ISO3[withoutThe]) return STATE_NAME_ISO3[withoutThe]
   return null
 }
 
-export function normalizeStateRss(xml: string, fetchedAt: string): ParsedAdvisory[] {
-  const out: ParsedAdvisory[] = []
+export function normalizeStateRss(
+  xml: string,
+  fetchedAt: string,
+): { advisories: ParsedAdvisory[]; unmatched: string[]; collapsed: number } {
+  const best = new Map<string, ParsedAdvisory>()
+  const unmatched: string[] = []
+  let seen = 0
   for (const item of parseXmlItems(xml)) {
     const title = extractXmlTag(item, 'title')
     if (!title) continue
@@ -105,17 +144,24 @@ export function normalizeStateRss(xml: string, fetchedAt: string): ParsedAdvisor
     if (!mapped) continue
     const countryPart = title.split(/\s+-\s+Level/i)[0]?.trim() ?? title
     const iso3 = nameToIso3(countryPart) ?? toIso3(extractXmlTag(item, 'category'))
-    if (!iso3) continue
-    out.push({
+    if (!iso3) {
+      unmatched.push(countryPart)
+      continue
+    }
+    seen += 1
+    const row: ParsedAdvisory = {
       country_iso3: iso3,
       source: 'us_state',
       level: mapped.level,
       level_text: mapped.text,
       updated_at: isoTime(extractXmlTag(item, 'pubDate') ?? extractXmlTag(item, 'lastBuildDate')) ?? fetchedAt,
       title,
-    })
+    }
+    const prev = best.get(iso3)
+    if (!prev || row.level > prev.level) best.set(iso3, row)
   }
-  return out
+  const advisories = [...best.values()]
+  return { advisories, unmatched, collapsed: Math.max(0, seen - advisories.length) }
 }
 
 export function normalizeFcdoCountry(payload: unknown, fetchedAt: string): ParsedAdvisory | null {
@@ -166,6 +212,13 @@ export function detectAdvisoryChanges(
   changeSignals: NormalizedSignal[]
   divergeSignals: NormalizedSignal[]
 } {
+  const ranked = new Map<string, ParsedAdvisory>()
+  for (const row of incoming) {
+    const key = `${row.country_iso3}|${row.source}`
+    const prevRow = ranked.get(key)
+    if (!prevRow || row.level > prevRow.level) ranked.set(key, row)
+  }
+  incoming = [...ranked.values()]
   const prev = new Map(previous.map((row) => [`${row.country_iso3}|${row.source}`, row]))
   const latest = new Map<string, Map<string, { level: number; updated_at: string | null; text: string }>>()
   const put = (
@@ -291,7 +344,15 @@ export const advisoriesSource: CrisisSource = {
     const rss = await politeFetch(STATE_RSS_URL, { sourceKey: 'advisories', minIntervalMs: 1500, as: 'text' })
     httpCalls += 1
     if (!rss.ok) notes.push(`state HTTP ${rss.status}`)
-    else incoming.push(...normalizeStateRss(rss.text, fetchedAt))
+    else {
+      const state = normalizeStateRss(rss.text, fetchedAt)
+      incoming.push(...state.advisories)
+      if (state.collapsed) notes.push(`state_collapsed=${state.collapsed}`)
+      if (state.unmatched.length) {
+        notes.push(`unmatched=${state.unmatched.length}`)
+        ctx.log(`[advisories] unmatched names: ${state.unmatched.slice(0, 12).join(' | ')}`)
+      }
+    }
 
     const index = await politeFetch(FCDO_INDEX_URL, { sourceKey: 'advisories', minIntervalMs: 1500 })
     httpCalls += 1
