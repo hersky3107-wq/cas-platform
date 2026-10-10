@@ -80,6 +80,7 @@ export default function CrisisAdminPage() {
   const [run, setRun] = useState<RunView | null>(null)
   const [runError, setRunError] = useState<string | null>(null)
   const [publishMsg, setPublishMsg] = useState<string | null>(null)
+  const [showAll, setShowAll] = useState(false)
 
   const loadOverview = useCallback(async () => {
     const res = await fetch('/api/admin/crisis', { credentials: 'include' })
@@ -124,6 +125,16 @@ export default function CrisisAdminPage() {
     }, 10_000)
     return () => window.clearInterval(timer)
   }, [authState, loadOverview])
+
+  const scoredRegions = useMemo(
+    () => (overview?.regions ?? []).filter((row) => row.score > 0),
+    [overview],
+  )
+
+  const displayedRegions = useMemo(
+    () => (showAll ? scoredRegions : scoredRegions.slice(0, 200)),
+    [scoredRegions, showAll],
+  )
 
   const selected = useMemo(
     () => overview?.regions.find((row) => row.regionId === selectedId) ?? null,
@@ -285,7 +296,7 @@ export default function CrisisAdminPage() {
                 stroke="rgba(255,255,255,0.06)"
               />
             ))}
-            {(overview?.regions ?? []).map((row) => {
+            {scoredRegions.map((row) => {
               const pt = projectLonLat(row.lon, row.lat, MAP_W, MAP_H)
               const selectedDot = row.regionId === selectedId
               return (
@@ -317,11 +328,27 @@ export default function CrisisAdminPage() {
 
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.04]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
-            <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Regions</h2>
-            <p className="text-xs text-slate-500">
-              Run all estimate ${overview?.runAllEstimateUsd.toFixed(2) ?? '0.00'} ({overview?.runAllCount ?? 0} × $
-              {ESTIMATE_USD_PER_REGION.toFixed(2)})
-            </p>
+            <div className="flex items-center gap-3">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-slate-400">Regions</h2>
+              <span className="text-xs text-slate-500">
+                ({scoredRegions.length} with score &gt; 0)
+              </span>
+            </div>
+            <div className="flex items-center gap-3">
+              {scoredRegions.length > 200 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowAll((prev) => !prev)}
+                  className="rounded-xl border border-white/12 bg-white/5 px-2.5 py-1 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                >
+                  {showAll ? 'Show top 200' : `Show all (${scoredRegions.length})`}
+                </button>
+              ) : null}
+              <p className="text-xs text-slate-500">
+                Run all estimate ${overview?.runAllEstimateUsd.toFixed(2) ?? '0.00'} ({overview?.runAllCount ?? 0} × $
+                {ESTIMATE_USD_PER_REGION.toFixed(2)})
+              </p>
+            </div>
           </div>
           <div className="grid grid-cols-12 gap-2 border-b border-white/10 px-4 py-3 text-xs font-semibold text-slate-300">
             <div className="col-span-3">Name</div>
@@ -334,11 +361,11 @@ export default function CrisisAdminPage() {
           </div>
           {!overview ? (
             <div className="px-4 py-10 text-center text-sm text-slate-300">Loading…</div>
-          ) : overview.regions.length === 0 ? (
-            <div className="px-4 py-10 text-center text-sm text-slate-300">No scored regions for today.</div>
+          ) : scoredRegions.length === 0 ? (
+            <div className="px-4 py-10 text-center text-sm text-slate-300">No regions with score &gt; 0 today.</div>
           ) : (
             <div className="divide-y divide-white/8">
-              {overview.regions.map((row) => (
+              {displayedRegions.map((row) => (
                 <div
                   key={row.regionId}
                   className={`grid grid-cols-12 items-center gap-2 px-4 py-3 text-sm ${

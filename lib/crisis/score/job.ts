@@ -70,12 +70,42 @@ export async function runLayer1Score(
     log(`slow-burn dyad ${row.name} value=${row.value} kind=${row.kind} ${row.note}`)
   }
 
+  const countryShareEscByIso = new Map<string, { value: number; raw: Record<string, unknown> }>()
+  for (const r of snap.regions) {
+    if (r.level === 0 && r.iso3) {
+      const inp = snap.inputs.get(r.id)
+      if (inp && inp.gdeltSeries.length > 0) {
+        const esc = conflictShareEscalation(inp.gdeltSeries, now)
+        if (esc.value > 0) countryShareEscByIso.set(r.iso3, esc)
+      }
+    }
+  }
+
   for (const region of snap.regions) {
     const input = snap.inputs.get(region.id)
     if (!input) continue
     const wiki = region.iso3 ? snap.wikiByIso.get(region.iso3) : undefined
     const naturalTitles = naturalTitlesForCoast(wiki?.natural ?? [], region.lat, region.lon)
     if (naturalTitles[0]) naturalTitleByRegion.set(region.id, naturalTitles[0])
+
+    let internet = internetComponent(input.internet, internetRaw(input.internetSources))
+    if (region.level === 1 && internet.value > 0 && !input.regionSpecificInternet) {
+      internet = {
+        ...internet,
+        value: internet.value * 0.5,
+        raw: { ...internet.raw, country_weight: 0.5 },
+      }
+    }
+
+    let advisory = advisoryComponent({ changed: input.advisoryChange, diverge: input.advisoryDiverge })
+    if (region.level === 1 && advisory.value > 0 && !input.regionSpecificAdvisory) {
+      advisory = {
+        ...advisory,
+        value: advisory.value * 0.5,
+        raw: { ...advisory.raw, country_weight: 0.5 },
+      }
+    }
+
     let components = [
       observedRainAdjust(rainComponent(input.precip), input.observedRain),
       riverComponent({
@@ -103,8 +133,8 @@ export async function runLayer1Score(
         series: input.gdeltSeries,
         now,
       }),
-      internetComponent(input.internet, internetRaw(input.internetSources)),
-      advisoryComponent({ changed: input.advisoryChange, diverge: input.advisoryDiverge }),
+      internet,
+      advisory,
       foodComponent(input.ipc),
     ]
     const humanFired = components.some((row) =>
@@ -130,10 +160,28 @@ export async function runLayer1Score(
     if (shareEsc.value > 0) {
       components = [...components, escalationComponent(shareEsc.value, shareEsc.raw)]
     } else if (pace && escalationValue(pace.pace) > 0) {
-      components = [...components, escalationComponent(escalationValue(pace.pace), { event: pace.id, pace: pace.pace })]
+      let escVal = escalationValue(pace.pace)
+      let escRaw: Record<string, unknown> = { event: pace.id, pace: pace.pace }
+      const touchesThisRegion = (pace.region_ids ?? []).includes(region.id)
+      if (region.level === 1 && !touchesThisRegion) {
+        escVal = escVal * 0.5
+        escRaw = { ...escRaw, country_weight: 0.5 }
+      }
+      components = [...components, escalationComponent(escVal, escRaw)]
+    } else if (region.level === 1 && region.iso3 && countryShareEscByIso.has(region.iso3)) {
+      const cEsc = countryShareEscByIso.get(region.iso3)!
+      components = [...components, escalationComponent(cEsc.value * 0.5, { ...cEsc.raw, country_weight: 0.5 })]
     }
     const hit = burn.byRegion.get(region.id)
-    if (hit && hit.value > 0) components = [...components, slowBurnComponent(hit.value, hit.detail)]
+    if (hit && hit.value > 0) {
+      let sbValue = hit.value
+      let sbRaw: Record<string, unknown> = { ...hit.detail }
+      if (region.level === 1 && !burn.regionSpecific?.has(region.id)) {
+        sbValue = hit.value * 0.5
+        sbRaw = { ...sbRaw, country_weight: 0.5 }
+      }
+      components = [...components, slowBurnComponent(sbValue, sbRaw)]
+    }
     triggerByRegion.set(region.id, components)
   }
 

@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest'
 import { CASCADE_SEEDS } from '../../knowledge/cascades.seed'
 import { buildAnomalyCard, cardBytes } from '../card'
 import { cascadeBonusApplies, matchCascades } from '../cascades'
-import { compoundBonus, finalizeScore, rawRiskScore, stageFromScore } from '../compute'
+import {
+  activeTriggerFamilies,
+  calculateStage,
+  compoundBonus,
+  finalizeScore,
+  isExtremeTrigger,
+  rawRiskScore,
+  stageFromScore,
+} from '../compute'
 import { advisoryPairDiverges } from '../advisory'
 import { campBucket, damWeight, damsNear, diminish, informFragility, nuclearNear, upstreamDamAdd } from '../fragility'
 import { classifyWikiTitle, wikiArticleTitle } from '../wiki'
@@ -238,6 +246,58 @@ describe('people and score', () => {
       { key: 'rain', department: 'natural', value: 0.8, raw: {} },
       { key: 'silence', department: 'conflict', value: 0.7, raw: {} },
     ])).toBe(0)
+  })
+
+  it('caps single active trigger family at stage 4 unless extreme', () => {
+    // Single active family (natural: river=1.0), score=96, no extreme trigger
+    const nonExtremeRiver: TriggerComponent[] = [
+      { key: 'river', department: 'natural', value: 1.0, raw: { ratio: 7.2 } },
+    ]
+    expect(calculateStage({ score: 96, components: nonExtremeRiver, compound: 0, cascade: 10 })).toBe(4)
+
+    // Extreme rain: sum >= 2x sumSoftMm (200mm) or max_day >= 2x dayMm (100mm)
+    const extremeRain: TriggerComponent[] = [
+      { key: 'rain', department: 'natural', value: 1.0, raw: { sum_mm: 310, max_day_mm: 154 } },
+    ]
+    expect(isExtremeTrigger(extremeRain[0])).toBe(true)
+    expect(calculateStage({ score: 95, components: extremeRain, compound: 0, cascade: 10 })).toBe(5)
+
+    // Extreme GDACS red
+    const gdacsRed: TriggerComponent[] = [
+      { key: 'gdacs', department: 'natural', value: 1.0, raw: { alert: 'red' } },
+    ]
+    expect(isExtremeTrigger(gdacsRed[0])).toBe(true)
+    expect(calculateStage({ score: 90, components: gdacsRed, compound: 0, cascade: 0 })).toBe(5)
+
+    // Extreme cyclone within 100 km
+    const cycloneClose: TriggerComponent[] = [
+      { key: 'cyclone', department: 'natural', value: 1.0, raw: { nearest_km: 75 } },
+    ]
+    expect(isExtremeTrigger(cycloneClose[0])).toBe(true)
+    expect(calculateStage({ score: 90, components: cycloneClose, compound: 0, cascade: 0 })).toBe(5)
+
+    // Extreme quake >= M6.5
+    const quakeStrong: TriggerComponent[] = [
+      { key: 'quake', department: 'natural', value: 1.0, raw: { mag: 6.8 } },
+    ]
+    expect(isExtremeTrigger(quakeStrong[0])).toBe(true)
+    expect(calculateStage({ score: 90, components: quakeStrong, compound: 0, cascade: 0 })).toBe(5)
+
+    // Extreme conflict >= 5x baseline
+    const conflictHigh: TriggerComponent[] = [
+      { key: 'conflict', department: 'conflict', value: 1.0, raw: { ratio: 6.2 } },
+    ]
+    expect(isExtremeTrigger(conflictHigh[0])).toBe(true)
+    expect(calculateStage({ score: 90, components: conflictHigh, compound: 0, cascade: 0 })).toBe(5)
+
+    // Compound (two families >= 0.5) reaches stage 5 without extreme
+    const compoundTriggers: TriggerComponent[] = [
+      { key: 'rain', department: 'natural', value: 0.6, raw: { sum_mm: 120, max_day_mm: 40 } },
+      { key: 'conflict', department: 'conflict', value: 0.8, raw: { ratio: 3.5 } },
+    ]
+    expect(isExtremeTrigger(compoundTriggers[0])).toBe(false)
+    expect(isExtremeTrigger(compoundTriggers[1])).toBe(false)
+    expect(calculateStage({ score: 90, components: compoundTriggers, compound: 15, cascade: 10 })).toBe(5)
   })
 })
 

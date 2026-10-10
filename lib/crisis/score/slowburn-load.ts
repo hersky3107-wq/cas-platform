@@ -30,6 +30,7 @@ export interface SlowBurnRank {
 
 export interface SlowBurnLoad {
   byRegion: Map<number, SlowBurnHit>
+  regionSpecific?: Set<number>
   countries: SlowBurnRank[]
   dyads: SlowBurnRank[]
   source: string

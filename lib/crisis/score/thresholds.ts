@@ -231,6 +231,7 @@ export const COMPONENT_FAMILY: Record<string, 'natural' | 'human' | 'media'> = {
   wiki: 'media',
   health_attention: 'human',
   slow_burn: 'human',
+  escalation: 'human',
 }
 
 export const CARD_MAX_BYTES = 1800

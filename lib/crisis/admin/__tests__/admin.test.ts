@@ -130,6 +130,10 @@ describe('today regions and map', () => {
     expect(pt).toEqual({ x: 400, y: 200 })
     expect(stageColor(5)).toBe('#fb7185')
     expect(stageColor(1)).toBe('#94a3b8')
+
+    // Only regions with score > 0 are shown on admin map/table
+    const scoredOnly = rows.filter((r) => r.score > 0)
+    expect(scoredOnly).toHaveLength(2)
   })
 })
 

@@ -14,9 +14,14 @@ import { peopleNorm } from './people'
 import {
   CAMP_TRIGGER_KEYS,
   COMPONENT_FAMILY,
+  CONFLICT,
+  CYCLONE,
   DAM_TRIGGER_KEYS,
   FRAGILITY_K,
+  GDACS,
   NUCLEAR_TRIGGER_KEYS,
+  QUAKE,
+  RAIN,
   SCORE,
   STAGE_MIN,
   WATCHLIST_FRAGILITY,
@@ -50,6 +55,74 @@ export function compoundBonus(components: TriggerComponent[]): number {
   }
   if (families.size >= 2) return SCORE.compoundDepartments
   return 0
+}
+
+export function isExtremeTrigger(c: TriggerComponent): boolean {
+  if (c.value <= 0) return false
+  if (c.key === 'rain') {
+    const sum = typeof c.raw.sum_mm === 'number' ? c.raw.sum_mm : 0
+    const maxDay = typeof c.raw.max_day_mm === 'number' ? c.raw.max_day_mm : 0
+    // rain >= 2x its stage threshold: 2x sumSoftMm (200mm) or 2x dayMm (100mm) or 2x sumHardMm (400mm)
+    return sum >= 2 * RAIN.sumSoftMm || maxDay >= 2 * RAIN.dayMm || sum >= 2 * RAIN.sumHardMm
+  }
+  if (c.key === 'gdacs') {
+    const alert = typeof c.raw.alert === 'string' ? c.raw.alert.toLowerCase() : ''
+    return alert === 'red' || c.value >= GDACS.redValue
+  }
+  if (c.key === 'cyclone') {
+    const km = typeof c.raw.nearest_km === 'number' ? c.raw.nearest_km : Infinity
+    return km <= CYCLONE.closeKm || c.value >= CYCLONE.closeValue
+  }
+  if (c.key === 'quake') {
+    const mag = typeof c.raw.mag === 'number' ? c.raw.mag : 0
+    return mag >= QUAKE.magHard || c.value >= QUAKE.magHardValue
+  }
+  if (c.key === 'conflict') {
+    const ratio = typeof c.raw.ratio === 'number' ? c.raw.ratio : 0
+    return ratio >= CONFLICT.ratioHard || c.value >= CONFLICT.hardValue
+  }
+  return false
+}
+
+export function activeTriggerFamilies(components: TriggerComponent[]): Set<string> {
+  const families = new Set<string>()
+  for (const c of components) {
+    if (c.value <= 0) continue
+    if (c.key === 'escalation') {
+      const isNatural = typeof c.raw.event === 'string' && /fire|flood|cyclone|volcano/.test(c.raw.event)
+      families.add(isNatural ? 'natural' : 'human')
+    } else {
+      const fam = COMPONENT_FAMILY[c.key]
+      if (fam) families.add(fam)
+    }
+  }
+  return families
+}
+
+export function calculateStage(opts: {
+  score: number
+  components: TriggerComponent[]
+  compound: number
+  cascade: number
+}): number {
+  const rawStage = stageFromScore(opts.score)
+  if (rawStage < 5) return rawStage
+
+  const extreme = opts.components.some(isExtremeTrigger)
+  if (extreme) return 5
+
+  const families = activeTriggerFamilies(opts.components)
+  if (families.size <= 1) {
+    // A region with a single active trigger family cannot exceed stage 4 unless extreme
+    return 4
+  }
+
+  // Stage 5 otherwise requires compound (two families >= 0.5) or a cascade bonus
+  if (opts.compound > 0 || opts.cascade > 0) {
+    return 5
+  }
+
+  return 4
 }
 
 export function finalizeScore(opts: {
@@ -132,7 +205,12 @@ export function finalizeScore(opts: {
     iso3: opts.iso3,
     score,
     raw_score: raw,
-    stage: stageFromScore(score),
+    stage: calculateStage({
+      score,
+      components: opts.components,
+      compound,
+      cascade,
+    }),
     trigger,
     fragility,
     people_norm: people,

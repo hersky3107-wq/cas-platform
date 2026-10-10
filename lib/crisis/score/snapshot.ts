@@ -66,6 +66,8 @@ export interface RegionInputs {
   wikiTitle: string | null
   advisoryChange: boolean
   advisoryDiverge: boolean
+  regionSpecificInternet: boolean
+  regionSpecificAdvisory: boolean
 }
 
 export interface ScoreSnapshot {
@@ -165,6 +167,8 @@ function emptyInputs(): RegionInputs {
     wikiTitle: null,
     advisoryChange: false,
     advisoryDiverge: false,
+    regionSpecificInternet: false,
+    regionSpecificAdvisory: false,
   }
 }
 
@@ -524,6 +528,9 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     } else if (row.signal_type === 'internet_outage') {
       const until = typeof raw.until === 'string' ? raw.until : null
       if (outageActive({ source: row.source, eventTime: row.event_time, until }, sinceInternet)) {
+        if (row.region_id != null && byId.get(Number(row.region_id))?.level === 1) {
+          put(Number(row.region_id)).regionSpecificInternet = true
+        }
         inheritCountry(row.country_iso3, (cur) => {
           cur.internet = true
           if (!cur.internetSources.includes(row.source)) cur.internetSources.push(row.source)
@@ -560,7 +567,14 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         ref: row.title ?? 'flood',
       })
     } else if (row.signal_type === 'advisory_change' && (row.event_time ?? '') >= sinceAdvisory) {
+      if (row.region_id != null && byId.get(Number(row.region_id))?.level === 1) {
+        put(Number(row.region_id)).regionSpecificAdvisory = true
+      }
       inheritCountry(row.country_iso3, (cur) => { cur.advisoryChange = true })
+    } else if (row.signal_type === 'advisory_divergence') {
+      if (row.region_id != null && byId.get(Number(row.region_id))?.level === 1) {
+        put(Number(row.region_id)).regionSpecificAdvisory = true
+      }
     }
   }
 
