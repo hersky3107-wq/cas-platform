@@ -60,6 +60,8 @@ export const ROLE_TIMEOUT_MS: Record<EngineRole, number> = {
 }
 
 export const DEFAULT_COST_CAP_USD = 1.5
+/** One zone run (top 8 regions, same pipeline). */
+export const ZONE_COST_CAP_USD = 1.2
 
 export function estimateTokens(text: string): number {
   return Math.max(1, Math.ceil(text.length / 4))

@@ -67,6 +67,11 @@ export const hypothesisSchema = z
     non_obviousness: z.number().min(0).max(1).optional(),
     twist: z.string().optional(),
     novelty_match: noveltyMatchSchema().nullable().optional(),
+    regions: z
+      .array(
+        z.object({ region_id: z.number(), name: z.string(), iso3: z.string().nullable() }).strict(),
+      )
+      .optional(),
   })
   .strict()
 
@@ -105,6 +110,11 @@ const baselineRiskSchema = z
     possibility: z.enum(['low', 'medium', 'high']),
     what_to_do: z.array(z.string().min(1)).min(1),
     reason: z.string().optional(),
+    regions: z
+      .array(
+        z.object({ region_id: z.number(), name: z.string(), iso3: z.string().nullable() }).strict(),
+      )
+      .optional(),
   })
   .strict()
 
@@ -133,6 +143,19 @@ export const engineResultSchema = z
     novelty_counts: z.object({ only_us: z.number(), also_seen_elsewhere: z.number() }).strict().optional(),
     rejected: z.array(z.object({ model: z.string(), title: z.string(), reasons: z.array(z.string()) }).strict()).optional(),
     obvious: z.array(z.string()).optional(),
+    zone_key: z.string().optional(),
+    cross_border: z
+      .array(
+        z
+          .object({
+            title: z.string(),
+            from_region: z.string(),
+            to_region: z.string(),
+            link: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict()
 
@@ -152,4 +175,7 @@ export interface EngineCard {
   cascades: Array<{ id: string; trigger: string; effect: string }>
   context: string[]
   urban: Array<{ name: string; pop: number }>
+  zone_key?: string
+  members?: Array<{ region_id: number; name: string; country: string; iso3: string | null }>
+  neighbors?: string[]
 }

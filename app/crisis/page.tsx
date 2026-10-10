@@ -10,7 +10,8 @@ import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { UnlockedCardView, type UnlockedCard } from '@/components/crisis/briefing/BriefingCardsSection'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
 import { projectLonLat, stageColor } from '@/lib/crisis/admin/geo'
-import { CRISIS_BRIEF_CREDITS, CRISIS_DEEP_CREDITS } from '@/lib/crisis/credits'
+import { CRISIS_BRIEF_CREDITS, CRISIS_DEEP_CREDITS, CRISIS_GLOBAL_CREDITS, CRISIS_ZONE_CREDITS } from '@/lib/crisis/credits'
+import { CRISIS_ZONES, zoneDisplayName, type ZoneKey } from '@/lib/crisis/zones'
 import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
 import { countryDisplayName, regionDisplayName } from '@/lib/crisis/i18n/place-names'
 import { useCrisisLocale } from '@/lib/crisis/i18n/use-crisis-locale'
@@ -130,6 +131,14 @@ export default function CrisisMapPage() {
   const [busy, setBusy] = useState(false)
   const [showStage1, setShowStage1] = useState(false)
   const [showAllRows, setShowAllRows] = useState(false)
+  const [zoneKey, setZoneKey] = useState<ZoneKey>('south_asia')
+  const [zoneStatus, setZoneStatus] = useState<DeepStatus>('idle')
+  const [zoneMsg, setZoneMsg] = useState<string | null>(null)
+  const [zoneCard, setZoneCard] = useState<UnlockedCard | null>(null)
+  const [zoneCards, setZoneCards] = useState<UnlockedCard[]>([])
+  const [zoneProgress, setZoneProgress] = useState<DeepProgressState | null>(null)
+  const [zoneBusy, setZoneBusy] = useState(false)
+  const [zoneScope, setZoneScope] = useState<'zone' | 'global'>('zone')
 
   useEffect(() => {
     void (async () => {
@@ -209,6 +218,45 @@ export default function CrisisMapPage() {
     return () => clearInterval(timer)
   }, [deepStatus, selectedId, locale, t])
 
+  useEffect(() => {
+    if (zoneStatus !== 'pending') return
+    const timer = window.setInterval(() => {
+      void (async () => {
+        const path = zoneScope === 'global'
+          ? `/api/crisis/zone?scope=global&lang=${encodeURIComponent(locale)}`
+          : `/api/crisis/zone?zoneKey=${zoneKey}&lang=${encodeURIComponent(locale)}`
+        const res = await authenticatedFetch(path)
+        const body = (await res.json().catch(() => null)) as DeepBody & { cards?: UnlockedCard[] }
+        if (!body) return
+        if (body.cards) setZoneCards(body.cards)
+        applyDeepBody(body, t, setZoneStatus, setZoneMsg, setZoneCard, setZoneProgress)
+      })()
+    }, 5000)
+    return () => window.clearInterval(timer)
+  }, [zoneStatus, zoneScope, zoneKey, locale, t])
+
+  async function requestZone(scope: 'zone' | 'global') {
+    setZoneBusy(true)
+    setZoneScope(scope)
+    setZoneMsg(null)
+    setZoneCards([])
+    try {
+      const res = await authenticatedFetch('/api/crisis/zone', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(scope === 'global' ? { scope: 'global' } : { scope: 'zone', zoneKey }),
+      })
+      const body = (await res.json().catch(() => null)) as DeepBody & { cards?: UnlockedCard[] }
+      if (!res.ok) throw new Error(body?.error ?? t.requestFailed)
+      if (body?.cards) setZoneCards(body.cards)
+      applyDeepBody(body ?? {}, t, setZoneStatus, setZoneMsg, setZoneCard, setZoneProgress)
+    } catch (e: unknown) {
+      setZoneMsg(e instanceof Error ? e.message : t.requestFailed)
+    } finally {
+      setZoneBusy(false)
+    }
+  }
+
   const selected = useMemo(() => regions.find((row) => row.regionId === selectedId) ?? null, [regions, selectedId])
   const mapDots = useMemo(
     () => regions.filter((row) => showStage1 || row.stage >= 2),
@@ -274,6 +322,63 @@ export default function CrisisMapPage() {
             </Link>
           </div>
         </header>
+
+        <section className="rounded-3xl border border-white/10 bg-white/[0.03] p-4">
+          <h2 className="text-sm font-black text-slate-200">{t.zonePicker}</h2>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <select
+              value={zoneKey}
+              onChange={(event) => setZoneKey(event.target.value as ZoneKey)}
+              className="rounded-xl border border-white/15 bg-black/40 px-3 py-2 text-sm"
+            >
+              {CRISIS_ZONES.map((zone) => (
+                <option key={zone.key} value={zone.key}>
+                  {zoneDisplayName(zone, locale)}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              disabled={zoneBusy || zoneStatus === 'pending'}
+              onClick={() => void requestZone('zone')}
+              className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+            >
+              {zoneBusy && zoneScope === 'zone' ? t.requesting : t.zoneAnalyze(CRISIS_ZONE_CREDITS)}
+            </button>
+            <button
+              type="button"
+              disabled={zoneBusy || zoneStatus === 'pending'}
+              onClick={() => void requestZone('global')}
+              className="rounded-xl border border-cyan-400/40 px-4 py-2 text-sm font-semibold text-cyan-100 hover:bg-cyan-500/10 disabled:opacity-50"
+            >
+              {zoneBusy && zoneScope === 'global' ? t.requesting : t.globalAnalyze(CRISIS_GLOBAL_CREDITS)}
+            </button>
+          </div>
+          {zoneMsg ? <p className="mt-3 text-xs text-cyan-200">{zoneMsg}</p> : null}
+          {zoneProgress && zoneStatus === 'pending' ? (
+            <div className="mt-4">
+              <DeepProgress
+                t={t}
+                requestStatus={zoneProgress.requestStatus}
+                elapsedSec={zoneProgress.elapsedSec}
+                waitingForWorker={zoneProgress.waitingForWorker}
+                groups={zoneProgress.groups}
+              />
+            </div>
+          ) : null}
+          {zoneCard && (zoneStatus === 'ready' || zoneStatus === 'cached') ? (
+            <div className="mt-4">
+              <UnlockedCardView card={zoneCard} t={t} />
+            </div>
+          ) : null}
+          {zoneCards.length > 0 ? (
+            <div className="mt-4 space-y-6">
+              {zoneCards.map((card) => (
+                <UnlockedCardView key={card.runId} card={card} t={t} />
+              ))}
+            </div>
+          ) : null}
+        </section>
 
         {error ? (
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div>

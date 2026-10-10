@@ -8,7 +8,8 @@ import { SeverityCard } from '@/components/crisis/SeverityCard'
 import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { projectLonLat, stageColor } from '@/lib/crisis/admin/geo'
 import { countryDisplayName, regionDisplayName } from '@/lib/crisis/i18n/place-names'
-import { ESTIMATE_USD_PER_REGION } from '@/lib/crisis/admin/types'
+import { ESTIMATE_USD_PER_REGION, ESTIMATE_USD_PER_ZONE } from '@/lib/crisis/admin/types'
+import { CRISIS_ZONES, zoneDisplayName, zoneForIso3 } from '@/lib/crisis/zones'
 import type { AdminRegion, QueueRow, QueueStatus } from '@/lib/crisis/admin/types'
 import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
 import type { CrisisLocale } from '@/lib/crisis/i18n/locales'
@@ -33,6 +34,7 @@ type HypothesisView = {
   hazards?: string[]
   official_links?: Array<{ label: string; url: string }>
   evidence?: Array<{ type: string; ref: string; url?: string }>
+  regions?: Array<{ name: string }>
 }
 
 type BaselineView = {
@@ -41,6 +43,7 @@ type BaselineView = {
   possibility: string
   what_to_do: string[]
   reason?: string
+  regions?: Array<{ name: string }>
 }
 
 type RunView = {
@@ -58,6 +61,8 @@ type RunView = {
     summary_en?: string
     summary_ko?: string
     headline_fallback?: boolean
+    zone_key?: string
+    cross_border?: Array<{ title: string; from_region: string; to_region: string; link: string }>
   } | null
   searchUrls: string[]
   public: boolean
@@ -197,11 +202,33 @@ export default function CrisisAdminPage() {
     }
   }
 
+  async function enqueueZone(zoneKey: string, label: string) {
+    if (busy) return
+    const ok = window.confirm(`${label} · $${ESTIMATE_USD_PER_ZONE.toFixed(2)}`)
+    if (!ok) return
+    setBusy(zoneKey)
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/crisis/queue', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ scope: 'zone', zoneKey }),
+      })
+      const body = (await res.json().catch(() => null)) as { error?: string }
+      if (!res.ok) throw new Error(body?.error ?? t.couldNotQueue)
+      await loadOverview()
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : t.couldNotQueue)
+    } finally {
+      setBusy(null)
+    }
+  }
+
   async function enqueueAll() {
-    if (busy || !overview) return
-    const count = overview.runAllCount
-    const usd = overview.runAllEstimateUsd
-    const ok = window.confirm(t.runAllConfirm(count, usd.toFixed(2)))
+    if (busy) return
+    const usd = CRISIS_ZONES.length * ESTIMATE_USD_PER_ZONE
+    const ok = window.confirm(`전체 실행 (15구역) · $${usd.toFixed(2)}`)
     if (!ok) return
     setBusy('all')
     setError(null)
@@ -294,13 +321,38 @@ export default function CrisisAdminPage() {
             <button
               type="button"
               onClick={() => void enqueueAll()}
-              disabled={busy !== null || !overview || overview.runAllCount === 0}
+              disabled={busy !== null}
               className="rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
             >
-              {busy === 'all' ? t.queueing : t.runAll}
+              {busy === 'all' ? t.queueing : '전체 실행 (15구역)'}
             </button>
           </div>
         </div>
+
+        <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
+          <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">구역</h2>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {CRISIS_ZONES.map((zone) => {
+              const count = (overview?.regions ?? []).filter(
+                (row) => row.stage >= 2 && zoneForIso3(row.iso3)?.key === zone.key,
+              ).length
+              return (
+                <button
+                  key={zone.key}
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => void enqueueZone(zone.key, zoneDisplayName(zone, locale))}
+                  className="rounded-xl border border-white/10 bg-black/20 px-3 py-2 text-left hover:border-cyan-400/40 disabled:opacity-50"
+                >
+                  <span className="block text-sm font-semibold">{zoneDisplayName(zone, locale)}</span>
+                  <span className="text-xs text-slate-400">
+                    {count} · ${ESTIMATE_USD_PER_ZONE.toFixed(2)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </section>
 
         {error ? (
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div>
@@ -558,20 +610,46 @@ function AdminResult({
           </p>
           <AdminTier title={t.headlines} rows={result.headlines} t={t} />
           <AdminTier title={t.missedByOthers} rows={result.missed_by_others} t={t} />
+          {result.zone_key ? (
+            <div>
+              <h3 className="mb-2 text-sm font-black text-slate-300">{t.borderLinks}</h3>
+              {(result.cross_border ?? []).length === 0 ? (
+                <p className="text-xs text-slate-500">{t.none}</p>
+              ) : (
+                <ul className="space-y-2">
+                  {(result.cross_border ?? []).map((row) => (
+                    <li key={`${row.title}-${row.from_region}-${row.to_region}`} className="rounded-xl border border-white/10 px-3 py-2 text-sm">
+                      <p className="font-semibold">{row.from_region} → {row.to_region}</p>
+                      <p>{row.title}</p>
+                      <p className="text-xs text-slate-400">{row.link}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ) : null}
           <div>
             <h3 className="mb-2 text-sm font-black text-slate-300">{t.baselineRisks}</h3>
             <div className="space-y-3">
               {result.baseline_risks.map((row) => (
-                <SeverityCard
-                  key={row.title}
-                  t={t}
-                  card={{
-                    stage: row.stage,
-                    summary: row.title,
-                    whatToDo: row.what_to_do,
-                    whyMiss: row.reason,
-                  }}
-                />
+                <div key={row.title} className="space-y-1">
+                  {row.regions && row.regions.length > 0 ? (
+                    <div className="flex flex-wrap gap-1">
+                      {row.regions.map((region) => (
+                        <span key={region.name} className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-300">{region.name}</span>
+                      ))}
+                    </div>
+                  ) : null}
+                  <SeverityCard
+                    t={t}
+                    card={{
+                      stage: row.stage,
+                      summary: row.title,
+                      whatToDo: row.what_to_do,
+                      whyMiss: row.reason,
+                    }}
+                  />
+                </div>
               ))}
             </div>
           </div>
@@ -604,8 +682,15 @@ function AdminTier({ title, rows, t }: { title: string; rows: HypothesisView[]; 
       ) : (
         <div className="space-y-3">
           {rows.map((row) => (
+            <div key={row.title} className="space-y-1">
+            {row.regions && row.regions.length > 0 ? (
+              <div className="flex flex-wrap gap-1">
+                {row.regions.map((region) => (
+                  <span key={region.name} className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-300">{region.name}</span>
+                ))}
+              </div>
+            ) : null}
             <SeverityCard
-              key={row.title}
               t={t}
               card={{
                 stage: row.stage ?? 1,
@@ -623,6 +708,7 @@ function AdminTier({ title, rows, t }: { title: string; rows: HypothesisView[]; 
                 ],
               }}
             />
+            </div>
           ))}
         </div>
       )}

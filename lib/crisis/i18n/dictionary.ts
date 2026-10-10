@@ -136,6 +136,10 @@ export type CrisisUiPack = {
   riverPeak: (peak: number) => string
   quakeMag: (mag: number) => string
   fragilityKind: (kind: string) => string
+  zoneAnalyze: (credits: number) => string
+  globalAnalyze: (credits: number) => string
+  zonePicker: string
+  borderLinks: string
 }
 
 const ko: CrisisUiPack = {
@@ -331,6 +335,10 @@ const ko: CrisisUiPack = {
     }
     return map[kind] ?? kind
   },
+  zoneAnalyze: (credits) => `구역 분석 · ${credits}크레딧`,
+  globalAnalyze: (credits) => `전 세계 분석 · ${credits}크레딧`,
+  zonePicker: '구역',
+  borderLinks: '국경 연결',
 }
 
 const en: CrisisUiPack = {
@@ -497,6 +505,10 @@ const en: CrisisUiPack = {
   riverPeak: (peak) => `Peak river flow ${Math.round(peak)} m³/s`,
   quakeMag: (mag) => `Magnitude ${mag.toFixed(1)}`,
   fragilityKind: (kind) => kind.replace(/_/g, ' '),
+  zoneAnalyze: (credits) => `Zone analysis · ${credits} credits`,
+  globalAnalyze: (credits) => `Worldwide analysis · ${credits} credits`,
+  zonePicker: 'Zone',
+  borderLinks: 'Cross-border links',
 }
 
 const ja: CrisisUiPack = {

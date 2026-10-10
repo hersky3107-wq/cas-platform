@@ -9,7 +9,7 @@ vi.mock('@/lib/supabase/server', () => ({
   },
 }))
 
-import { CRISIS_BRIEF_CREDITS, CRISIS_DEEP_CREDITS, creditsForCrisisBrief, creditsForCrisisDeep, creditsForCrisisDeepCache } from '../../credits'
+import { CRISIS_BRIEF_CREDITS, CRISIS_DEEP_CREDITS, CRISIS_GLOBAL_CREDITS, CRISIS_ZONE_CREDITS, creditsForCrisisBrief, creditsForCrisisDeep, creditsForCrisisDeepCache, creditsForCrisisGlobal, creditsForCrisisZone } from '../../credits'
 import { freeLayerFromDetail, lockBriefCard, unlockBriefCard } from '../card'
 import { noveltyBadge } from '../labels'
 import { evaluateUserLimits } from '../limits'
@@ -27,6 +27,10 @@ describe('credit constants', () => {
     expect(creditsForCrisisBrief()).toBe(CRISIS_BRIEF_CREDITS)
     expect(creditsForCrisisDeep()).toBe(CRISIS_DEEP_CREDITS)
     expect(creditsForCrisisDeepCache()).toBe(CRISIS_DEEP_CREDITS)
+    expect(CRISIS_ZONE_CREDITS).toBe(60)
+    expect(CRISIS_GLOBAL_CREDITS).toBe(600)
+    expect(creditsForCrisisZone()).toBe(60)
+    expect(creditsForCrisisGlobal()).toBe(600)
     const src = readFileSync(path.join(process.cwd(), 'lib/crisis/credits.ts'), 'utf8')
     expect(src).toContain('PLACEHOLDER')
     expect(src).not.toContain('lib/league')

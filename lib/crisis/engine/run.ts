@@ -48,6 +48,7 @@ import {
 } from './schema'
 import { normalizeSearchItems, type SearchItem } from './search-items'
 import { departmentsTouched, structureOf, weaknessOf } from './structure'
+import { crossBorderLinks, tagsForText } from './zone-card'
 
 export type { Draft } from './hunter-rules'
 
@@ -109,7 +110,7 @@ export interface EngineRunRecord {
   cacheHit: boolean
   regionId: number
   horizon: Horizon
-  mode: 'region' | 'top' | 'global'
+  mode: 'region' | 'top' | 'global' | 'zone'
   status: 'done' | 'error' | 'partial' | 'running'
   roster: ResolvedRoster
   costUsd: number
@@ -134,7 +135,7 @@ export interface RunEngineOptions {
   caller: ModelCaller
   dryRun?: boolean
   now?: Date
-  mode?: 'region' | 'top' | 'global'
+  mode?: 'region' | 'top' | 'global' | 'zone'
   costCapUsd?: number
   roster?: ResolvedRoster
   cache?: EngineCache
@@ -169,6 +170,28 @@ function asRecord(value: unknown): Record<string, unknown> | null {
   return value as Record<string, unknown>
 }
 
+function parseRegionTags(
+  value: unknown,
+  card: EngineCard,
+): Array<{ region_id: number; name: string; iso3: string | null }> {
+  if (!Array.isArray(value)) return []
+  const members = card.members ?? []
+  const out: Array<{ region_id: number; name: string; iso3: string | null }> = []
+  for (const item of value) {
+    const rec = asRecord(item)
+    if (!rec) continue
+    const name = typeof rec.name === 'string' ? rec.name : ''
+    const hit = members.find((row) => row.region_id === rec.region_id || (name && row.name === name))
+    if (!hit && !name) continue
+    out.push({
+      region_id: hit?.region_id ?? (typeof rec.region_id === 'number' ? rec.region_id : 0),
+      name: hit?.name ?? name,
+      iso3: hit?.iso3 ?? (typeof rec.iso3 === 'string' ? rec.iso3 : null),
+    })
+  }
+  return out
+}
+
 function stringList(value: unknown): string[] {
   if (!Array.isArray(value)) return []
   return value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0)
@@ -177,7 +200,8 @@ function stringList(value: unknown): string[] {
 export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord> {
   const now = opts.now ?? new Date()
   const roster = opts.roster ?? resolveRoster()
-  const key = cacheKey(opts.card.region_id, opts.card.horizon, now)
+  const zoneMode = opts.mode === 'zone' || Boolean(opts.card.zone_key)
+  const key = cacheKey(opts.card.region_id, opts.card.horizon, now, zoneMode ? opts.card.zone_key : null)
   const costOf = opts.costOf ?? listPriceCost
   const cap = opts.costCapUsd ?? DEFAULT_COST_CAP_USD
   if (!opts.dryRun && !opts.force && opts.cache) {
@@ -199,7 +223,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     cacheHit: false,
     regionId: opts.card.region_id,
     horizon: opts.card.horizon,
-    mode: opts.mode ?? 'region',
+    mode: zoneMode ? 'zone' : opts.mode ?? 'region',
     status: 'running',
     roster,
     costUsd: 0,
@@ -434,8 +458,8 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
           slot: slot.slot,
           model: slot.model,
           provider: slot.provider,
-          promptHash: promptHash(analystSystem(department), analystUser(opts.card, department)),
-          system: analystSystem(department),
+          promptHash: promptHash(analystSystem(department, zoneMode), analystUser(opts.card, department)),
+          system: analystSystem(department, zoneMode),
           user: analystUser(opts.card, department),
           inputTokens: 0,
           outputTokens: 0,
@@ -448,7 +472,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         await flushLive()
         return { department, called: null as Awaited<ReturnType<typeof callSlot>> }
       }
-      return { department, called: await callSlot(slot, analystSystem(department), analystUser(opts.card, department)) }
+      return { department, called: await callSlot(slot, analystSystem(department, zoneMode), analystUser(opts.card, department)) }
     }),
   )
   for (const { department, called } of analystCalled) {
@@ -498,7 +522,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const hunterCalled = await Promise.all(
     slotsFor(roster, 'hunter').map(async (slot) => ({
       slot,
-      called: await callSlot(slot, hunterSystem(), hunterPacket),
+      called: await callSlot(slot, hunterSystem(zoneMode), hunterPacket),
     })),
   )
   for (const { slot, called } of hunterCalled) {
@@ -510,7 +534,15 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     })
     for (const row of rows.slice(0, HUNTER_MAX_HYPOTHESES)) {
       const checked = checkHunterRow(row, { model: slot.model, id: `h${drafts.length}`, card: opts.card, corpus, entityCtx })
-      if (checked.draft) drafts.push(checked.draft)
+      if (checked.draft) {
+        const tagged = parseRegionTags(asRecord(row)?.regions, opts.card)
+        const fallback = tagsForText(
+          `${checked.draft.title} ${checked.draft.entities.join(' ')} ${checked.draft.mechanism}`,
+          opts.card.members ?? [],
+        )
+        checked.draft.regions = tagged.length ? tagged : fallback
+        drafts.push(checked.draft)
+      }
       else rejected.push({ model: checked.model, title: checked.title, reasons: checked.reasons })
     }
   }
@@ -633,7 +665,15 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     .filter((item) => !item.row.sourceIds.some((id) => headlineIds.has(id)))
     .filter((item) => item.hypothesis.novelty === 'only_us' || item.row.outsider)
     .map((item) => ({ ...item.hypothesis, outsider: item.row.outsider }))
-  const baselineRisks: BaselineRisk[] = mergeBaselineRisks(judgeBaselineRows, opts.card, analystFindings)
+  const baselineRisks: BaselineRisk[] = mergeBaselineRisks(judgeBaselineRows, opts.card, analystFindings).map((row) => ({
+    ...row,
+    regions:
+      row.regions && row.regions.length > 0
+        ? row.regions
+        : opts.card.members
+          ? tagsForText(`${row.title} ${row.reason ?? ''}`, opts.card.members)
+          : undefined,
+  }))
 
   const lead = headlineRows[0]
   if (lead) {
@@ -675,6 +715,17 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       novelty_counts: noveltyCounts,
       rejected,
       obvious: obvious.map((row) => row.line),
+      zone_key: opts.card.zone_key,
+      cross_border: opts.card.zone_key
+        ? crossBorderLinks(
+            [...headlines, ...missed_by_others].map((row) => ({
+              title: row.title,
+              mechanism: row.mechanism,
+              regions: row.regions,
+            })),
+            opts.card.members ?? [],
+          )
+        : undefined,
     }
     const parsed = engineResultSchema.safeParse(candidate)
     if (!parsed.success) {
@@ -914,6 +965,7 @@ function toHypothesis(
     non_obviousness: Math.round(nonObviousness * 100) / 100,
     twist: twist ? hedgeStaleStatusText(twist, stale) : undefined,
     novelty_match: novelty.match,
+    regions: draft.regions && draft.regions.length > 0 ? draft.regions : undefined,
   }
   hypothesis.title = hedgeStaleStatusText(hypothesis.title, stale)
   hypothesis.why_humans_miss = hedgeStaleStatusText(hypothesis.why_humans_miss, stale)

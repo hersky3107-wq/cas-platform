@@ -1,5 +1,7 @@
+import { CRISIS_ZONES } from '../zones'
 import {
   ESTIMATE_USD_PER_REGION,
+  ESTIMATE_USD_PER_ZONE,
   QUEUE_SCOPES,
   QUEUE_STATUSES,
   RUN_ALL_MIN_STAGE,
@@ -43,6 +45,19 @@ export function enqueueAll(requestedBy: string | null): QueueInsert {
   return { region_id: null, scope: 'all', requested_by: requestedBy, status: 'queued' }
 }
 
+export function enqueueZone(zoneKey: string, requestedBy: string | null): QueueInsert {
+  if (!CRISIS_ZONES.some((zone) => zone.key === zoneKey)) throw new Error('zone_key is required')
+  return { region_id: null, scope: 'zone', zone_key: zoneKey, requested_by: requestedBy, status: 'queued' }
+}
+
+export function enqueueAllZones(requestedBy: string | null): QueueInsert[] {
+  return [enqueueAll(requestedBy), ...CRISIS_ZONES.map((zone) => enqueueZone(zone.key, requestedBy))]
+}
+
+export function estimateZoneUsd(count = CRISIS_ZONES.length): number {
+  return estimateQueueUsd(count, ESTIMATE_USD_PER_ZONE)
+}
+
 /** Run-all inserts the batch marker plus one queued row per stage >= 3 region. */
 export function enqueueRunAll(regionIds: number[], requestedBy: string | null): QueueInsert[] {
   const unique = [...new Set(regionIds.filter((id) => Number.isInteger(id) && id > 0))]
@@ -63,7 +78,8 @@ export function nextQueued(rows: QueueRow[]): QueueRow | null {
     .filter((row) => row.status === 'queued')
     .sort((a, b) => a.created_at.localeCompare(b.created_at))
   const region = queued.find((row) => row.scope === 'region')
-  return region ?? queued[0] ?? null
+  const zone = queued.find((row) => row.scope === 'zone')
+  return region ?? zone ?? queued[0] ?? null
 }
 
 export function markRunning(row: QueueRow, startedAt: string): QueueRow {

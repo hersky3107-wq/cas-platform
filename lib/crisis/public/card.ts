@@ -41,6 +41,8 @@ export interface UnlockedBriefCard {
   costUsd: number
   stage: number
   headline_fallback?: boolean
+  zoneKey?: string
+  crossBorder?: Array<{ title: string; from_region: string; to_region: string; link: string }>
 }
 
 export interface PublicHypothesis {
@@ -56,6 +58,7 @@ export interface PublicHypothesis {
   official_links: Array<{ label: string; url: string }>
   evidence: Array<{ type: string; ref: string; url?: string }>
   hazards: string[]
+  regions?: Array<{ region_id: number; name: string; iso3: string | null }>
 }
 
 export function localLanguageCode(iso3: string | null): string {
@@ -78,6 +81,7 @@ function asHypothesis(row: Hypothesis): PublicHypothesis {
     official_links: row.official_links ?? [],
     evidence: row.evidence ?? [],
     hazards: row.hazards ?? [],
+    regions: row.regions,
   }
 }
 
@@ -174,6 +178,8 @@ export function unlockBriefCard(opts: {
     costUsd: opts.costUsd,
     stage: cardStageFromResult(opts.result),
     headline_fallback: opts.result.headline_fallback,
+    zoneKey: opts.result.zone_key,
+    crossBorder: opts.result.cross_border,
   }
 }
 

@@ -1,8 +1,9 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { enqueueRegion } from '../admin/queue'
+import { enqueueAll, enqueueRegion, enqueueZone } from '../admin/queue'
 import { insertQueueRows, loadTodayRegions } from '../admin/store'
 import type { AdminRegion, QueueRow } from '../admin/types'
 import type { EngineResult } from '../engine/schema'
+import { isZoneKey, type ZoneKey } from '../zones'
 import { loadRun } from '../engine/store'
 import {
   freeLayerFromDetail,
@@ -17,6 +18,7 @@ import { isPublicRun } from './policy'
 import { summarizeEngineProgress, type ProgressGroup } from './progress'
 
 const APPLY_UNLOCKS = 'Paste docs/crisis/APPLY_PUBLIC.md before unlocking a briefing.'
+const APPLY_ZONES = 'Paste docs/crisis/APPLY_ZONES.md before using zone runs.'
 
 export interface PublicMapRegion extends AdminRegion {
   fragility: string[]
@@ -201,6 +203,7 @@ export async function loadOwnRequest(
     id: String(data.id),
     region_id: data.region_id == null ? null : Number(data.region_id),
     scope: 'region',
+    zone_key: null,
     requested_by: userId,
     status:
       data.status === 'running' || data.status === 'done' || data.status === 'failed' ? data.status : 'queued',
@@ -215,6 +218,118 @@ export async function loadOwnRequest(
 export async function queueDeepRequest(client: SupabaseClient, regionId: number, userId: string): Promise<QueueRow> {
   const [row] = await insertQueueRows(client, [enqueueRegion(regionId, userId)])
   return row
+}
+
+export async function findFreshZoneRun(
+  client: SupabaseClient,
+  zoneKey: ZoneKey,
+  now: Date,
+): Promise<{ id: string; at: string } | null> {
+  const since = new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await client
+    .from('crisis_engine_runs')
+    .select('id,created_at,finished_at,status,cache_key')
+    .eq('mode', 'zone')
+    .eq('status', 'done')
+    .gte('created_at', since)
+    .like('cache_key', `zone|${zoneKey}|%`)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`${error.message}. ${APPLY_ZONES}`)
+  if (!data) return null
+  return { id: String(data.id), at: String(data.finished_at ?? data.created_at) }
+}
+
+export async function loadOwnZoneRequest(
+  client: SupabaseClient,
+  userId: string,
+  zoneKey: ZoneKey,
+): Promise<QueueRow | null> {
+  const { data, error } = await client
+    .from('crisis_engine_requests')
+    .select('id,region_id,scope,zone_key,requested_by,status,run_id,error,created_at,started_at,finished_at')
+    .eq('requested_by', userId)
+    .eq('scope', 'zone')
+    .eq('zone_key', zoneKey)
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`${error.message}. ${APPLY_ZONES}`)
+  if (!data) return null
+  return {
+    id: String(data.id),
+    region_id: null,
+    scope: 'zone',
+    zone_key: zoneKey,
+    requested_by: userId,
+    status: data.status === 'running' || data.status === 'done' || data.status === 'failed' ? data.status : 'queued',
+    run_id: data.run_id == null ? null : String(data.run_id),
+    error: typeof data.error === 'string' ? data.error : null,
+    created_at: String(data.created_at ?? ''),
+    started_at: typeof data.started_at === 'string' ? data.started_at : null,
+    finished_at: typeof data.finished_at === 'string' ? data.finished_at : null,
+  }
+}
+
+export async function queueZoneRequest(client: SupabaseClient, zoneKey: ZoneKey, userId: string): Promise<QueueRow> {
+  const [row] = await insertQueueRows(client, [enqueueZone(zoneKey, userId)])
+  return row
+}
+
+export async function queueGlobalRequest(client: SupabaseClient, userId: string): Promise<QueueRow> {
+  const [row] = await insertQueueRows(client, [enqueueAll(userId)])
+  return row
+}
+
+export async function hasZoneUnlock(client: SupabaseClient, userId: string, zoneKey: ZoneKey): Promise<boolean> {
+  const { data, error } = await client
+    .from('crisis_unlocks')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('kind', 'zone')
+    .eq('zone_key', zoneKey)
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`${error.message}. ${APPLY_ZONES}`)
+  return Boolean(data)
+}
+
+export async function recordZoneUnlock(
+  client: SupabaseClient,
+  opts: { userId: string; zoneKey: ZoneKey; runId: string },
+): Promise<void> {
+  const { error } = await client.from('crisis_unlocks').insert({
+    user_id: opts.userId,
+    kind: 'zone',
+    zone_key: opts.zoneKey,
+    run_id: opts.runId,
+  })
+  if (error && !/duplicate|unique/i.test(error.message)) throw new Error(`${error.message}. ${APPLY_ZONES}`)
+}
+
+export async function hasGlobalUnlock(client: SupabaseClient, userId: string): Promise<boolean> {
+  const { data, error } = await client
+    .from('crisis_unlocks')
+    .select('id')
+    .eq('user_id', userId)
+    .eq('kind', 'global')
+    .limit(1)
+    .maybeSingle()
+  if (error) throw new Error(`${error.message}. ${APPLY_ZONES}`)
+  return Boolean(data)
+}
+
+export async function recordGlobalUnlock(client: SupabaseClient, userId: string): Promise<void> {
+  const { error } = await client.from('crisis_unlocks').insert({
+    user_id: userId,
+    kind: 'global',
+  })
+  if (error && !/duplicate|unique/i.test(error.message)) throw new Error(`${error.message}. ${APPLY_ZONES}`)
+}
+
+export function parseZoneKey(value: unknown): ZoneKey | null {
+  return isZoneKey(value) ? value : null
 }
 
 export async function hasUnlock(

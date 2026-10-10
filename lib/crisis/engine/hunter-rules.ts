@@ -25,6 +25,7 @@ export interface Draft {
   lead_time_days: { min: number; max: number }
   early_indicators: string[]
   falsifier: string
+  regions?: Array<{ region_id: number; name: string; iso3: string | null }>
 }
 
 export interface ObviousEntry {

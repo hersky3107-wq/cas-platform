@@ -57,13 +57,18 @@ export function departmentView(card: EngineCard, department: Department): Engine
   }
 }
 
-export function analystSystem(department: Department): string {
+export function analystSystem(department: Department, zone = false): string {
   return [
     SHARED_PREAMBLE,
     `You are the ${department} analyst. You see only that department's slice of the card.`,
+    zone
+      ? 'This card is a zone of several regions. Look for cross-border links: an upstream dam and the downstream country, conflict and refugee camps across the border, an outbreak spreading into the next country.'
+      : '',
     'Write notes about what this slice can and cannot see. Do not invent numbers that are not in the slice.',
     'Return JSON: {"notes":"one paragraph","signals":["short signal"]}',
-  ].join('\n')
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export function analystUser(card: EngineCard, department: Department): string {
@@ -161,7 +166,7 @@ export const HUNTER_WANTED_EXAMPLES = [
 
 export const HUNTER_UNWANTED_EXAMPLE = 'Heavy rain causes landslides (rain → landslide).'
 
-export function hunterSystem(): string {
+export function hunterSystem(zone = false): string {
   return [
     SHARED_PREAMBLE,
     'You are one independent hunter. You do not see any other hunter.',
@@ -183,8 +188,13 @@ export function hunterSystem(): string {
     'evidence.type should be a component key such as rain, dam, conflict, food, health_attention.',
     'what_to_do is a plain-language list for residents, local language and English.',
     'official_links only when the url is already in the card or the search items.',
-    'Return JSON: {"hypotheses":[{"title":"","hazards":["dam"],"departments":["natural-hydro","health"],"entities":[""],"mechanism":"","lead_time_days":{"min":3,"max":14},"early_indicators":[""],"falsifier":"","chain":[{"step":"","cascade_id":null}],"why_humans_miss":"","evidence":[{"type":"rain","ref":""}],"what_to_do":[""],"official_links":[{"label":"","url":""}]}]}',
-  ].join('\n')
+    zone
+      ? 'This is one zone, not one region. Prefer a cross-border link (upstream dam → downstream country, conflict → camps across the border, outbreak spread) over a single-country restatement. Tag regions with the member names from the card: "regions":[{"region_id":0,"name":"","iso3":""}].'
+      : '',
+    'Return JSON: {"hypotheses":[{"title":"","hazards":["dam"],"departments":["natural-hydro","health"],"entities":[""],"mechanism":"","lead_time_days":{"min":3,"max":14},"early_indicators":[""],"falsifier":"","chain":[{"step":"","cascade_id":null}],"why_humans_miss":"","evidence":[{"type":"rain","ref":""}],"what_to_do":[""],"official_links":[{"label":"","url":""}],"regions":[{"region_id":0,"name":"","iso3":null}]}]}',
+  ]
+    .filter(Boolean)
+    .join('\n')
 }
 
 export interface HunterExtras {
@@ -206,6 +216,9 @@ export function hunterUser(card: EngineCard, notes: string[], items: SearchItem[
       cascades: card.cascades,
       context: card.context,
       urban: card.urban,
+      zone_key: card.zone_key,
+      members: card.members,
+      neighbors: card.neighbors,
     },
     analyst_notes: notes,
     search_items: items.slice(0, 8).map((item) => ({
@@ -257,6 +270,8 @@ export function judgeUser(packet: unknown): string {
   return JSON.stringify(packet)
 }
 
-export function cacheKey(regionId: number, horizon: Horizon, now: Date): string {
-  return `${regionId}|${horizon}|${now.toISOString().slice(0, 10)}`
+export function cacheKey(regionId: number, horizon: Horizon, now: Date, zoneKey?: string | null): string {
+  const day = now.toISOString().slice(0, 10)
+  if (zoneKey) return `zone|${zoneKey}|${horizon}|${day}`
+  return `${regionId}|${horizon}|${day}`
 }

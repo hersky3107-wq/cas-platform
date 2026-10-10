@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { CRISIS_DEEP_CREDITS } from '../credits'
+import { CRISIS_DEEP_CREDITS, CRISIS_GLOBAL_CREDITS, CRISIS_ZONE_CREDITS } from '../credits'
 import { DEEP_TIMEOUT_MS } from './policy'
 
 export interface RefundResult {
@@ -26,6 +26,7 @@ export async function refundUserRequest(
   requestId: string,
   userId: string,
   regionId: number | null,
+  credits = CRISIS_DEEP_CREDITS,
 ): Promise<RefundResult> {
   // 1. Idempotency check via crisis_unlocks
   const { data: existing, error: checkErr } = await client
@@ -82,7 +83,7 @@ export async function refundUserRequest(
   const admin = await isUserAdmin(userId)
   if (!admin) {
     const { addCreditsBalance } = await import('@/lib/credits-server')
-    await addCreditsBalance(client, userId, CRISIS_DEEP_CREDITS)
+    await addCreditsBalance(client, userId, credits)
   }
 
   return { refunded: true }
@@ -100,7 +101,7 @@ export async function refundTimedOutUserRequests(
   const cutoff = new Date(now.getTime() - DEEP_TIMEOUT_MS).toISOString()
   let query = client
     .from('crisis_engine_requests')
-    .select('id, requested_by, region_id, created_at, status')
+    .select('id, requested_by, region_id, scope, error, created_at, status')
     .in('status', ['queued', 'running'])
     .lte('created_at', cutoff)
 
@@ -126,12 +127,14 @@ export async function refundTimedOutUserRequests(
       })
       .eq('id', row.id)
 
-    if (row.requested_by) {
+    if (row.requested_by && row.error !== 'batch:global') {
+      const credits = row.scope === 'zone' ? CRISIS_ZONE_CREDITS : row.scope === 'all' ? CRISIS_GLOBAL_CREDITS : CRISIS_DEEP_CREDITS
       await refundUserRequest(
         client,
         String(row.id),
         String(row.requested_by),
         row.region_id == null ? null : Number(row.region_id),
+        credits,
       )
       count++
     }

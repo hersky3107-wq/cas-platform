@@ -6,9 +6,12 @@ import { centroidLonLat, projectLonLat, stageColor } from '../geo'
 import { publishableIndices } from '../publish'
 import {
   canClaimNext,
+  enqueueAllZones,
   enqueueRegion,
   enqueueRunAll,
+  enqueueZone,
   estimateQueueUsd,
+  estimateZoneUsd,
   expandAllToRegions,
   groupQueue,
   markDone,
@@ -40,6 +43,7 @@ function queue(partial: Partial<QueueRow> & Pick<QueueRow, 'id' | 'status'>): Qu
   return {
     region_id: 1,
     scope: 'region',
+    zone_key: null,
     requested_by: 'admin',
     run_id: null,
     error: null,
@@ -90,6 +94,19 @@ describe('queue planning', () => {
     expect(markDone(older, NOW, 'run-1')).toMatchObject({ status: 'done', run_id: 'run-1' })
     expect(markFailed(older, NOW, 'cap')).toMatchObject({ status: 'failed', error: 'cap' })
     expect(groupQueue([older, markFailed(newer, NOW, 'x')]).failed).toHaveLength(1)
+  })
+
+  it('queues one zone or all 15 zones and prices them at $1.20', () => {
+    expect(enqueueZone('south_asia', 'u1')).toMatchObject({ scope: 'zone', zone_key: 'south_asia', region_id: null })
+    expect(() => enqueueZone('atlantis', 'u1')).toThrow(/zone_key/)
+    const rows = enqueueAllZones('u1')
+    expect(rows).toHaveLength(16)
+    expect(rows[0]).toMatchObject({ scope: 'all', region_id: null })
+    expect(rows.filter((row) => row.scope === 'zone')).toHaveLength(15)
+    expect(estimateZoneUsd()).toBe(18)
+    const zone = queue({ id: 'z', status: 'queued', scope: 'zone', region_id: null, zone_key: 'south_asia', created_at: '2026-10-10T09:00:00.000Z' })
+    const region = queue({ id: 'r', status: 'queued', created_at: '2026-10-10T12:00:00.000Z' })
+    expect(nextQueued([zone, region])?.id).toBe('r')
   })
 })
 

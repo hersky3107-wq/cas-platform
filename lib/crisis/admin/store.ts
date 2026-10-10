@@ -10,7 +10,8 @@ function asQueueRow(row: Record<string, unknown>): QueueRow {
   return {
     id: String(row.id),
     region_id: row.region_id == null ? null : Number(row.region_id),
-    scope: row.scope === 'all' ? 'all' : 'region',
+    scope: row.scope === 'all' ? 'all' : row.scope === 'zone' ? 'zone' : 'region',
+    zone_key: typeof row.zone_key === 'string' ? row.zone_key : null,
     requested_by: row.requested_by == null ? null : String(row.requested_by),
     status:
       row.status === 'running' || row.status === 'done' || row.status === 'failed' ? row.status : 'queued',
@@ -25,7 +26,7 @@ function asQueueRow(row: Record<string, unknown>): QueueRow {
 export async function loadQueue(client: SupabaseClient): Promise<QueueRow[]> {
   const { data, error } = await client
     .from('crisis_engine_requests')
-    .select('id,region_id,scope,requested_by,status,run_id,error,created_at,started_at,finished_at')
+    .select('id,region_id,scope,zone_key,requested_by,status,run_id,error,created_at,started_at,finished_at')
     .order('created_at', { ascending: false })
     .limit(QUEUE_LIMIT)
   if (error) throw new Error(applyMissingMessage(error.message))
@@ -37,7 +38,7 @@ export async function insertQueueRows(client: SupabaseClient, rows: QueueInsert[
   const { data, error } = await client
     .from('crisis_engine_requests')
     .insert(rows)
-    .select('id,region_id,scope,requested_by,status,run_id,error,created_at,started_at,finished_at')
+    .select('id,region_id,scope,zone_key,requested_by,status,run_id,error,created_at,started_at,finished_at')
   if (error) throw new Error(applyMissingMessage(error.message))
   return (data ?? []).map((row) => asQueueRow(row as Record<string, unknown>))
 }
@@ -53,13 +54,13 @@ export async function claimNextRequest(client: SupabaseClient): Promise<QueueRow
 
   const { data: queued, error: queuedError } = await client
     .from('crisis_engine_requests')
-    .select('id,region_id,scope,requested_by,status,run_id,error,created_at,started_at,finished_at')
+    .select('id,region_id,scope,zone_key,requested_by,status,run_id,error,created_at,started_at,finished_at')
     .eq('status', 'queued')
     .order('created_at', { ascending: true })
     .limit(40)
   if (queuedError) throw new Error(applyMissingMessage(queuedError.message))
   const rows = (queued ?? []).map((row) => asQueueRow(row as Record<string, unknown>))
-  const next = rows.find((row) => row.scope === 'region') ?? rows[0]
+  const next = rows.find((row) => row.scope === 'region') ?? rows.find((row) => row.scope === 'zone') ?? rows[0]
   if (!next) return null
 
   const startedAt = new Date().toISOString()
@@ -68,7 +69,7 @@ export async function claimNextRequest(client: SupabaseClient): Promise<QueueRow
     .update({ status: 'running', started_at: startedAt, error: null })
     .eq('id', next.id)
     .eq('status', 'queued')
-    .select('id,region_id,scope,requested_by,status,run_id,error,created_at,started_at,finished_at')
+    .select('id,region_id,scope,zone_key,requested_by,status,run_id,error,created_at,started_at,finished_at')
     .maybeSingle()
   if (error) throw new Error(applyMissingMessage(error.message))
   return data ? asQueueRow(data as Record<string, unknown>) : null

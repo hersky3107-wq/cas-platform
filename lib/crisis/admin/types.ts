@@ -1,10 +1,11 @@
-export const QUEUE_SCOPES = ['region', 'all'] as const
+export const QUEUE_SCOPES = ['region', 'zone', 'all'] as const
 export type QueueScope = (typeof QUEUE_SCOPES)[number]
 
 export const QUEUE_STATUSES = ['queued', 'running', 'done', 'failed'] as const
 export type QueueStatus = (typeof QUEUE_STATUSES)[number]
 
 export const ESTIMATE_USD_PER_REGION = 0.42
+export const ESTIMATE_USD_PER_ZONE = 1.2
 export const RUN_ALL_MIN_STAGE = 3
 export const DEFAULT_HORIZON = '30d' as const
 
@@ -25,14 +26,17 @@ export interface AdminRegion {
 export interface QueueInsert {
   region_id: number | null
   scope: QueueScope
+  zone_key?: string | null
   requested_by: string | null
   status: 'queued'
+  error?: string | null
 }
 
 export interface QueueRow {
   id: string
   region_id: number | null
   scope: QueueScope
+  zone_key: string | null
   requested_by: string | null
   status: QueueStatus
   run_id: string | null

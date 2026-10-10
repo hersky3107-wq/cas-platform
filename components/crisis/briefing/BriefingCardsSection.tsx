@@ -32,6 +32,7 @@ export type HypothesisRow = {
   official_links: Array<{ label: string; url: string }>
   evidence: Array<{ ref: string; url?: string }>
   hazards?: string[]
+  regions?: Array<{ name: string }>
 }
 
 export type UnlockedCard = {
@@ -45,9 +46,11 @@ export type UnlockedCard = {
   headline_fallback?: boolean
   headlines: HypothesisRow[]
   missed_by_others: HypothesisRow[]
-  baseline_risks: Array<{ title: string; stage: number; possibility: string; what_to_do: string[]; reason?: string }>
+  baseline_risks: Array<{ title: string; stage: number; possibility: string; what_to_do: string[]; reason?: string; regions?: Array<{ name: string }> }>
   novelty: { only_us: number; also_seen_elsewhere: number }
   evidence: string[]
+  zoneKey?: string
+  crossBorder?: Array<{ title: string; from_region: string; to_region: string; link: string }>
 }
 
 export type BriefingCard = LockedCard | UnlockedCard
@@ -169,21 +172,32 @@ export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiP
 
       <Tier title={t.headlines} rows={card.headlines} t={t} />
       <Tier title={t.missedByOthers} rows={card.missed_by_others} t={t} />
+      {card.zoneKey ? <BorderLinks title={t.borderLinks} rows={card.crossBorder ?? []} empty={t.none} /> : null}
 
       <section>
         <h3 className="mb-2 text-sm font-black text-slate-300">{t.baselineRisks}</h3>
         <div className="space-y-3">
           {card.baseline_risks.map((row) => (
-            <SeverityCard
-              key={row.title}
-              t={t}
-              card={{
-                stage: row.stage,
-                summary: row.title,
-                whatToDo: row.what_to_do,
-                whyMiss: row.reason,
-              }}
-            />
+            <div key={row.title} className="space-y-1">
+              {row.regions && row.regions.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {row.regions.map((region) => (
+                    <span key={region.name} className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-300">
+                      {region.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <SeverityCard
+                t={t}
+                card={{
+                  stage: row.stage,
+                  summary: row.title,
+                  whatToDo: row.what_to_do,
+                  whyMiss: row.reason,
+                }}
+              />
+            </div>
           ))}
         </div>
       </section>
@@ -206,6 +220,37 @@ export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiP
   )
 }
 
+function BorderLinks({
+  title,
+  rows,
+  empty,
+}: {
+  title: string
+  rows: Array<{ title: string; from_region: string; to_region: string; link: string }>
+  empty: string
+}) {
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-black text-slate-300">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-sm text-slate-500">{empty}</p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((row) => (
+            <li key={`${row.title}-${row.from_region}-${row.to_region}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+              <p className="font-semibold text-white">
+                {row.from_region} → {row.to_region}
+              </p>
+              <p className="text-slate-300">{row.title}</p>
+              <p className="text-xs text-slate-400">{row.link}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </section>
+  )
+}
+
 function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: CrisisUiPack }) {
   return (
     <section>
@@ -215,23 +260,33 @@ function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: Cri
       ) : (
         <div className="space-y-3">
           {rows.map((row) => (
-            <SeverityCard
-              key={row.title}
-              t={t}
-              card={{
-                stage: row.stage,
-                summary: row.title,
-                whatToDo: row.what_to_do_ko,
-                whyMiss: row.why_humans_miss,
-                novelty: row.novelty,
-                hazards: row.hazards,
-                possibility: row.possibility,
-                evidence: [
-                  ...row.official_links.map((link) => ({ label: link.label, url: link.url })),
-                  ...row.evidence.filter((item) => item.url).map((item) => ({ label: item.ref, url: item.url })),
-                ],
-              }}
-            />
+            <div key={row.title} className="space-y-1">
+              {row.regions && row.regions.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {row.regions.map((region) => (
+                    <span key={region.name} className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-300">
+                      {region.name}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              <SeverityCard
+                t={t}
+                card={{
+                  stage: row.stage,
+                  summary: row.title,
+                  whatToDo: row.what_to_do_ko,
+                  whyMiss: row.why_humans_miss,
+                  novelty: row.novelty,
+                  hazards: row.hazards,
+                  possibility: row.possibility,
+                  evidence: [
+                    ...row.official_links.map((link) => ({ label: link.label, url: link.url })),
+                    ...row.evidence.filter((item) => item.url).map((item) => ({ label: item.ref, url: item.url })),
+                  ],
+                }}
+              />
+            </div>
           ))}
         </div>
       )}
