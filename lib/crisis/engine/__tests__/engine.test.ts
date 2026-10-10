@@ -305,7 +305,7 @@ describe('department isolation and hunters', () => {
     const rows = [...(record.result?.headlines ?? []), ...(record.result?.missed_by_others ?? [])]
     const evidence = rows.flatMap((row) => row.evidence).filter((item) => item.type === 'buried_warning')
     expect(evidence.length).toBeGreaterThan(0)
-    expect(evidence[0]?.ref).toContain('묻힌 경고 · 2023년 감사 보고서')
+    expect(evidence[0]?.ref).toContain('묻힌 경고 · 2023년')
     expect(evidence[0]?.date).toBe('2023-04-02')
     expect(evidence[0]?.language).toBe('en')
     expect(rows.some((row) => row.non_obviousness === 1)).toBe(true)

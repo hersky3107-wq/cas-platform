@@ -12,7 +12,7 @@ export interface Draft {
   title: string
   chain: Array<{ step: string; cascade_id: string | null }>
   why_humans_miss: string
-  evidence: Array<{ type: string; ref: string; url?: string; date?: string; language?: string }>
+  evidence: Array<{ type: string; ref: string; url?: string; date?: string; language?: string; document?: string; specific?: boolean }>
   what_to_do: string[]
   official_links: Array<{ label: string; url: string }>
   proposed_by: string[]
@@ -282,6 +282,7 @@ export function checkHunterRow(
       const ref = text(entry?.ref) || url
       const date = text(entry?.date)
       const language = text(entry?.language)
+      const document = text(entry?.document)
       if (!type || !ref) return null
       return {
         type,
@@ -289,9 +290,11 @@ export function checkHunterRow(
         ...(url ? { url } : {}),
         ...(date ? { date } : {}),
         ...(language ? { language } : {}),
+        ...(document ? { document } : {}),
+        ...(entry?.specific === true || entry?.specific === false ? { specific: entry.specific } : {}),
       }
     })
-    .filter((item): item is { type: string; ref: string; url?: string; date?: string; language?: string } => item !== null)
+    .filter((item): item is { type: string; ref: string; url?: string; date?: string; language?: string; document?: string; specific?: boolean } => item !== null)
 
   const departments = normalizeDepartments(record.departments, evidence)
   if (departments.length < 2) reasons.push('crosses fewer than 2 departments')

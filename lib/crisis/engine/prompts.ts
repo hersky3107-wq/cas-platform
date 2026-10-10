@@ -312,6 +312,8 @@ export function judgeSystem(): string {
     FORECAST_TOTALS_NOTE,
     'Stage and confidence are computed in code from how many independent hunters proposed the group, its departments, its weakness notes, and its evidence. Do not score them.',
     'Only for the 3 groups with the highest non_obviousness write headline_ko and headline_en (a news line or a short, at most 16 words) and brief_ko and brief_en (at most 2 sentences). Leave them "" for every other group.',
+    'A headline names a concrete consequence (what happens to whom). Reject "needs work", "responsibility is split", and other institutional-gap titles.',
+    'Do not predict a dam spill inside 3 days when the card says the reservoir is below 50%.',
     'headline_ko and brief_ko are always Korean (한국어, Hangul), whatever the local language. headline_en and brief_en are English.',
     'what_to_do is plain language, at most 4 lines: local language and English. official_links only from the hypotheses, the card, or the search items.',
     'Return JSON: {"groups":[...],"baseline_risks":[{"title":"","stage":2,"possibility":"medium","what_to_do":[""],"reason":""}]}',

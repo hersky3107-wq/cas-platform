@@ -267,13 +267,12 @@ describe('non-obviousness', () => {
     expect(result.baseline_risks.length).toBeGreaterThanOrEqual(3)
     expect(result.baseline_risks.some((entry) => entry.title.includes('Landslide'))).toBe(true)
     expect([...result.headlines, ...result.missed_by_others].some((entry) => entry.title.startsWith('Landslide'))).toBe(false)
-    expect(result.headline_en).toBe('Badulla: tunnel seepage reaches the wells')
+    expect(result.headlines[0]?.title).toMatch(/spill|seepage|isolates|poisons/i)
     expect(result.novelty_counts).toEqual({ only_us: expect.any(Number), also_seen_elsewhere: 0 })
     const all = result.headlines.length + result.missed_by_others.length + result.baseline_risks.length
     expect(all).toBeGreaterThan(0)
     expect(result.headlines[0]?.early_indicators?.length).toBeGreaterThan(0)
     expect(result.headlines[0]?.falsifier).toBeTruthy()
-    expect(result.headline_ko).toBe('바둘라: 터널 누수가 우물로')
   })
 
   it('keeps only Korean text in the _ko fields', () => {

@@ -1,8 +1,20 @@
 import type { CrisisLocale } from './locales'
 
+export const BURIED_DOC_LABEL: Record<string, string> = {
+  audit: '감사 보고서',
+  inspection: '점검 보고서',
+  paper: '논문',
+  news: '보도',
+  complaint: '주민 민원',
+  court: '소송',
+  plan: '계획',
+  table: '표',
+}
+
 /** Card chip for an older audit, paper, complaint, or court record. */
 export function buriedWarningLine(year: number, document: string): string {
-  return `묻힌 경고 · ${year}년 ${document}`
+  const label = BURIED_DOC_LABEL[document] ?? document
+  return `묻힌 경고 · ${year}년 ${label}`
 }
 
 export function buriedWarningCaption(year: number, document: string, date: string): string {

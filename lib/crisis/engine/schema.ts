@@ -41,6 +41,8 @@ export const hypothesisSchema = z
           url: z.string().optional(),
           date: z.string().optional(),
           language: z.string().optional(),
+          document: z.string().optional(),
+          specific: z.boolean().optional(),
         })
         .strict(),
     ),

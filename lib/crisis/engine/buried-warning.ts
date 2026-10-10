@@ -56,9 +56,15 @@ const GENERIC = new Set([
   'river', 'the', 'and', 'of', 'de', 'al', 'baraj', 'baraji', 'nukleer', 'nuclear',
 ])
 
-/** Warning, defect, delay, risk, plus the audit/inspection wording those documents use. */
-const WARNING_RE =
-  /\b(warning|warnings|defect|defects|delay|delayed|delays|risk|risks|unsafe|crack|cracks|neglect|neglected|complaint|complaints|lawsuit|overdue|deficient|deficiency|hazard|danger|audit|inspection)\b|uyarı|tehlike|kusur|gecik|şikayet|sikayet|çatlak|catlak|ihmal|denetim|teftiş|teftis|خطر|تأخير|عيب|شكوى|تحذير|تفتيش|අවදානම|අනතුර|පරීක්ෂ|ஆபத்து|எச்சரிக்கை|ஆய்வு/i
+/** A specific defect, risk, delay, failure, or warning — not the word "audit" or "inspection" alone. */
+const SPECIFIC_WARNING_RE =
+  /\b(warn(?:ed|s|ing)?|defect|delay(?:ed|s)?|risk|unsafe|crack|neglect(?:ed)?|complaint|lawsuit|overdue|deficient|deficiency|hazard|danger|failure|collapse|leak|seepage|overtop|spill|breach|unfit|condemned|구조적|위험|결함|지연)\b|uyarı|tehlike|kusur|gecik|şikayet|sikayet|çatlak|catlak|ihmal|خطر|تأخير|عيب|شكوى|تحذير|අවදානම|අනතුර|ஆபத்து|எச்சரிக்கை/i
+
+const DUTY_TABLE_RE =
+  /\b(sorumlu kurum|yıllar sorumlu|mevcut faaliyet|faaliyet yıllar|izleme ve denetim|görevleri|duty|duties|responsible institution|monitoring table|koruma planı|havza koruma|master plan|action plan|yönetim plan)\b/i
+
+const PLAN_RE = /\b(planı|planı_|havza koruma|master plan|action plan|koruma plan|yönetim plan|basin plan|protection plan)\b|\.pdf\b/i
+const TABLE_RE = /\b(yıllar|tablo|table|schedule of|sorumlu kurumlar|faaliyet yıllar)\b/i
 
 const LOCAL_PAIR: Record<string, [string, string]> = {
   tr: ['güvenlik denetim raporu risk', 'bakım gecikmesi şikayet dava'],
@@ -90,6 +96,8 @@ export interface BuriedQuery {
   query: string
 }
 
+export type BuriedDocKind = 'audit' | 'inspection' | 'paper' | 'news' | 'complaint' | 'court' | 'plan' | 'table'
+
 export interface BuriedWarning {
   type: 'buried_warning'
   entity: string
@@ -98,7 +106,8 @@ export interface BuriedWarning {
   title: string
   url: string
   statement: string
-  document: string
+  document: BuriedDocKind
+  specific: boolean
   line: string
 }
 
@@ -233,16 +242,22 @@ export function detectLanguage(text: string, queries: BuriedQuery[], entity = ''
   return 'en'
 }
 
-export function warningDocument(text: string): string {
-  const folded = text.toLowerCase()
-  if (/court|lawsuit|dava|mahkeme|دعوى/.test(folded)) return '소송'
-  if (/complaint|şikayet|sikayet|شكوى|petition/.test(folded)) return '주민 민원'
-  if (/\b(parliament|parliamentary|meclis)\b|soru önergesi|soru onergesi/.test(folded)) return '의회 질문'
-  if (/budget|bütçe|butce/.test(folded)) return '예산 삭감'
-  if (/paper|journal|geology|thesis|mühendislik/.test(folded)) return '논문'
-  if (/audit|inspection|denetim|teftiş|teftis|rapor|inspect/.test(folded)) return '감사 보고서'
-  if (/maintenance|bakım|bakim|gecik|delay/.test(folded)) return '정비 지연'
-  return '경고'
+export function warningDocument(text: string, url = ''): BuriedDocKind {
+  const folded = `${text} ${url}`.toLowerCase()
+  if (TABLE_RE.test(folded) && !/\b(audit|inspection|denetim raporu|teftiş)\b/i.test(folded)) return 'table'
+  if (PLAN_RE.test(folded) && !/\b(audit|inspection|denetim raporu|teftiş)\b/i.test(folded)) return 'plan'
+  if (/\b(court|lawsuit|dava|mahkeme|دعوى)\b/.test(folded)) return 'court'
+  if (/\b(complaint|şikayet|sikayet|شكوى|petition)\b/.test(folded)) return 'complaint'
+  if (/\b(paper|journal|geology|thesis|mühendislik|doi\.org)\b/.test(folded)) return 'paper'
+  if (/\b(audit|denetim raporu|sayıştay|inspector general)\b/.test(folded)) return 'audit'
+  if (/\b(inspection|teftiş|teftis|inspect)\b/.test(folded)) return 'inspection'
+  return 'news'
+}
+
+export function isSpecificWarning(text: string, document: BuriedDocKind): boolean {
+  if (document === 'table' || document === 'plan') return false
+  if (DUTY_TABLE_RE.test(text)) return false
+  return SPECIFIC_WARNING_RE.test(text)
 }
 
 function isoDay(value: string): string {
@@ -277,15 +292,16 @@ export function collectBuriedWarnings(
     const day = datedDay(item, now)
     if (!day) continue
     const blob = `${item.title} ${item.snippet ?? ''}`
-    if (!WARNING_RE.test(blob)) continue
     for (const entity of entities) {
       if (!entityNamed(blob, entity)) continue
+      const document = warningDocument(blob, item.url)
+      const specific = isSpecificWarning(blob, document)
+      if (!specific) continue
       const key = `${fold(entity)}|${item.url}`
       if (seen.has(key)) continue
       seen.add(key)
       const title = item.title.replace(/^\[past\]\s*/, '').replace(/\s+/g, ' ').trim()
       const statement = (item.snippet || title).replace(/\s+/g, ' ').trim().slice(0, 180)
-      const document = warningDocument(blob)
       const year = Number(day.slice(0, 4))
       kept.push({
         type: 'buried_warning',
@@ -296,6 +312,7 @@ export function collectBuriedWarnings(
         url: item.url,
         statement,
         document,
+        specific,
         line: buriedWarningCaption(year, document, day),
       })
     }
@@ -316,6 +333,8 @@ export function attachBuriedEvidence(draft: Draft, warnings: BuriedWarning[]): v
       existing.ref = warning.line
       existing.date = warning.date
       existing.language = warning.language
+      existing.document = warning.document
+      existing.specific = warning.specific
       continue
     }
     if (!hypothesisMentions(draft, warning.entity)) continue
@@ -325,15 +344,17 @@ export function attachBuriedEvidence(draft: Draft, warnings: BuriedWarning[]): v
       ...(warning.url ? { url: warning.url } : {}),
       date: warning.date,
       language: warning.language,
+      document: warning.document,
+      specific: warning.specific,
     })
   }
 }
 
-export function usesBuriedWarning(draft: { evidence: Array<{ type: string }> }): boolean {
-  return draft.evidence.some((item) => item.type === 'buried_warning')
+export function usesBuriedWarning(draft: { evidence: Array<{ type: string; specific?: boolean }> }): boolean {
+  return draft.evidence.some((item) => item.type === 'buried_warning' && item.specific !== false)
 }
 
-export function buriedNonObviousness(non: number, draft: { evidence: Array<{ type: string }> }): number {
+export function buriedNonObviousness(non: number, draft: { evidence: Array<{ type: string; specific?: boolean }> }): number {
   if (!usesBuriedWarning(draft)) return non
   return Math.min(1, Math.round((non + BURIED_BOOST) * 100) / 100)
 }

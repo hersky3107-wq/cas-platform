@@ -23,6 +23,8 @@ import {
 } from './prompts'
 import { sameHazard } from '../config/hazard-taxonomy'
 import { settlePredictions } from '../outcomes/predictions'
+import { filterConsistentPredictions } from './prediction-consistency'
+import { headlineConcrete, headlineRankScore, structureScore } from './headline-quality'
 import { windowFromLead } from '../outcomes/window'
 import { normalizeName } from '../ingest/iso'
 import { mergeBaselineRisks, type AnalystFinding } from './baseline-fill'
@@ -743,16 +745,28 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     const non = buriedNonObviousness(verdict.non, preciseDraft)
     const built = toHypothesis(preciseDraft, row.outsider, opts.card, coverage, non, row.judge?.twist ?? '', evidenceDates, now)
     for (const entry of built.background) backgroundByUrl.set(entry.url, entry)
-    return { row, verdict: { ...verdict, non }, hypothesis: built.hypothesis, entityPrecise: entityEvidencePrecise(preciseDraft, entityCtx) }
+    return {
+      row,
+      verdict: { ...verdict, non },
+      hypothesis: built.hypothesis,
+      entityPrecise: entityEvidencePrecise(preciseDraft, entityCtx),
+      structure: structureScore(preciseDraft),
+    }
   })
   const liveRows = scored.filter((item) => item.verdict.non > 0)
-  const rankScore = (item: (typeof scored)[number]) => item.verdict.non * item.hypothesis.stage
+  const rankScore = (item: (typeof scored)[number]) =>
+    headlineRankScore({ structure: item.structure, non: item.verdict.non, stage: item.hypothesis.stage })
   const headlinePool = liveRows.filter((item) => !item.row.outsider && item.entityPrecise)
+  const concretePool = headlinePool.filter((item) => headlineConcrete(item.hypothesis.title) || headlineConcrete(item.row.judge?.headline_en ?? ''))
   let headline_fallback = false
-  let headlineCandidates = headlinePool.filter((item) => item.hypothesis.stage >= 3)
+  let headlineCandidates = concretePool.filter((item) => item.hypothesis.stage >= 3)
+  if (headlineCandidates.length === 0 && concretePool.length > 0) {
+    headline_fallback = true
+    headlineCandidates = [...concretePool].sort((a, b) => b.structure - a.structure || rankScore(b) - rankScore(a))
+  }
   if (headlineCandidates.length === 0 && headlinePool.length > 0) {
     headline_fallback = true
-    headlineCandidates = [...headlinePool].sort((a, b) => b.hypothesis.stage - a.hypothesis.stage || rankScore(b) - rankScore(a))
+    headlineCandidates = [...headlinePool].sort((a, b) => b.structure - a.structure || rankScore(b) - rankScore(a))
   }
   const headlineRows = pickDiverseHeadlines(
     headlineCandidates,
@@ -793,15 +807,19 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     summaries.summary_ko = `${opts.card.name}: ${baselineRisks[0].title}`
     summaries.headline_ko = `${opts.card.name}: 표준 지역 위험`
   }
-  const predictions = settlePredictions(
-    judgePredictionRows,
+  const predictions = filterConsistentPredictions(
+    settlePredictions(
+      judgePredictionRows,
+      now,
+      [...headlines, ...missed_by_others].slice(0, 3).map((row) => ({
+        text: `${row.title} ${row.mechanism ?? ''} ${row.why_humans_miss}`,
+        where: row.entities?.[0] || row.regions?.[0]?.name || opts.card.name,
+        lead: row.lead_time_days,
+        observable: row.falsifier,
+      })),
+    ),
+    opts.card,
     now,
-    [...headlines, ...missed_by_others].slice(0, 3).map((row) => ({
-      text: `${row.title} ${row.mechanism ?? ''} ${row.why_humans_miss}`,
-      where: row.entities?.[0] || row.regions?.[0]?.name || opts.card.name,
-      lead: row.lead_time_days,
-      observable: row.falsifier,
-    })),
   )
   for (const prediction of predictions) {
     console.log(

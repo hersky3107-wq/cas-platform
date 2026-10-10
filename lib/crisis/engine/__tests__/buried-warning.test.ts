@@ -8,8 +8,11 @@ import {
   collectBuriedWarnings,
   ensureBuriedQueries,
   entityNamed,
+  isSpecificWarning,
   warningDocument,
 } from '../buried-warning'
+import { headlineConcrete, headlineRankScore, structureScore } from '../headline-quality'
+import { predictionContradictsCard } from '../prediction-consistency'
 import type { RosterSlot } from '../roster'
 import type { Draft } from '../hunter-rules'
 import type { EngineCard } from '../schema'
@@ -140,7 +143,8 @@ describe('buried-warning hunt', () => {
       entity: 'Oymapinar Dam',
       date: '2023-06-01',
       language: 'tr',
-      document: '감사 보고서',
+      document: 'audit',
+      specific: true,
     })
     expect(kept[0]?.line).toBe('묻힌 경고 · 2023년 감사 보고서 · 2023-06-01')
     expect(entityNamed('weekly rain', 'Oymapinar Dam')).toBe(false)
@@ -186,13 +190,81 @@ describe('buried-warning hunt', () => {
     expect(cheapSearchSlot(slot)).toMatchObject({ reasoning: false, extraBody: { reasoning_effort: 'low' } })
   })
 
-  it('does not read sorumlu as a parliamentary question', () => {
-    expect(warningDocument('SORUMLU KURUMLAR İzleme ve Denetim')).toBe('감사 보고서')
-    expect(warningDocument('meclis soru önergesi risk')).toBe('의회 질문')
+  it('drops a monitoring table or plan and never calls it an audit', () => {
+    const table = collectBuriedWarnings(
+      [
+        item({
+          title: 'Büyükçekmece havza koruma planı',
+          url: 'https://iski.example/BUYUKCEKMECE_HAVZA_KORUMA_PLANI.pdf',
+          published: '2026-01-17',
+          snippet: 'YILLAR SORUMLU KURUMLAR 2019 2020 2021 İzleme ve Denetim İSKİ',
+        }),
+      ],
+      [],
+      ['Buyukcekmece'],
+      NOW,
+    )
+    expect(table).toHaveLength(0)
+    expect(warningDocument('YILLAR SORUMLU KURUMLAR İzleme ve Denetim', 'plan.pdf')).toBe('table')
+    expect(warningDocument('basin protection plan', 'havza-koruma-planı.pdf')).toBe('plan')
+    expect(isSpecificWarning('YILLAR SORUMLU KURUMLAR İzleme ve Denetim', 'table')).toBe(false)
+    expect(warningDocument('Oymapinar Dam denetim raporu çatlak')).toBe('audit')
   })
 
-  it('builds the card line', () => {
-    expect(buriedWarningLine(2023, '감사 보고서')).toBe('묻힌 경고 · 2023년 감사 보고서')
-    expect(buriedWarningCaption(2023, '감사 보고서', '2023-06-01')).toBe('묻힌 경고 · 2023년 감사 보고서 · 2023-06-01')
+  it('ranks a concrete consequence above a vaguer buried-warning bonus', () => {
+    const vague = structureScore({
+      title: 'Büyükçekmece Dam needs seismic work and responsibility is split',
+      entities: ['Büyükçekmece Dam'],
+      mechanism: 'offices do not share a file',
+      early_indicators: ['x'],
+      falsifier: 'x',
+    })
+    const concrete = structureScore({
+      title: 'First heavy rain after drought may muddy Ömerli Dam and cut tap water',
+      entities: ['Ömerli Dam'],
+      mechanism: 'A turbidity wave reaches the İSKİ intake before a boil notice',
+      early_indicators: ['brown tap water in Kartal'],
+      falsifier: 'İSKİ posts clear intake readings',
+    })
+    expect(headlineConcrete('Büyükçekmece Dam needs seismic work and responsibility is split')).toBe(false)
+    expect(headlineConcrete('First heavy rain after drought may muddy Ömerli Dam and cut tap water')).toBe(true)
+    expect(headlineRankScore({ structure: concrete, non: 0.55, stage: 4 })).toBeGreaterThan(
+      headlineRankScore({ structure: vague, non: 0.8, stage: 4 }),
+    )
+  })
+
+  it('rejects a 3-day dam spill when the card says the reservoir is below 50%', () => {
+    expect(
+      predictionContradictsCard(
+        {
+          what: 'dam spill',
+          where: 'Ömerli Dam',
+          window_start: '2026-10-11',
+          window_end: '2026-10-13',
+          observable: 'Spill gates open',
+        },
+        { name: 'Istanbul', context: ['Ömerli 39% full after drought'], components: [{ key: 'rain', value: 0.9, raw: { fill: '39%' } }], fragility: [] },
+        NOW,
+      ),
+    ).toBe('contradicts_low_reservoir')
+    expect(
+      predictionContradictsCard(
+        {
+          what: 'road cut',
+          where: 'Kağıthane',
+          window_start: '2026-10-13',
+          window_end: '2026-10-17',
+          observable: 'Underpass closed',
+        },
+        { name: 'Istanbul', context: ['Ömerli 39% full after drought'], components: [], fragility: [] },
+        NOW,
+      ),
+    ).toBeNull()
+  })
+
+  it('builds the card line from an honest document type', () => {
+    expect(buriedWarningLine(2023, 'audit')).toBe('묻힌 경고 · 2023년 감사 보고서')
+    expect(buriedWarningLine(2026, 'table')).toBe('묻힌 경고 · 2026년 표')
+    expect(buriedWarningCaption(2023, 'audit', '2023-06-01')).toBe('묻힌 경고 · 2023년 감사 보고서 · 2023-06-01')
   })
 })
