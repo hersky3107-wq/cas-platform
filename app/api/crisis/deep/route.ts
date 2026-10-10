@@ -11,6 +11,7 @@ import {
   cardFromRunId,
   findFreshRun,
   hasUnlock,
+  loadDeepProgress,
   loadOwnRequest,
   queueDeepRequest,
   recordUnlock,
@@ -81,11 +82,12 @@ export async function GET(req: Request) {
     }
 
     if (own && (own.status === 'queued' || own.status === 'running')) {
+      const progress = await loadDeepProgress(supabaseAdmin, own, now)
       return NextResponse.json({
         status: 'pending',
-        message: t.deepWait,
-        requestId: own.id,
+        message: progress.waitingForWorker ? t.workerWaiting : t.deepWait,
         price: creditsForCrisisDeep(),
+        ...progress,
       })
     }
 
@@ -155,11 +157,12 @@ export async function POST(req: Request) {
     }
 
     if (own && (own.status === 'queued' || own.status === 'running')) {
+      const progress = await loadDeepProgress(supabaseAdmin, own, now)
       return NextResponse.json({
         status: 'pending',
-        message: t.deepWait,
-        requestId: own.id,
+        message: progress.waitingForWorker ? t.workerWaiting : t.deepWait,
         charged: 0,
+        ...progress,
       })
     }
 
@@ -210,11 +213,12 @@ export async function POST(req: Request) {
 
     // 6. Queue request
     const request = await queueDeepRequest(supabaseAdmin, regionId, auth.userId)
+    const progress = await loadDeepProgress(supabaseAdmin, request, now)
     return NextResponse.json({
       status: 'pending',
-      message: t.deepWait,
-      requestId: request.id,
+      message: progress.waitingForWorker ? t.workerWaiting : t.deepWait,
       charged: already ? 0 : CRISIS_DEEP_CREDITS,
+      ...progress,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Deep analysis failed'

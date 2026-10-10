@@ -14,6 +14,8 @@ import { freeLayerFromDetail, lockBriefCard, unlockBriefCard } from '../card'
 import { noveltyBadge } from '../labels'
 import { evaluateUserLimits } from '../limits'
 import { decideDeepAction, isFreshCard, isPublicRun, isTimedOut, shouldPulse, DEEP_FAILED_COPY, DEEP_WAIT_COPY } from '../policy'
+import { formatPeopleAbout, formatPeopleShort, keyTriggerFact } from '../format'
+import { summarizeEngineProgress } from '../progress'
 import { isTimedOutRequest } from '../refund'
 
 const NOW = new Date('2026-10-10T12:00:00.000Z')
@@ -52,11 +54,34 @@ describe('map and briefing shaping', () => {
       fragility_items: [{ name: 'Uma Oya' }],
       urban: [{ name: 'Badulla', pop: 42000 }],
     })
-    expect(free).toEqual({
+    expect(free).toMatchObject({
       fragility: ['Uma Oya'],
       peopleNorm: 0.42,
+      peopleCount: 42000,
       urban: [{ name: 'Badulla', pop: 42000 }],
     })
+  })
+
+  it('groups fragility by kind and keeps rain millimetres', () => {
+    const free = freeLayerFromDetail({
+      people_norm: 0.62,
+      urban_pop: 1_500_000,
+      fragility_items: [
+        { kind: 'dam', name: 'Victoria' },
+        { kind: 'dam', name: 'Randenigala' },
+        { kind: 'nuclear_plant', name: 'Plant A' },
+      ],
+      components: [
+        { key: 'rain', value: 0.8, raw: { sum_mm: 310, max_day_mm: 154 } },
+        { key: 'wiki', value: 0, raw: {} },
+      ],
+    })
+    expect(free.peopleCount).toBe(1_500_000)
+    expect(free.fragilityGroups).toEqual([
+      { kind: 'dam', names: ['Victoria', 'Randenigala'] },
+      { kind: 'nuclear_plant', names: ['Plant A'] },
+    ])
+    expect(free.triggerFacts).toEqual([{ key: 'rain', sumMm: 310, maxDayMm: 154 }])
   })
 
   it('unlocks the three tiers and keeps what_to_do for Korean and local', () => {
@@ -198,6 +223,38 @@ describe('user request limits', () => {
     expect(block3.allowed).toBe(false)
     expect(block3.reason).toBe('daily_limit_exceeded')
     expect(block3.message).toBe('하루 최대 3회까지 분석을 요청할 수 있습니다.')
+  })
+})
+
+describe('readable free layer', () => {
+  it('formats people as about 1.2 million in Korean', () => {
+    expect(formatPeopleShort(1_200_000, 'ko')).toBe('120만')
+    expect(formatPeopleAbout(1_200_000, 'ko')).toBe('인구 약 120만 명')
+    expect(keyTriggerFact([{ key: 'rain', sumMm: 310, maxDayMm: 154 }])?.sumMm).toBe(310)
+  })
+})
+
+describe('engine progress', () => {
+  it('marks the first group running and waits for the worker after 2 minutes', () => {
+    const queued = summarizeEngineProgress({
+      requestStatus: 'queued',
+      createdAt: new Date(NOW.getTime() - 130_000).toISOString(),
+      now: NOW,
+      steps: [],
+    })
+    expect(queued.waitingForWorker).toBe(true)
+    expect(queued.groups.every((row) => row.mark === 'waiting')).toBe(true)
+
+    const running = summarizeEngineProgress({
+      requestStatus: 'running',
+      createdAt: new Date(NOW.getTime() - 30_000).toISOString(),
+      now: NOW,
+      steps: [{ role: 'dept_analyst' }, { role: 'dept_analyst' }],
+    })
+    expect(running.waitingForWorker).toBe(false)
+    expect(running.groups[0]).toMatchObject({ id: 'analyst', done: 2, expected: 5, mark: 'running' })
+    expect(running.groups[1].mark).toBe('waiting')
+    expect(running.elapsedSec).toBe(30)
   })
 })
 

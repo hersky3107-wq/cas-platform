@@ -2,16 +2,20 @@
 
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
+import { DeepProgress } from '@/components/crisis/DeepProgress'
 import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
 import { WorldBasemap } from '@/components/crisis/WorldBasemap'
+import { UnlockedCardView, type UnlockedCard } from '@/components/crisis/briefing/BriefingCardsSection'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
 import { projectLonLat, stageColor } from '@/lib/crisis/admin/geo'
 import { CRISIS_BRIEF_CREDITS, CRISIS_DEEP_CREDITS } from '@/lib/crisis/credits'
-import { stageBannerText } from '@/lib/crisis/i18n/dictionary'
+import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
 import { countryDisplayName, regionDisplayName } from '@/lib/crisis/i18n/place-names'
 import { useCrisisLocale } from '@/lib/crisis/i18n/use-crisis-locale'
+import { formatPeopleShort, type TriggerFact } from '@/lib/crisis/public/format'
+import type { ProgressGroup } from '@/lib/crisis/public/progress'
 import { shouldPulse } from '@/lib/crisis/public/policy'
 import { hazardIconsFor } from '@/lib/crisis/ui/hazards'
 import { severityTheme } from '@/lib/crisis/ui/severity'
@@ -19,6 +23,9 @@ import { supabase } from '@/lib/db/supabase'
 
 const MAP_W = 900
 const MAP_H = 440
+const TABLE_TOP = 200
+
+type FragilityGroup = { kind: string; names: string[] }
 
 type MapRegion = {
   regionId: number
@@ -31,11 +38,83 @@ type MapRegion = {
   lat: number
   lon: number
   fragility: string[]
+  fragilityGroups?: FragilityGroup[]
   peopleNorm: number | null
+  peopleCount?: number | null
   urban: Array<{ name: string; pop: number }>
+  triggerFacts?: TriggerFact[]
 }
 
 type DeepStatus = 'idle' | 'pending' | 'ready' | 'cached' | 'failed'
+
+type DeepProgressState = {
+  requestStatus: string
+  elapsedSec: number
+  waitingForWorker: boolean
+  groups: ProgressGroup[]
+}
+
+type DeepBody = {
+  status?: string
+  message?: string
+  cached?: boolean
+  card?: UnlockedCard
+  error?: string
+  code?: string
+  requestStatus?: string
+  elapsedSec?: number
+  waitingForWorker?: boolean
+  groups?: ProgressGroup[]
+}
+
+function applyDeepBody(
+  body: DeepBody,
+  t: CrisisUiPack,
+  setStatus: (s: DeepStatus) => void,
+  setMsg: (m: string | null) => void,
+  setCard: (c: UnlockedCard | null) => void,
+  setProgress: (p: DeepProgressState | null) => void,
+) {
+  if (body.status === 'failed') {
+    setStatus('failed')
+    setMsg(body.message ?? t.deepFailed)
+    setCard(null)
+    setProgress(null)
+    return
+  }
+  if (body.status === 'ready') {
+    setStatus(body.cached ? 'cached' : 'ready')
+    setMsg(body.cached ? t.deepCached : t.deepReady)
+    setCard(body.card ?? null)
+    setProgress(null)
+    return
+  }
+  if (body.status === 'pending') {
+    setStatus('pending')
+    setMsg(body.waitingForWorker ? t.workerWaiting : (body.message ?? t.deepWait))
+    setCard(null)
+    setProgress({
+      requestStatus: body.requestStatus ?? 'queued',
+      elapsedSec: body.elapsedSec ?? 0,
+      waitingForWorker: Boolean(body.waitingForWorker),
+      groups: body.groups ?? [],
+    })
+    return
+  }
+  setStatus('idle')
+  setMsg(null)
+  setCard(null)
+  setProgress(null)
+}
+
+function triggerFactLine(fact: TriggerFact, t: CrisisUiPack): string {
+  if (fact.key === 'rain' && fact.sumMm != null) {
+    return t.rainForecast(fact.sumMm, fact.maxDayMm ?? 0)
+  }
+  if (fact.key === 'river' && fact.peakM3s != null) return t.riverPeak(fact.peakM3s)
+  if (fact.key === 'quake' && fact.mag != null) return t.quakeMag(fact.mag)
+  return t.triggerLabel(fact.key)
+}
 
 export default function CrisisMapPage() {
   const { locale, t, dir, setLocale } = useCrisisLocale()
@@ -46,8 +125,11 @@ export default function CrisisMapPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null)
   const [deepStatus, setDeepStatus] = useState<DeepStatus>('idle')
   const [deepMsg, setDeepMsg] = useState<string | null>(null)
+  const [deepCard, setDeepCard] = useState<UnlockedCard | null>(null)
+  const [deepProgress, setDeepProgress] = useState<DeepProgressState | null>(null)
   const [busy, setBusy] = useState(false)
   const [showStage1, setShowStage1] = useState(false)
+  const [showAllRows, setShowAllRows] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -86,88 +168,68 @@ export default function CrisisMapPage() {
     if (!selectedId) {
       setDeepMsg(null)
       setDeepStatus('idle')
+      setDeepCard(null)
+      setDeepProgress(null)
       return
     }
     let cancelled = false
     void (async () => {
       try {
-        const res = await authenticatedFetch(`/api/crisis/deep?regionId=${selectedId}`)
-        const body = (await res.json().catch(() => null)) as {
-          status?: string
-          message?: string
-          cached?: boolean
-        }
+        const res = await authenticatedFetch(`/api/crisis/deep?regionId=${selectedId}&lang=${encodeURIComponent(locale)}`)
+        const body = (await res.json().catch(() => null)) as DeepBody
         if (cancelled) return
-        if (body?.status === 'failed') {
-          setDeepStatus('failed')
-          setDeepMsg(body.message ?? t.deepFailed)
-        } else if (body?.status === 'ready') {
-          setDeepStatus(body.cached ? 'cached' : 'ready')
-          setDeepMsg(body.cached ? t.deepCached : t.deepReady)
-        } else if (body?.status === 'pending') {
-          setDeepStatus('pending')
-          setDeepMsg(body.message ?? t.deepWait)
-        } else {
-          setDeepStatus('idle')
-          setDeepMsg(null)
-        }
+        applyDeepBody(body, t, setDeepStatus, setDeepMsg, setDeepCard, setDeepProgress)
       } catch {
         if (!cancelled) {
           setDeepStatus('idle')
           setDeepMsg(null)
+          setDeepCard(null)
+          setDeepProgress(null)
         }
       }
     })()
     return () => {
       cancelled = true
     }
-  }, [selectedId, t.deepCached, t.deepFailed, t.deepReady, t.deepWait])
+  }, [selectedId, locale, t])
 
   useEffect(() => {
     if (deepStatus !== 'pending' || !selectedId) return
     const timer = setInterval(() => {
       void (async () => {
         try {
-          const res = await authenticatedFetch(`/api/crisis/deep?regionId=${selectedId}`)
-          const body = (await res.json().catch(() => null)) as {
-            status?: string
-            message?: string
-            cached?: boolean
-          }
-          if (body?.status === 'failed') {
-            setDeepStatus('failed')
-            setDeepMsg(t.deepFailed)
-          } else if (body?.status === 'ready') {
-            setDeepStatus(body.cached ? 'cached' : 'ready')
-            setDeepMsg(body.cached ? t.deepCached : t.deepReady)
-          }
+          const res = await authenticatedFetch(`/api/crisis/deep?regionId=${selectedId}&lang=${encodeURIComponent(locale)}`)
+          const body = (await res.json().catch(() => null)) as DeepBody
+          applyDeepBody(body, t, setDeepStatus, setDeepMsg, setDeepCard, setDeepProgress)
         } catch {
           // ignore polling error
         }
       })()
-    }, 10_000)
+    }, 5_000)
     return () => clearInterval(timer)
-  }, [deepStatus, selectedId, t.deepCached, t.deepFailed, t.deepReady])
+  }, [deepStatus, selectedId, locale, t])
 
   const selected = useMemo(() => regions.find((row) => row.regionId === selectedId) ?? null, [regions, selectedId])
   const mapDots = useMemo(
     () => regions.filter((row) => showStage1 || row.stage >= 2),
     [regions, showStage1],
   )
+  const tableRows = useMemo(() => {
+    const scored = regions.filter((row) => row.score > 0).sort((a, b) => b.score - a.score)
+    return showAllRows ? scored : scored.slice(0, TABLE_TOP)
+  }, [regions, showAllRows])
+  const scoredCount = useMemo(() => regions.filter((row) => row.score > 0).length, [regions])
 
   async function requestDeep() {
     if (!selected || busy) return
     setBusy(true)
     setDeepMsg(null)
     try {
-      const res = await authenticatedFetch('/api/crisis/deep', { method: 'POST', json: { regionId: selected.regionId } })
-      const body = (await res.json().catch(() => null)) as {
-        status?: string
-        message?: string
-        error?: string
-        cached?: boolean
-        code?: string
-      }
+      const res = await authenticatedFetch('/api/crisis/deep', {
+        method: 'POST',
+        json: { regionId: selected.regionId, lang: locale },
+      })
+      const body = (await res.json().catch(() => null)) as DeepBody
       if (res.status === 402) throw new Error(t.notEnoughCredits)
       if (res.status === 429) {
         if (body?.code === 'active_request_exists') throw new Error(t.limitActive)
@@ -175,18 +237,7 @@ export default function CrisisMapPage() {
         throw new Error(body?.error ?? t.requestFailed)
       }
       if (!res.ok) throw new Error(body?.error ?? t.requestFailed)
-      if (body.status === 'failed') {
-        setDeepStatus('failed')
-        setDeepMsg(t.deepFailed)
-      } else if (body.status === 'pending') {
-        setDeepStatus('pending')
-        setDeepMsg(body.message ?? t.deepWait)
-      } else if (body.status === 'ready') {
-        setDeepStatus(body.cached ? 'cached' : 'ready')
-        setDeepMsg(body.cached ? t.deepCached : t.deepReady)
-      } else {
-        setDeepMsg(body.message ?? t.deepRequested)
-      }
+      applyDeepBody(body, t, setDeepStatus, setDeepMsg, setDeepCard, setDeepProgress)
     } catch (e: unknown) {
       setDeepMsg(e instanceof Error ? e.message : t.requestFailed)
     } finally {
@@ -289,18 +340,20 @@ export default function CrisisMapPage() {
         </div>
 
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
-          <div className="grid grid-cols-12 gap-2 border-b border-white/10 px-4 py-3 text-xs font-semibold text-slate-400">
-            <div className="col-span-4">{t.colRegion}</div>
-            <div className="col-span-3">{t.colCountry}</div>
-            <div className="col-span-1">{t.colStage}</div>
-            <div className="col-span-1 text-right">{t.colScore}</div>
-            <div className="col-span-3">{t.colTriggers}</div>
+          <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
+            <div className="grid w-full grid-cols-12 gap-2 text-xs font-semibold text-slate-400">
+              <div className="col-span-4">{t.colRegion}</div>
+              <div className="col-span-3">{t.colCountry}</div>
+              <div className="col-span-1">{t.colStage}</div>
+              <div className="col-span-1 text-right">{t.colScore}</div>
+              <div className="col-span-3">{t.colTriggers}</div>
+            </div>
           </div>
-          {regions.length === 0 ? (
+          {tableRows.length === 0 ? (
             <p className="px-4 py-10 text-center text-sm text-slate-500">{t.noScores}</p>
           ) : (
             <div className="divide-y divide-white/8">
-              {regions.map((row) => (
+              {tableRows.map((row) => (
                 <button
                   key={row.regionId}
                   type="button"
@@ -309,9 +362,7 @@ export default function CrisisMapPage() {
                     selectedId === row.regionId ? 'bg-cyan-500/10' : ''
                   }`}
                 >
-                  <div className="col-span-4 truncate font-semibold">
-                    {regionDisplayName(row.name, row.iso3, locale, row.country)}
-                  </div>
+                  <div className="col-span-4 truncate font-semibold">{row.name}</div>
                   <div className="col-span-3 truncate text-slate-300">
                     {countryDisplayName(row.iso3, locale, row.country)}
                   </div>
@@ -328,12 +379,23 @@ export default function CrisisMapPage() {
               ))}
             </div>
           )}
+          {scoredCount > TABLE_TOP ? (
+            <div className="border-t border-white/10 px-4 py-3">
+              <button
+                type="button"
+                onClick={() => setShowAllRows((prev) => !prev)}
+                className="text-xs font-semibold text-cyan-200 hover:text-cyan-100"
+              >
+                {showAllRows ? t.showTop200 : t.showAll(scoredCount)}
+              </button>
+            </div>
+          ) : null}
         </section>
       </div>
 
       {selected ? (
         <aside
-          className={`fixed inset-y-0 right-0 z-20 flex w-full max-w-md flex-col border-l bg-[#070b16]/95 p-5 shadow-[-20px_0_80px_rgba(0,0,0,0.55)] backdrop-blur ${
+          className={`fixed inset-y-0 right-0 z-20 flex w-full max-w-md flex-col overflow-y-auto border-l bg-[#070b16]/95 p-5 shadow-[-20px_0_80px_rgba(0,0,0,0.55)] backdrop-blur ${
             severityTheme(selected.stage).pulseBorder ? 'crisis-pulse-border' : ''
           }`}
           style={{ borderColor: severityTheme(selected.stage).border }}
@@ -350,9 +412,7 @@ export default function CrisisMapPage() {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300/70">{t.freeLayer}</p>
-              <h2 className="text-2xl font-black">
-                {regionDisplayName(selected.name, selected.iso3, locale, selected.country)}
-              </h2>
+              <h2 className="text-2xl font-black">{selected.name}</h2>
               <p className="text-sm text-slate-400">{countryDisplayName(selected.iso3, locale, selected.country)}</p>
               <div className="mt-2">
                 <HazardIconRow kinds={hazardIconsFor(selected.triggers)} color={stageColor(selected.stage)} />
@@ -371,47 +431,86 @@ export default function CrisisMapPage() {
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-500">{t.colTriggers}</dt>
-              <dd className="mt-1 flex flex-wrap gap-1">
-                {selected.triggers.length === 0
-                  ? '—'
-                  : selected.triggers.map((key) => (
+              <dd className="mt-1 space-y-1">
+                {(selected.triggerFacts ?? []).length === 0 && selected.triggers.length === 0 ? (
+                  '—'
+                ) : (selected.triggerFacts ?? []).length > 0 ? (
+                  (selected.triggerFacts ?? []).map((fact) => (
+                    <p key={fact.key} className="text-slate-200">
+                      {triggerFactLine(fact, t)}
+                    </p>
+                  ))
+                ) : (
+                  <div className="flex flex-wrap gap-1">
+                    {selected.triggers.map((key) => (
                       <span key={key} className="rounded-full border border-white/12 px-2 py-0.5 text-xs">
                         {t.triggerLabel(key)}
                       </span>
                     ))}
+                  </div>
+                )}
               </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-500">{t.fragility}</dt>
-              <dd className="mt-1 text-slate-200">{selected.fragility.length ? selected.fragility.join(', ') : '—'}</dd>
+              <dd className="mt-1 space-y-1 text-slate-200">
+                {(selected.fragilityGroups ?? []).length > 0
+                  ? selected.fragilityGroups!.map((group) => (
+                      <p key={group.kind}>
+                        {t.fragilityKind(group.kind)}: {group.names.join(', ')}
+                      </p>
+                    ))
+                  : selected.fragility.length
+                    ? selected.fragility.join(', ')
+                    : '—'}
+              </dd>
             </div>
             <div>
               <dt className="text-xs uppercase tracking-wide text-slate-500">{t.population}</dt>
               <dd className="mt-1 text-slate-200">
-                {selected.peopleNorm != null ? t.exposure(selected.peopleNorm.toFixed(2)) : '—'}
-                {selected.urban.length
-                  ? ` · ${selected.urban.map((row) => `${row.name} ${row.pop ? Math.round(row.pop).toLocaleString() : ''}`).join(', ')}`
-                  : ''}
+                {selected.peopleCount && selected.peopleCount > 0
+                  ? t.peopleAbout(formatPeopleShort(selected.peopleCount, locale))
+                  : '—'}
               </dd>
             </div>
           </dl>
-          <div className="mt-auto space-y-2 pt-6">
-            <Link
-              href="/crisis/briefing"
-              className="block rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-slate-300"
-            >
-              {t.briefingLocked(CRISIS_BRIEF_CREDITS)}
-            </Link>
-            <button
-              type="button"
-              onClick={() => void requestDeep()}
-              disabled={busy}
-              className="w-full rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
-            >
-              {busy ? t.requesting : t.deepAnalyze(CRISIS_DEEP_CREDITS)}
-            </button>
-            {deepMsg ? <p className="text-xs text-cyan-200">{deepMsg}</p> : null}
-          </div>
+
+          {deepProgress && deepStatus === 'pending' ? (
+            <div className="mt-5">
+              <DeepProgress
+                t={t}
+                requestStatus={deepProgress.requestStatus}
+                elapsedSec={deepProgress.elapsedSec}
+                waitingForWorker={deepProgress.waitingForWorker}
+                groups={deepProgress.groups}
+              />
+            </div>
+          ) : null}
+
+          {deepCard && (deepStatus === 'ready' || deepStatus === 'cached') ? (
+            <div className="mt-5 space-y-3">
+              {deepMsg ? <p className="text-xs text-cyan-200">{deepMsg}</p> : null}
+              <UnlockedCardView card={deepCard} t={t} />
+            </div>
+          ) : (
+            <div className="mt-auto space-y-2 pt-6">
+              <Link
+                href="/crisis/briefing"
+                className="block rounded-xl border border-white/15 bg-white/5 px-4 py-3 text-center text-sm font-semibold text-slate-300"
+              >
+                {t.briefingLocked(CRISIS_BRIEF_CREDITS)}
+              </Link>
+              <button
+                type="button"
+                onClick={() => void requestDeep()}
+                disabled={busy || deepStatus === 'pending'}
+                className="w-full rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+              >
+                {busy ? t.requesting : t.deepAnalyze(CRISIS_DEEP_CREDITS)}
+              </button>
+              {deepMsg && deepStatus !== 'pending' ? <p className="text-xs text-cyan-200">{deepMsg}</p> : null}
+            </div>
+          )}
         </aside>
       ) : null}
     </main>

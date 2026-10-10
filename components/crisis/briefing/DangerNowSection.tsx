@@ -3,7 +3,8 @@
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
 import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
 import type { CrisisLocale } from '@/lib/crisis/i18n/locales'
-import { countryDisplayName, regionDisplayName } from '@/lib/crisis/i18n/place-names'
+import { countryDisplayName } from '@/lib/crisis/i18n/place-names'
+import { formatPeopleShort, keyTriggerFact, type TriggerFact } from '@/lib/crisis/public/format'
 import { hazardIconsFor } from '@/lib/crisis/ui/hazards'
 import { severityTheme } from '@/lib/crisis/ui/severity'
 
@@ -17,15 +18,28 @@ export type DangerRegion = {
   triggers: string[]
   fragility: string[]
   peopleNorm: number | null
+  peopleCount?: number | null
   urban: Array<{ name: string; pop: number }>
+  triggerFacts?: TriggerFact[]
 }
 
-function formatPeopleKo(urban: Array<{ name: string; pop: number }>): string | null {
-  const total = urban.reduce((sum, row) => sum + (row.pop || 0), 0)
-  if (total >= 100_000_000) return `${(total / 100_000_000).toFixed(1).replace(/\.0$/, '')}억`
-  if (total >= 10_000) return `${Math.round(total / 10_000).toLocaleString()}만`
-  if (total > 0) return total.toLocaleString()
-  return null
+function peopleForLine(row: DangerRegion): number | null {
+  if (row.peopleCount && row.peopleCount > 0) return row.peopleCount
+  const urban = row.urban.reduce((sum, item) => sum + (item.pop || 0), 0)
+  return urban > 0 ? urban : null
+}
+
+export function dangerLine(row: DangerRegion, t: CrisisUiPack, locale: CrisisLocale): string {
+  const fact = keyTriggerFact(row.triggerFacts ?? [])
+  let triggerText: string | null = null
+  if (fact?.key === 'rain' && fact.sumMm != null) triggerText = t.rainForecastShort(fact.sumMm)
+  else if (fact?.key === 'river' && fact.peakM3s != null) triggerText = t.riverPeak(fact.peakM3s)
+  else if (fact?.key === 'quake' && fact.mag != null) triggerText = t.quakeMag(fact.mag)
+  else if (row.triggers[0]) triggerText = t.triggerLabel(row.triggers[0])
+  const fragilityText = row.fragility.length > 0 ? t.dangerFragilityUnit(row.fragility.length) : null
+  const people = peopleForLine(row)
+  const peopleText = people != null ? t.dangerPeopleUnit(formatPeopleShort(people, locale)) : null
+  return [triggerText, fragilityText, peopleText].filter(Boolean).join(' + ')
 }
 
 export function DangerNowSection({
@@ -50,12 +64,6 @@ export function DangerNowSection({
         {top.map((row) => {
           const theme = severityTheme(row.stage)
           const icons = hazardIconsFor(row.triggers)
-          const triggerText = row.triggers.slice(0, 3).map((key) => t.triggerLabel(key)).join(' + ') || '—'
-          const fragilityText = row.fragility.length > 0 ? t.dangerFragilityUnit(row.fragility.length) : null
-          const peopleText = formatPeopleKo(row.urban)
-          const parts = [triggerText, fragilityText, peopleText ? t.dangerPeopleUnit(peopleText) : null].filter(Boolean)
-          const line = parts.join(' + ')
-
           return (
             <article
               key={row.regionId}
@@ -74,7 +82,7 @@ export function DangerNowSection({
                     <HazardIconRow kinds={icons} color={theme.color} />
                   </div>
                   <h3 className="mt-2 truncate text-lg font-black text-white">
-                    {regionDisplayName(row.name, row.iso3, locale, row.country)}{' '}
+                    {row.name}{' '}
                     <span className="text-sm font-semibold text-slate-400">
                       {countryDisplayName(row.iso3, locale, row.country)}
                     </span>
@@ -90,7 +98,7 @@ export function DangerNowSection({
                       </span>
                     ))}
                   </div>
-                  <p className="mt-2 text-sm font-semibold text-slate-300">{line}</p>
+                  <p className="mt-2 text-sm font-semibold text-slate-300">{dangerLine(row, t, locale)}</p>
                 </div>
               </div>
             </article>

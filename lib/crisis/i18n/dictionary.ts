@@ -118,6 +118,24 @@ export type CrisisUiPack = {
   howItWorksLine1: string
   howItWorksLine2: string
   howItWorksLine3: string
+  workerWaiting: string
+  progressQueued: string
+  progressRunning: string
+  elapsed: (minutes: number, seconds: number) => string
+  stepAnalyst: string
+  stepSearch: string
+  stepHunter: string
+  stepRedTeam: string
+  stepJudge: string
+  stepDone: string
+  stepRunning: string
+  stepWaiting: string
+  peopleAbout: (n: string) => string
+  rainForecast: (sum: number, max: number) => string
+  rainForecastShort: (sum: number) => string
+  riverPeak: (peak: number) => string
+  quakeMag: (mag: number) => string
+  fragilityKind: (kind: string) => string
 }
 
 const ko: CrisisUiPack = {
@@ -281,6 +299,38 @@ const ko: CrisisUiPack = {
   howItWorksLine1: '트리거: 폭우·지진·분쟁 같은 즉시 사건',
   howItWorksLine2: '숨은 취약점: 노후 댐, 밀집 저지대, 끊긴 전력망',
   howItWorksLine3: '사람: 그 위에 사는 인구 — 2023년 리비아 데르나는 트리거와 취약점이 겹쳐 11,000명이 사망했습니다',
+  workerWaiting: '분석 서버 대기 중',
+  progressQueued: '대기열에 있음',
+  progressRunning: '분석 중',
+  elapsed: (minutes, seconds) => (minutes > 0 ? `${minutes}분 ${seconds}초 경과` : `${seconds}초 경과`),
+  stepAnalyst: '분석관',
+  stepSearch: '검색',
+  stepHunter: '사냥꾼',
+  stepRedTeam: '반박',
+  stepJudge: '판정',
+  stepDone: '완료',
+  stepRunning: '진행',
+  stepWaiting: '대기',
+  peopleAbout: (n) => `인구 약 ${n} 명`,
+  rainForecast: (sum, max) => `7일 강수 예보 ${Math.round(sum)}mm, 하루 최대 ${Math.round(max)}mm`,
+  rainForecastShort: (sum) => `7일 강수 ${Math.round(sum)}mm 예보`,
+  riverPeak: (peak) => `하천 유량 최대 ${Math.round(peak)}㎥/s`,
+  quakeMag: (mag) => `지진 규모 ${mag.toFixed(1)}`,
+  fragilityKind: (kind) => {
+    const map: Record<string, string> = {
+      dam: '댐',
+      reservoir: '저수지',
+      levee: '제방',
+      refugee_camp: '난민촌',
+      nuclear_plant: '원전',
+      power_plant: '발전소',
+      glacial_lake: '빙하호',
+      hospital: '병원',
+      port: '항구',
+      site: '시설',
+    }
+    return map[kind] ?? kind
+  },
 }
 
 const en: CrisisUiPack = {
@@ -428,6 +478,25 @@ const en: CrisisUiPack = {
   howItWorksLine1: 'Trigger: immediate events like heavy rain, earthquakes, conflict',
   howItWorksLine2: 'Hidden fragility: aging dams, crowded lowlands, fragile power grids',
   howItWorksLine3: 'People: the population living on top — Derna, Libya 2023 killed 11,000 when trigger met fragility',
+  workerWaiting: 'Waiting for the analysis server',
+  progressQueued: 'Queued',
+  progressRunning: 'Running',
+  elapsed: (minutes, seconds) =>
+    minutes > 0 ? `${minutes}m ${seconds}s elapsed` : `${seconds}s elapsed`,
+  stepAnalyst: 'Analysts',
+  stepSearch: 'Search',
+  stepHunter: 'Hunters',
+  stepRedTeam: 'Red team',
+  stepJudge: 'Judge',
+  stepDone: 'done',
+  stepRunning: 'running',
+  stepWaiting: 'waiting',
+  peopleAbout: (n) => `About ${n} people`,
+  rainForecast: (sum, max) => `7-day rain forecast ${Math.round(sum)}mm, daily max ${Math.round(max)}mm`,
+  rainForecastShort: (sum) => `7-day rain ${Math.round(sum)}mm forecast`,
+  riverPeak: (peak) => `Peak river flow ${Math.round(peak)} m³/s`,
+  quakeMag: (mag) => `Magnitude ${mag.toFixed(1)}`,
+  fragilityKind: (kind) => kind.replace(/_/g, ' '),
 }
 
 const ja: CrisisUiPack = {

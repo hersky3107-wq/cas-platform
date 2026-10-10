@@ -4,15 +4,27 @@ import { insertQueueRows, loadTodayRegions } from '../admin/store'
 import type { AdminRegion, QueueRow } from '../admin/types'
 import type { EngineResult } from '../engine/schema'
 import { loadRun } from '../engine/store'
-import { freeLayerFromDetail, lockBriefCard, unlockBriefCard, type LockedBriefCard, type UnlockedBriefCard } from './card'
+import {
+  freeLayerFromDetail,
+  lockBriefCard,
+  unlockBriefCard,
+  type FragilityGroup,
+  type FreeTriggerFact,
+  type LockedBriefCard,
+  type UnlockedBriefCard,
+} from './card'
 import { isPublicRun } from './policy'
+import { summarizeEngineProgress, type ProgressGroup } from './progress'
 
 const APPLY_UNLOCKS = 'Paste docs/crisis/APPLY_PUBLIC.md before unlocking a briefing.'
 
 export interface PublicMapRegion extends AdminRegion {
   fragility: string[]
+  fragilityGroups: FragilityGroup[]
   peopleNorm: number | null
+  peopleCount: number | null
   urban: Array<{ name: string; pop: number }>
+  triggerFacts: FreeTriggerFact[]
 }
 
 export async function loadPublicMap(
@@ -33,9 +45,79 @@ export async function loadPublicMap(
     if (error) throw new Error(error.message)
     for (const row of data ?? []) details.set(Number(row.region_id), row.detail)
   }
+  const peopleById = new Map<number, { value: number; issued: string }>()
+  for (let i = 0; i < ids.length; i += 200) {
+    const chunk = ids.slice(i, i + 200)
+    const { data, error } = await client
+      .from('crisis_region_metrics')
+      .select('region_id,value,issued_at')
+      .eq('metric', 'urban_pop')
+      .in('region_id', chunk)
+    if (error && !/crisis_region_metrics|schema cache|does not exist/i.test(error.message)) throw new Error(error.message)
+    for (const row of data ?? []) {
+      const id = Number(row.region_id)
+      const value = typeof row.value === 'number' ? row.value : null
+      if (value == null || value <= 0) continue
+      const issued = typeof row.issued_at === 'string' ? row.issued_at : ''
+      const prev = peopleById.get(id)
+      if (!prev || issued >= prev.issued) peopleById.set(id, { value, issued })
+    }
+  }
+
   return {
     day: today.day,
-    regions: today.regions.map((row) => ({ ...row, ...freeLayerFromDetail(details.get(row.regionId)) })),
+    regions: today.regions.map((row) => {
+      const free = freeLayerFromDetail(details.get(row.regionId))
+      return {
+        ...row,
+        ...free,
+        peopleCount: free.peopleCount ?? peopleById.get(row.regionId)?.value ?? null,
+      }
+    }),
+  }
+}
+
+export async function loadDeepProgress(
+  client: SupabaseClient,
+  request: QueueRow,
+  now = new Date(),
+): Promise<{
+  requestId: string
+  requestStatus: QueueRow['status']
+  createdAt: string
+  startedAt: string | null
+  runId: string | null
+  waitingForWorker: boolean
+  elapsedSec: number
+  groups: ProgressGroup[]
+}> {
+  let steps: Array<{ role: string }> = []
+  if (request.run_id) {
+    const { data, error } = await client
+      .from('crisis_engine_steps')
+      .select('role')
+      .eq('run_id', request.run_id)
+      .order('id', { ascending: true })
+    if (error && !/crisis_engine_steps|schema cache|does not exist/i.test(error.message)) throw new Error(error.message)
+    steps = (data ?? []).map((row) => ({ role: String(row.role) }))
+  }
+  const status =
+    request.status === 'queued' || request.status === 'running' || request.status === 'done' || request.status === 'failed'
+      ? request.status
+      : 'queued'
+  const summary = summarizeEngineProgress({
+    requestStatus: status,
+    createdAt: request.created_at,
+    now,
+    steps,
+  })
+  return {
+    requestId: request.id,
+    requestStatus: request.status,
+    createdAt: request.created_at,
+    startedAt: request.started_at,
+    runId: request.run_id,
+    ...summary,
   }
 }
 

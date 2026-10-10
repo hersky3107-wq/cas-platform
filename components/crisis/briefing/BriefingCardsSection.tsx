@@ -71,7 +71,7 @@ export function BriefingCardsSection({ t, cards, busy, onUnlock }: Props) {
           card.locked ? (
             <LockedView key={card.runId} card={card} t={t} busy={busy} onUnlock={() => onUnlock(card.runId)} />
           ) : (
-            <UnlockedView key={card.runId} card={card} t={t} />
+            <UnlockedCardView key={card.runId} card={card} t={t} />
           ),
         )}
       </div>
@@ -148,7 +148,7 @@ function LockedView({
   )
 }
 
-function UnlockedView({ card, t }: { card: UnlockedCard; t: CrisisUiPack }) {
+export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiPack }) {
   const theme = severityTheme(card.stage)
   return (
     <article className="space-y-4">

@@ -177,24 +177,46 @@ export function unlockBriefCard(opts: {
   }
 }
 
+export type FragilityGroup = { kind: string; names: string[] }
+export type FreeTriggerFact = {
+  key: string
+  sumMm?: number
+  maxDayMm?: number
+  peakM3s?: number
+  mag?: number
+}
+
 export function freeLayerFromDetail(detail: unknown): {
   fragility: string[]
+  fragilityGroups: FragilityGroup[]
   peopleNorm: number | null
+  peopleCount: number | null
   urban: Array<{ name: string; pop: number }>
+  triggerFacts: FreeTriggerFact[]
 } {
   const rec = detail && typeof detail === 'object' && !Array.isArray(detail) ? (detail as Record<string, unknown>) : null
   const fragility: string[] = []
+  const groupMap = new Map<string, string[]>()
+  const pushItem = (kind: string | undefined, name: string) => {
+    fragility.push(name)
+    const key = (kind ?? 'site').trim() || 'site'
+    const list = groupMap.get(key) ?? []
+    if (!list.includes(name)) list.push(name)
+    groupMap.set(key, list)
+  }
   if (Array.isArray(rec?.fragility_items)) {
     for (const item of rec.fragility_items) {
-      if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
-        fragility.push((item as { name: string }).name)
-      }
+      if (!item || typeof item !== 'object') continue
+      const name = (item as { name?: unknown }).name
+      const kind = (item as { kind?: unknown }).kind
+      if (typeof name === 'string') pushItem(typeof kind === 'string' ? kind : undefined, name)
     }
   } else if (Array.isArray(rec?.fragility)) {
     for (const item of rec.fragility) {
-      if (typeof item === 'string') fragility.push(item)
+      if (typeof item === 'string') pushItem(undefined, item)
       else if (item && typeof item === 'object' && typeof (item as { name?: unknown }).name === 'string') {
-        fragility.push((item as { name: string }).name)
+        const kind = (item as { kind?: unknown }).kind
+        pushItem(typeof kind === 'string' ? kind : undefined, (item as { name: string }).name)
       }
     }
   }
@@ -209,5 +231,34 @@ export function freeLayerFromDetail(detail: unknown): {
     }
   }
   const peopleNorm = typeof rec?.people_norm === 'number' ? rec.people_norm : null
-  return { fragility, peopleNorm, urban }
+  const urbanSum = urban.reduce((sum, row) => sum + (row.pop || 0), 0)
+  const storedPop = typeof rec?.urban_pop === 'number' && Number.isFinite(rec.urban_pop) ? rec.urban_pop : null
+  const peopleCount = storedPop && storedPop > 0 ? storedPop : urbanSum > 0 ? urbanSum : null
+  const triggerFacts: FreeTriggerFact[] = []
+  if (Array.isArray(rec?.components)) {
+    for (const item of rec.components) {
+      if (!item || typeof item !== 'object') continue
+      const key = typeof (item as { key?: unknown }).key === 'string' ? (item as { key: string }).key : ''
+      const value = typeof (item as { value?: unknown }).value === 'number' ? (item as { value: number }).value : 0
+      if (!key || value <= 0) continue
+      const raw =
+        (item as { raw?: unknown }).raw && typeof (item as { raw?: unknown }).raw === 'object'
+          ? ((item as { raw: Record<string, unknown> }).raw)
+          : {}
+      const fact: FreeTriggerFact = { key }
+      if (typeof raw.sum_mm === 'number') fact.sumMm = raw.sum_mm
+      if (typeof raw.max_day_mm === 'number') fact.maxDayMm = raw.max_day_mm
+      if (typeof raw.peak_m3s === 'number') fact.peakM3s = raw.peak_m3s
+      if (typeof raw.mag === 'number') fact.mag = raw.mag
+      triggerFacts.push(fact)
+    }
+  }
+  return {
+    fragility,
+    fragilityGroups: [...groupMap.entries()].map(([kind, names]) => ({ kind, names })),
+    peopleNorm,
+    peopleCount,
+    urban,
+    triggerFacts,
+  }
 }

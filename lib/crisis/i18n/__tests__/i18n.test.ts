@@ -59,6 +59,10 @@ describe('Korean dictionary', () => {
     expect(t.triggerLabel('escalation')).toBe('확전')
     expect(t.triggerLabel('health_attention')).toBe('보건 관심')
     expect(getCrisisUiPack('en').stageBanner[2]).toBe('Watch')
+    expect(t.workerWaiting).toBe('분석 서버 대기 중')
+    expect(t.rainForecastShort(310)).toBe('7일 강수 310mm 예보')
+    expect(t.fragilityKind('dam')).toBe('댐')
+    expect(t.peopleAbout('120만')).toBe('인구 약 120만 명')
   })
 
   it('has a pack for every locale and a complete Korean pack', () => {
