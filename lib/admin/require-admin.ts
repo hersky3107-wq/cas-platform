@@ -26,3 +26,29 @@ export async function requireAdmin(req: Request): Promise<NextResponse | null> {
   }
   return null
 }
+
+/** Admin identity for writes. 403 response when not the owner. */
+export async function requireAdminUser(
+  req: Request
+): Promise<{ userId: string } | { response: NextResponse }> {
+  const forbidden = await requireAdmin(req)
+  if (forbidden) return { response: forbidden }
+
+  const authHeader = req.headers.get('authorization')
+  const bearer = authHeader?.startsWith('Bearer ') ? authHeader.slice(7).trim() : undefined
+  let jwt = bearer
+  if (!jwt) {
+    const authClient = await createSupabaseRouteAuthClient(req)
+    const {
+      data: { session },
+    } = await authClient.auth.getSession()
+    jwt = session?.access_token
+  }
+  if (!jwt) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  const { data, error } = await supabaseAdmin.auth.getUser(jwt)
+  if (error || !data.user?.id) return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  if (!data.user.email || data.user.email.toLowerCase() !== ADMIN_EMAIL.toLowerCase()) {
+    return { response: NextResponse.json({ error: 'Forbidden' }, { status: 403 }) }
+  }
+  return { userId: data.user.id }
+}

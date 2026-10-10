@@ -334,12 +334,20 @@ export default function AdminPage() {
             <h1 className="text-2xl font-bold tracking-tight">ADMIN DASHBOARD</h1>
             <p className="mt-1 text-sm text-slate-400">Overview, credits, signups, and site announcement.</p>
           </div>
-          <a
-            href="/admin/platform-health"
-            className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/15"
-          >
-            Platform health →
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href="/admin/crisis"
+              className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/15"
+            >
+              CrisisWatch →
+            </a>
+            <a
+              href="/admin/platform-health"
+              className="rounded-xl border border-cyan-400/30 bg-cyan-500/10 px-4 py-2 text-sm font-semibold text-cyan-200 hover:bg-cyan-500/15"
+            >
+              Platform health →
+            </a>
+          </div>
         </div>
 
         {dashError ? (
