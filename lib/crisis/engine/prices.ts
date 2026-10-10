@@ -51,12 +51,12 @@ export function outputBudget(role: EngineRole, reasoning = false): number {
 }
 
 export const ROLE_TIMEOUT_MS: Record<EngineRole, number> = {
-  dept_analyst: 45_000,
-  query_writer: 30_000,
-  search: 150_000,
-  hunter: 150_000,
+  dept_analyst: 90_000,
+  query_writer: 90_000,
+  search: 90_000,
+  hunter: 90_000,
   red_team: 120_000,
-  judge: 150_000,
+  judge: 240_000,
 }
 
 export const DEFAULT_COST_CAP_USD = 1.5

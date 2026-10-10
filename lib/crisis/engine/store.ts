@@ -9,7 +9,7 @@ interface RunRow {
   region_id: number | null
   horizon: EngineRunRecord['horizon']
   mode: EngineRunRecord['mode']
-  status: 'done' | 'error' | 'partial'
+  status: 'done' | 'error' | 'partial' | 'running'
   roster: EngineRunRecord['roster']
   cost_usd: number | null
   tokens_in: number | null
@@ -61,52 +61,84 @@ export async function loadCachedRun(client: SupabaseClient, key: string): Promis
   return hit
 }
 
+function dbRunStatus(status: EngineRunRecord['status']): 'running' | 'done' | 'error' {
+  if (status === 'running') return 'running'
+  if (status === 'partial' || status === 'error') return 'error'
+  return 'done'
+}
+
+function stepRow(runId: string, step: EngineRunRecord['steps'][number]) {
+  return {
+    run_id: runId,
+    role: step.role,
+    model: step.model,
+    provider: step.provider,
+    prompt_hash: step.promptHash,
+    input_tokens: step.inputTokens,
+    output_tokens: step.outputTokens,
+    cost_usd: step.costUsd,
+    latency_ms: step.latencyMs,
+    output: step.output,
+    error: step.error,
+  }
+}
+
 export async function persistRun(client: SupabaseClient, record: EngineRunRecord, triggeredBy: 'admin' | 'system' | 'user'): Promise<string> {
   const now = new Date().toISOString()
-  const { data, error } = await client
-    .from('crisis_engine_runs')
-    .insert({
-      region_id: record.regionId,
-      horizon: record.horizon,
-      mode: record.mode,
-      status: record.status === 'partial' ? 'error' : record.status,
-      triggered_by: triggeredBy,
-      user_id: null,
-      roster: record.roster,
-      cost_usd: record.costUsd,
-      tokens_in: record.tokensIn,
-      tokens_out: record.tokensOut,
-      started_at: now,
-      finished_at: now,
-      error: record.status === 'partial' ? record.error ?? 'partial' : record.error,
-      result: record.result
-        ? { ...record.result, card: record.card, search_urls: record.searchUrls, queries: record.queries }
-        : null,
-      cache_key: record.status === 'done' && !record.result?.partial ? record.cacheKey : null,
-    })
-    .select('id')
-    .single()
-  if (error) {
-    if (/crisis_engine_runs|schema cache|does not exist/i.test(error.message)) throw new Error(`${error.message}. ${APPLY}`)
-    throw new Error(error.message)
+  const dbStatus = dbRunStatus(record.status)
+  const finished = dbStatus === 'done' || dbStatus === 'error'
+  const body = {
+    region_id: record.regionId,
+    horizon: record.horizon,
+    mode: record.mode,
+    status: dbStatus,
+    triggered_by: triggeredBy,
+    user_id: null,
+    roster: record.roster,
+    cost_usd: record.costUsd,
+    tokens_in: record.tokensIn,
+    tokens_out: record.tokensOut,
+    finished_at: finished ? now : null,
+    error: record.status === 'partial' ? record.error ?? 'partial' : record.error,
+    result: record.result
+      ? { ...record.result, card: record.card, search_urls: record.searchUrls, queries: record.queries }
+      : null,
+    cache_key: dbStatus === 'done' && !record.result?.partial ? record.cacheKey : null,
   }
-  const id = String((data as { id: string }).id)
-  if (record.steps.length > 0) {
-    const { error: stepError } = await client.from('crisis_engine_steps').insert(
-      record.steps.map((step) => ({
-        run_id: id,
-        role: step.role,
-        model: step.model,
-        provider: step.provider,
-        prompt_hash: step.promptHash,
-        input_tokens: step.inputTokens,
-        output_tokens: step.outputTokens,
-        cost_usd: step.costUsd,
-        latency_ms: step.latencyMs,
-        output: step.output,
-        error: step.error,
-      })),
-    )
+  if (!record.id) {
+    const { data, error } = await client
+      .from('crisis_engine_runs')
+      .insert({ ...body, started_at: now })
+      .select('id')
+      .single()
+    if (error) {
+      if (/crisis_engine_runs|schema cache|does not exist/i.test(error.message)) throw new Error(`${error.message}. ${APPLY}`)
+      throw new Error(error.message)
+    }
+    record.id = String((data as { id: string }).id)
+  } else {
+    const { error } = await client.from('crisis_engine_runs').update(body).eq('id', record.id)
+    if (error) throw new Error(error.message)
+  }
+  const id = record.id
+  const fresh = record.steps.filter((step) => step.dbId == null)
+  const known = record.steps.filter((step) => step.dbId != null)
+  if (fresh.length > 0) {
+    const { data, error: stepError } = await client
+      .from('crisis_engine_steps')
+      .insert(fresh.map((step) => stepRow(id, step)))
+      .select('id')
+    if (stepError) throw new Error(stepError.message)
+    const ids = (data ?? []).map((row) => Number((row as { id: number }).id))
+    fresh.forEach((step, index) => {
+      if (Number.isFinite(ids[index])) step.dbId = ids[index]
+    })
+  }
+  for (const step of known) {
+    const { error: stepError } = await client
+      .from('crisis_engine_steps')
+      .update(stepRow(id, step))
+      .eq('id', step.dbId)
     if (stepError) throw new Error(stepError.message)
   }
   return id

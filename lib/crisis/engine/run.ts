@@ -100,6 +100,7 @@ export interface EngineStepRecord {
   output: unknown
   error: string | null
   skipped: boolean
+  dbId?: number
 }
 
 export interface EngineRunRecord {
@@ -109,7 +110,7 @@ export interface EngineRunRecord {
   regionId: number
   horizon: Horizon
   mode: 'region' | 'top' | 'global'
-  status: 'done' | 'error' | 'partial'
+  status: 'done' | 'error' | 'partial' | 'running'
   roster: ResolvedRoster
   costUsd: number
   tokensIn: number
@@ -141,6 +142,8 @@ export interface RunEngineOptions {
   force?: boolean
   /** ReliefWeb, GDACS, and Metaculus items for this card's country; mainstream search items are added in the run. */
   coverage?: CoverageItem[]
+  /** Test hook. Live runs use ROLE_TIMEOUT_MS. */
+  roleTimeouts?: Partial<Record<EngineRole, number>>
 }
 
 export function promptHash(system: string, user: string): string {
@@ -184,12 +187,68 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
 
   const steps: EngineStepRecord[] = []
   let spent = 0
+  let reserved = 0
   let tokensIn = 0
   let tokensOut = 0
   let partial = false
   const notes: string[] = []
   const analystFindings: AnalystFinding[] = []
   let judgeBaselineRows: unknown = null
+  const live: EngineRunRecord = {
+    cacheKey: key,
+    cacheHit: false,
+    regionId: opts.card.region_id,
+    horizon: opts.card.horizon,
+    mode: opts.mode ?? 'region',
+    status: 'running',
+    roster,
+    costUsd: 0,
+    tokensIn: 0,
+    tokensOut: 0,
+    result: null,
+    steps,
+    card: opts.card,
+    searchUrls: [],
+    queries: [],
+    error: null,
+    dryRun: Boolean(opts.dryRun),
+  }
+
+  const timeoutFor = (role: EngineRole) => opts.roleTimeouts?.[role] ?? ROLE_TIMEOUT_MS[role]
+
+  let persistTail = Promise.resolve()
+  const flushLive = async (status: EngineRunRecord['status'] = 'running') => {
+    if (opts.dryRun || !opts.cache) return
+    live.status = status
+    live.costUsd = spent
+    live.tokensIn = tokensIn
+    live.tokensOut = tokensOut
+    const write = persistTail.then(async () => {
+      try {
+        await opts.cache!.put(live)
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : 'persist failed'
+        console.warn(`engine step persist failed: ${message}`)
+      }
+    })
+    persistTail = write.then(
+      () => undefined,
+      () => undefined,
+    )
+    await write
+  }
+
+  const pushStep = (step: EngineStepRecord) => {
+    steps.push(step)
+    return step
+  }
+
+  const finishStep = (
+    step: EngineStepRecord,
+    patch: Partial<Pick<EngineStepRecord, 'inputTokens' | 'outputTokens' | 'costUsd' | 'latencyMs' | 'output' | 'error' | 'skipped'>>,
+  ) => {
+    Object.assign(step, patch)
+  }
 
   const callSlot = async (
     slot: RosterSlot,
@@ -208,9 +267,9 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       system,
       user,
     }
-    if (inputEstimate > TOKEN_CAPS[slot.role].in || spent + estimate > cap) {
+    if (inputEstimate > TOKEN_CAPS[slot.role].in || spent + reserved + estimate > cap) {
       partial = true
-      steps.push({
+      pushStep({
         ...base,
         inputTokens: inputEstimate,
         outputTokens: 0,
@@ -220,12 +279,18 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         error: inputEstimate > TOKEN_CAPS[slot.role].in ? 'token cap' : 'budget',
         skipped: true,
       })
+      await flushLive()
       return null
     }
+    reserved += estimate
     if (opts.dryRun) {
       const dryOut = Math.min(TYPICAL_OUTPUT_TOKENS[slot.role], TOKEN_CAPS[slot.role].out)
       const dryCost = costOf(slot.model, inputEstimate, dryOut)
-      steps.push({
+      reserved -= estimate
+      spent += dryCost
+      tokensIn += inputEstimate
+      tokensOut += dryOut
+      pushStep({
         ...base,
         inputTokens: inputEstimate,
         outputTokens: dryOut,
@@ -235,12 +300,27 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         error: null,
         skipped: false,
       })
-      spent += dryCost
-      tokensIn += inputEstimate
-      tokensOut += dryOut
       return { parsed: null, searchItems: [] }
     }
+    const step = pushStep({
+      ...base,
+      inputTokens: inputEstimate,
+      outputTokens: 0,
+      costUsd: 0,
+      latencyMs: 0,
+      output: null,
+      error: null,
+      skipped: false,
+    })
+    await flushLive()
     const started = Date.now()
+    const timeoutMs = timeoutFor(slot.role)
+    const settle = (actual: number, inTok: number, outTok: number) => {
+      reserved -= estimate
+      spent += actual
+      tokensIn += inTok
+      tokensOut += outTok
+    }
     const invoke = async (promptUser: string) =>
       withTimeout(
         opts.caller.complete({
@@ -251,7 +331,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
           system,
           user: promptUser,
           maxTokens: outputCap,
-          timeoutMs: ROLE_TIMEOUT_MS[slot.role],
+          timeoutMs,
           search: slot.search,
           maxTurns: slot.maxTurns,
           extraBody: slot.extraBody,
@@ -259,16 +339,16 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
           anthropicThinking: slot.anthropicThinking,
           jsonMode: !slot.search,
         }),
-        ROLE_TIMEOUT_MS[slot.role],
+        timeoutMs,
       )
-    const recordStep = (
+    const recordFinish = (
       result: { tokensIn: number; tokensOut: number; costUsd: number | null },
       parsed: unknown,
       error: string | null,
     ) => {
       const cost = result.costUsd ?? costOf(slot.model, result.tokensIn, result.tokensOut)
-      steps.push({
-        ...base,
+      settle(cost, result.tokensIn, result.tokensOut)
+      finishStep(step, {
         inputTokens: result.tokensIn,
         outputTokens: result.tokensOut,
         costUsd: cost,
@@ -277,9 +357,6 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
         error,
         skipped: false,
       })
-      spent += cost
-      tokensIn += result.tokensIn
-      tokensOut += result.tokensOut
     }
     try {
       const result = await invoke(user)
@@ -296,19 +373,21 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
             parsed = { items: [], origin: result.searchOrigin ?? 'none' }
           }
         }
-        recordStep(result, parsed, null)
+        recordFinish(result, parsed, null)
+        await flushLive()
         return { parsed, searchItems: apiItems }
       }
       try {
         const parsed = extractJson(result.text)
-        recordStep(result, parsed, null)
+        recordFinish(result, parsed, null)
+        await flushLive()
         return { parsed, searchItems: apiItems }
       } catch (parseError) {
         logParseFailure(slot.slot, result.text)
         const retry = await invoke(`${user}\n${RETRY_JSON_HINT}`)
         try {
           const parsed = extractJson(retry.text)
-          recordStep(
+          recordFinish(
             {
               tokensIn: result.tokensIn + retry.tokensIn,
               tokensOut: result.tokensOut + retry.tokensOut,
@@ -317,51 +396,62 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
             parsed,
             null,
           )
+          await flushLive()
           return { parsed, searchItems: apiItems }
         } catch {
           logParseFailure(slot.slot, retry.text)
-          recordStep(retry, null, parseError instanceof Error ? parseError.message : 'json parse failed')
+          recordFinish(retry, null, parseError instanceof Error ? parseError.message : 'json parse failed')
+          await flushLive()
           return null
         }
       }
     } catch (error: unknown) {
       const message = error instanceof Error ? error.message : 'call failed'
-      steps.push({
-        ...base,
+      console.warn(`${slot.slot}: skipped (${message})`)
+      reserved -= estimate
+      finishStep(step, {
         inputTokens: inputEstimate,
         outputTokens: 0,
         costUsd: 0,
         latencyMs: Date.now() - started,
         output: null,
         error: message,
-        skipped: false,
+        skipped: true,
       })
+      await flushLive()
       return null
     }
   }
 
-  for (const slot of slotsFor(roster, 'dept_analyst')) {
-    const department = slot.slot as Department
-    if (departmentSliceEmpty(opts.card, department)) {
-      steps.push({
-        role: slot.role,
-        slot: slot.slot,
-        model: slot.model,
-        provider: slot.provider,
-        promptHash: promptHash(analystSystem(department), analystUser(opts.card, department)),
-        system: analystSystem(department),
-        user: analystUser(opts.card, department),
-        inputTokens: 0,
-        outputTokens: 0,
-        costUsd: 0,
-        latencyMs: 0,
-        output: null,
-        error: 'skipped: empty slice',
-        skipped: true,
-      })
-      continue
-    }
-    const called = await callSlot(slot, analystSystem(department), analystUser(opts.card, department))
+  await flushLive('running')
+
+  const analystCalled = await Promise.all(
+    slotsFor(roster, 'dept_analyst').map(async (slot) => {
+      const department = slot.slot as Department
+      if (departmentSliceEmpty(opts.card, department)) {
+        pushStep({
+          role: slot.role,
+          slot: slot.slot,
+          model: slot.model,
+          provider: slot.provider,
+          promptHash: promptHash(analystSystem(department), analystUser(opts.card, department)),
+          system: analystSystem(department),
+          user: analystUser(opts.card, department),
+          inputTokens: 0,
+          outputTokens: 0,
+          costUsd: 0,
+          latencyMs: 0,
+          output: null,
+          error: 'skipped: empty slice',
+          skipped: true,
+        })
+        await flushLive()
+        return { department, called: null as Awaited<ReturnType<typeof callSlot>> }
+      }
+      return { department, called: await callSlot(slot, analystSystem(department), analystUser(opts.card, department)) }
+    }),
+  )
+  for (const { department, called } of analystCalled) {
     const record = asRecord(called?.parsed)
     const note = typeof record?.notes === 'string' ? record.notes : ''
     if (note) notes.push(`${department}: ${note}`)
@@ -374,14 +464,18 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const searchQueries = queries.length > 0 ? queries : fallbackQueries(opts.card)
 
   const searchItems: SearchItem[] = []
-  for (const slot of slotsFor(roster, 'search')) {
-    const called = await callSlot(slot, searchSystem(), searchUser(searchQueries))
+  const searchCalled = await Promise.all(
+    slotsFor(roster, 'search').map(async (slot) => ({
+      slot,
+      called: await callSlot(slot, searchSystem(), searchUser(searchQueries)),
+    })),
+  )
+  for (const { slot, called } of searchCalled) {
     if (called?.searchItems.length) {
       searchItems.push(...called.searchItems)
       continue
     }
-    const items = normalizeSearchItems(asRecord(called?.parsed)?.items, slot.slot, now)
-    searchItems.push(...items)
+    searchItems.push(...normalizeSearchItems(asRecord(called?.parsed)?.items, slot.slot, now))
   }
 
   const coverage = [...(opts.coverage ?? []), ...mainstreamFromSearch(searchItems, opts.card, now)]
@@ -401,8 +495,13 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     alreadyReported,
   })
   let hunterOk = 0
-  for (const slot of slotsFor(roster, 'hunter')) {
-    const called = await callSlot(slot, hunterSystem(), hunterPacket)
+  const hunterCalled = await Promise.all(
+    slotsFor(roster, 'hunter').map(async (slot) => ({
+      slot,
+      called: await callSlot(slot, hunterSystem(), hunterPacket),
+    })),
+  )
+  for (const { slot, called } of hunterCalled) {
     const rows = asRecord(called?.parsed)?.hypotheses
     if (!Array.isArray(rows)) continue
     hunterOk += 1
@@ -560,7 +659,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   }
 
   let result: EngineResult | null = null
-  let status: 'done' | 'error' | 'partial' = partial ? 'partial' : 'done'
+  let status: 'done' | 'error' | 'partial' | 'running' = partial ? 'partial' : 'done'
   let error: string | null = null
   if (!opts.dryRun) {
     const candidate: EngineResult = {
@@ -587,27 +686,18 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     }
   }
 
-  const record: EngineRunRecord = {
-    cacheKey: key,
-    cacheHit: false,
-    regionId: opts.card.region_id,
-    horizon: opts.card.horizon,
-    mode: opts.mode ?? 'region',
-    status: opts.dryRun ? 'done' : status,
-    roster,
-    costUsd: spent,
-    tokensIn,
-    tokensOut,
-    result,
-    steps,
-    card: opts.card,
-    searchUrls: searchItems.map((item) => item.url),
-    queries: searchQueries,
-    error,
-    dryRun: Boolean(opts.dryRun),
-  }
-  if (!opts.dryRun && opts.cache) await opts.cache.put(record)
-  return record
+  live.cacheKey = key
+  live.cacheHit = false
+  live.status = opts.dryRun ? 'done' : status
+  live.costUsd = spent
+  live.tokensIn = tokensIn
+  live.tokensOut = tokensOut
+  live.result = result
+  live.searchUrls = searchItems.map((item) => item.url)
+  live.queries = searchQueries
+  live.error = error
+  if (!opts.dryRun && opts.cache) await opts.cache.put(live)
+  return live
 }
 
 function stringOr(value: unknown, fallback: string): string {

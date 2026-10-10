@@ -8,8 +8,9 @@ import { analystUser, departmentSliceEmpty, ensureQueries, fallbackQueries, hunt
 import { buildLedgerInserts, ledgerContentHash, memoryLedger, publishHypotheses } from '../publish'
 import { estimateRegionRunUsd, resolveRoster } from '../roster'
 import { extractJson } from '../parse'
-import { TOKEN_CAPS } from '../prices'
-import { applyJudgeGroups, applyWeakness, runEngine, withTimeout, type Draft, type ModelCall, type ModelCaller } from '../run'
+import { ROLE_TIMEOUT_MS, TOKEN_CAPS } from '../prices'
+import { persistRun } from '../store'
+import { applyJudgeGroups, applyWeakness, runEngine, withTimeout, type Draft, type EngineRunRecord, type ModelCall, type ModelCaller } from '../run'
 import type { EngineCard } from '../schema'
 import { normalizeSearchItems } from '../search-items'
 import { structureOf } from '../structure'
@@ -195,6 +196,11 @@ describe('roster', () => {
     expect(TOKEN_CAPS.hunter.out).toBe(3000)
     expect(TOKEN_CAPS.dept_analyst.out).toBe(1200)
     expect(TOKEN_CAPS.judge.out).toBe(9000)
+    expect(ROLE_TIMEOUT_MS.dept_analyst).toBe(90_000)
+    expect(ROLE_TIMEOUT_MS.hunter).toBe(90_000)
+    expect(ROLE_TIMEOUT_MS.search).toBe(90_000)
+    expect(ROLE_TIMEOUT_MS.red_team).toBe(120_000)
+    expect(ROLE_TIMEOUT_MS.judge).toBe(240_000)
     expect(hunters.find((slot) => slot.slot === 'hunter-qwen')?.extraBody).toEqual({ reasoning: { enabled: false } })
     expect(hunters.find((slot) => slot.slot === 'hunter-deepseek')?.extraBody).toEqual({ reasoning: { enabled: false } })
   })
@@ -462,5 +468,166 @@ describe('timeouts', () => {
     await expect(raced).rejects.toThrow(/timeout 20ms/)
     settle(new Error('late'))
     vi.useRealTimers()
+  })
+})
+
+describe('parallel stages and live step writes', () => {
+  it('runs analysts, both search providers, and hunters concurrently', async () => {
+    const flight = { analyst: 0, search: 0, hunter: 0 }
+    const peak = { analyst: 0, search: 0, hunter: 0 }
+    const recordFlight = (role: 'analyst' | 'search' | 'hunter', delta: number) => {
+      flight[role] += delta
+      peak[role] = Math.max(peak[role], flight[role])
+    }
+    const seen: ModelCall[] = []
+    const base = caller(seen)
+    const record = await runEngine({
+      card: card(),
+      now: NOW,
+      caller: {
+        async complete(call) {
+          const kind = call.role === 'dept_analyst' ? 'analyst' : call.role === 'search' ? 'search' : call.role === 'hunter' ? 'hunter' : null
+          if (kind) recordFlight(kind, 1)
+          await new Promise((resolve) => setTimeout(resolve, 25))
+          if (kind) recordFlight(kind, -1)
+          return base.complete(call)
+        },
+      },
+    })
+    expect(peak.analyst).toBeGreaterThan(1)
+    expect(peak.search).toBe(2)
+    expect(peak.hunter).toBeGreaterThan(1)
+    expect(record.status).toBe('done')
+    expect(seen.filter((call) => call.role === 'search')).toHaveLength(2)
+  })
+
+  it('skips a timed-out hunter and keeps the run moving', async () => {
+    const seen: ModelCall[] = []
+    const base = caller(seen)
+    const record = await runEngine({
+      card: card(),
+      now: NOW,
+      roleTimeouts: { hunter: 20 },
+      caller: {
+        async complete(call) {
+          if (call.slot === 'hunter-qwen') {
+            await new Promise((resolve) => setTimeout(resolve, 60))
+            return base.complete(call)
+          }
+          return base.complete(call)
+        },
+      },
+    })
+    const qwen = record.steps.find((step) => step.slot === 'hunter-qwen')
+    expect(qwen?.skipped).toBe(true)
+    expect(qwen?.error).toMatch(/timeout 20ms/)
+    expect(record.status).toBe('done')
+    expect(record.result?.headlines.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('writes a running snapshot before a step finishes', async () => {
+    const puts: Array<{ status: string; stepErrors: Array<string | null>; latencies: number[] }> = []
+    const seen: ModelCall[] = []
+    await runEngine({
+      card: card(),
+      caller: caller(seen),
+      now: NOW,
+      cache: {
+        async get() {
+          return null
+        },
+        async put(record) {
+          puts.push({
+            status: record.status,
+            stepErrors: record.steps.map((step) => step.error),
+            latencies: record.steps.map((step) => step.latencyMs),
+          })
+        },
+      },
+    })
+    expect(puts[0]?.status).toBe('running')
+    expect(puts.some((row) => row.status === 'running' && row.latencies.includes(0))).toBe(true)
+    expect(puts.at(-1)?.status).toBe('done')
+    expect(puts.length).toBeGreaterThan(4)
+  })
+})
+
+describe('persistRun live writes', () => {
+  it('inserts the run once, then inserts new steps and updates finished ones', async () => {
+    const runs: Array<Record<string, unknown>> = []
+    const steps: Array<Record<string, unknown>> = []
+    let runId = ''
+    let stepSeq = 0
+    const client = {
+      from(table: string) {
+        return {
+          insert(row: Record<string, unknown> | Array<Record<string, unknown>>) {
+            if (table === 'crisis_engine_runs') {
+              runId = 'run-live'
+              runs.push({ id: runId, ...(row as Record<string, unknown>) })
+              return {
+                select: () => ({
+                  single: async () => ({ data: { id: runId }, error: null }),
+                }),
+              }
+            }
+            const rows = Array.isArray(row) ? row : [row]
+            const inserted = rows.map((item) => {
+              stepSeq += 1
+              const saved = { id: stepSeq, ...item }
+              steps.push(saved)
+              return saved
+            })
+            return {
+              select: async () => ({ data: inserted.map((item) => ({ id: item.id })), error: null }),
+            }
+          },
+          update(patch: Record<string, unknown>) {
+            return {
+              async eq(col: string, value: unknown) {
+                if (table === 'crisis_engine_runs' && col === 'id') {
+                  const found = runs.find((row) => row.id === value)
+                  if (found) Object.assign(found, patch)
+                }
+                if (table === 'crisis_engine_steps' && col === 'id') {
+                  const found = steps.find((row) => row.id === value)
+                  if (found) Object.assign(found, patch)
+                }
+                return { error: null }
+              },
+            }
+          },
+        }
+      },
+    }
+    const record = await runEngine({
+      card: card(),
+      caller: caller([]),
+      now: NOW,
+      dryRun: true,
+    })
+    record.status = 'running'
+    record.result = null
+    const startStep = record.steps.find((step) => step.role === 'dept_analyst' && !step.skipped)
+    expect(startStep).toBeTruthy()
+    const live: EngineRunRecord = {
+      ...record,
+      status: 'running',
+      result: null,
+      steps: startStep ? [{ ...startStep, latencyMs: 0, output: null, error: null }] : [],
+    }
+    const id = await persistRun(client as never, live, 'admin')
+    expect(id).toBe('run-live')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].status).toBe('running')
+    expect(live.steps[0].dbId).toBe(1)
+    live.steps[0].latencyMs = 42
+    live.steps[0].error = null
+    live.status = 'done'
+    await persistRun(client as never, live, 'admin')
+    expect(runs).toHaveLength(1)
+    expect(runs[0].status).toBe('done')
+    expect(steps).toHaveLength(1)
+    expect(steps[0].latency_ms).toBe(42)
   })
 })
