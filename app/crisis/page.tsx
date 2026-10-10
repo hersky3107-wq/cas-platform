@@ -376,13 +376,13 @@ export default function CrisisMapPage() {
           ) : null}
           {zoneCard && (zoneStatus === 'ready' || zoneStatus === 'cached') ? (
             <div className="mt-4">
-              <UnlockedCardView card={zoneCard} t={t} />
+              <UnlockedCardView card={zoneCard} t={t} locale={locale} />
             </div>
           ) : null}
           {zoneCards.length > 0 ? (
             <div className="mt-4 space-y-6">
               {zoneCards.map((card) => (
-                <UnlockedCardView key={card.runId} card={card} t={t} />
+                <UnlockedCardView key={card.runId} card={card} t={t} locale={locale} />
               ))}
             </div>
           ) : null}
@@ -636,7 +636,7 @@ export default function CrisisMapPage() {
           {deepCard && (deepStatus === 'ready' || deepStatus === 'cached') ? (
             <div className="mt-5 space-y-3">
               {deepMsg ? <p className="text-xs text-cyan-200">{deepMsg}</p> : null}
-              <UnlockedCardView card={deepCard} t={t} />
+              <UnlockedCardView card={deepCard} t={t} locale={locale} />
             </div>
           ) : (
             <div className="mt-auto space-y-2 pt-6">

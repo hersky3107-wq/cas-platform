@@ -3,7 +3,8 @@
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
 import { SeverityCard } from '@/components/crisis/SeverityCard'
 import { CRISIS_BRIEF_CREDITS } from '@/lib/crisis/credits'
-import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
+import { getOutcomeUi, stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
+import type { CrisisLocale } from '@/lib/crisis/i18n/locales'
 import { hazardIconsFor } from '@/lib/crisis/ui/hazards'
 import { severityTheme } from '@/lib/crisis/ui/severity'
 
@@ -34,6 +35,7 @@ export type HypothesisRow = {
   evidence: Array<{ ref: string; url?: string }>
   hazards?: string[]
   regions?: Array<{ name: string }>
+  expected_window?: { label: string }
 }
 
 export type UnlockedCard = {
@@ -61,6 +63,15 @@ export type UnlockedCard = {
   zoneKey?: string
   crossBorder?: Array<{ title: string; from_region: string; to_region: string; link: string }>
   intraZone?: Array<{ title: string; from_region: string; to_region: string; link: string }>
+  predictions?: Array<{
+    what: string
+    where: string
+    window_start: string
+    window_end: string
+    probability: number
+    observable: string
+    label: string
+  }>
 }
 
 export type BriefingCard = LockedCard | UnlockedCard
@@ -70,9 +81,10 @@ type Props = {
   cards: BriefingCard[]
   busy: string | null
   onUnlock: (runId: string) => void
+  locale?: CrisisLocale
 }
 
-export function BriefingCardsSection({ t, cards, busy, onUnlock }: Props) {
+export function BriefingCardsSection({ t, cards, busy, onUnlock, locale = 'ko' }: Props) {
   return (
     <section>
       <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
@@ -84,7 +96,7 @@ export function BriefingCardsSection({ t, cards, busy, onUnlock }: Props) {
           card.locked ? (
             <LockedView key={card.runId} card={card} t={t} busy={busy} onUnlock={() => onUnlock(card.runId)} />
           ) : (
-            <UnlockedCardView key={card.runId} card={card} t={t} />
+            <UnlockedCardView key={card.runId} card={card} t={t} locale={locale} />
           ),
         )}
       </div>
@@ -161,7 +173,7 @@ function LockedView({
   )
 }
 
-export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiPack }) {
+export function UnlockedCardView({ card, t, locale = 'ko' }: { card: UnlockedCard; t: CrisisUiPack; locale?: CrisisLocale }) {
   const theme = severityTheme(card.stage)
   return (
     <article className="space-y-4">
@@ -182,6 +194,7 @@ export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiP
 
       <Tier title={t.headlines} rows={card.headlines} t={t} />
       <Tier title={t.missedByOthers} rows={card.missed_by_others} t={t} />
+      <Predictions rows={card.predictions ?? []} locale={locale} />
       {card.zoneKey ? (
         <>
           <BorderLinks title={t.intraRegionLinks} rows={card.intraZone ?? []} empty={t.none} />
@@ -233,6 +246,34 @@ export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiP
         </details>
       ) : null}
     </article>
+  )
+}
+
+function Predictions({
+  rows,
+  locale,
+}: {
+  rows: NonNullable<UnlockedCard['predictions']>
+  locale: CrisisLocale
+}) {
+  const copy = getOutcomeUi(locale)
+  if (rows.length === 0) return null
+  return (
+    <section>
+      <h3 className="mb-2 text-sm font-black text-slate-300">{copy.predictionsTitle}</h3>
+      <ul className="space-y-2">
+        {rows.map((row) => (
+          <li key={`${row.what}-${row.where}-${row.window_start}`} className="rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm">
+            <p className="font-semibold text-white">
+              {row.what} · {row.where}
+            </p>
+            <p className="text-slate-300">{copy.predictionProbability(Math.round(row.probability * 100))}</p>
+            <p className="text-xs text-slate-400">{row.label || copy.predictionWindow(row.window_start, row.window_end)}</p>
+            <p className="text-xs text-slate-500">{row.observable}</p>
+          </li>
+        ))}
+      </ul>
+    </section>
   )
 }
 
@@ -293,6 +334,7 @@ function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: Cri
                   summary: row.title,
                   whatToDo: row.what_to_do_ko,
                   whatToDoLocal: row.what_to_do_local,
+                  windowLabel: row.expected_window?.label,
                   whyMiss: row.why_humans_miss,
                   novelty: row.novelty,
                   hazards: row.hazards,

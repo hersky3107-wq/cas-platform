@@ -46,6 +46,16 @@ export interface UnlockedBriefCard {
   zoneKey?: string
   crossBorder?: Array<{ title: string; from_region: string; to_region: string; link: string }>
   intraZone?: Array<{ title: string; from_region: string; to_region: string; link: string }>
+  predictions?: Array<{
+    what: string
+    where: string
+    window_start: string
+    window_end: string
+    probability: number
+    observable: string
+    counts_as_hit: string
+    label: string
+  }>
 }
 
 export interface PublicHypothesis {
@@ -62,6 +72,7 @@ export interface PublicHypothesis {
   evidence: Array<{ type: string; ref: string; url?: string }>
   hazards: string[]
   regions?: Array<{ region_id: number; name: string; iso3: string | null }>
+  expected_window?: { min_days: number; max_days: number; start: string; end: string; label: string }
 }
 
 export function localLanguageCode(iso3: string | null): string {
@@ -85,6 +96,7 @@ function asHypothesis(row: Hypothesis): PublicHypothesis {
     evidence: row.evidence ?? [],
     hazards: row.hazards ?? [],
     regions: row.regions,
+    expected_window: row.expected_window,
   }
 }
 
@@ -187,6 +199,7 @@ export function unlockBriefCard(opts: {
     zoneKey: opts.result.zone_key,
     crossBorder: opts.result.cross_border,
     intraZone: opts.result.intra_zone,
+    predictions: opts.result.predictions,
   }
 }
 

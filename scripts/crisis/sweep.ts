@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs'
 import path from 'node:path'
 import { CRISIS_SOURCES, sourceByKey } from '../../lib/crisis/ingest/registry'
 import { isDue, loadState, runSource } from '../../lib/crisis/ingest/run'
+import { runOutcomeCheck } from '../../lib/crisis/outcomes/scheduled'
 import { runLayer1Score } from '../../lib/crisis/score/job'
 import { SCORE_SOURCE } from '../../lib/crisis/score/thresholds'
 import { scoreWriteEnabled } from '../../lib/crisis/score/write'
@@ -126,6 +127,13 @@ async function pass(opts: { dryRun: boolean; only: string | null }): Promise<voi
 
   if (!opts.only && !opts.dryRun) {
     await maybeScore({ dryRun: false, force: false, now, afterForecast: forecastRan })
+  }
+
+  if (!opts.only) {
+    const outcomes = await runOutcomeCheck({ now, dryRun: opts.dryRun })
+    if (!outcomes.skipped) {
+      console.log(JSON.stringify({ at: now.toISOString(), source: 'outcomes', ...outcomes }))
+    }
   }
 }
 

@@ -18,6 +18,7 @@ export type SeverityCardModel = {
   headlineFallback?: boolean
   hazards?: string[]
   possibility?: string
+  windowLabel?: string
 }
 
 export function SeverityCard({
@@ -61,6 +62,7 @@ export function SeverityCard({
       <p className={`leading-snug text-white ${theme.compact ? 'text-lg font-semibold' : 'text-xl font-black sm:text-2xl'}`}>
         {card.summary}
       </p>
+      {card.windowLabel ? <p className="text-sm font-semibold text-slate-300">{card.windowLabel}</p> : null}
       {card.whatToDo.length > 0 ? (
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-slate-400">{t.whatToDo}</p>

@@ -9,6 +9,7 @@
     "lint": "eslint",
     "test": "vitest run",
     "crisis:sweep": "npx tsx --env-file=.env.local scripts/crisis/sweep.ts",
+    "crisis:outcomes": "npx tsx --env-file=.env.local scripts/crisis/check-outcomes.ts",
     "crisis:worker": "npx tsx --require ./scripts/crisis/register-server-only.cjs --env-file=.env.local scripts/crisis/engine-worker.ts"
   },
   "dependencies": {

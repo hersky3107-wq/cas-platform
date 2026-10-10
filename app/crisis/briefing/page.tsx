@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { BriefingCardsSection, type BriefingCard, type UnlockedCard } from '@/components/crisis/briefing/BriefingCardsSection'
+import { OutcomeScoreboard } from '@/components/crisis/briefing/OutcomeScoreboard'
 import { DangerNowSection, type DangerRegion } from '@/components/crisis/briefing/DangerNowSection'
 import { EmptyBriefingState } from '@/components/crisis/briefing/EmptyBriefingState'
 import { HowItWorks } from '@/components/crisis/briefing/HowItWorks'
@@ -136,12 +137,14 @@ export default function CrisisBriefingPage() {
 
         <WorldRiskStrip t={t} day={mapDay} stage5={stageCounts.s5} stage4={stageCounts.s4} stage3={stageCounts.s3} />
 
+        <OutcomeScoreboard locale={locale} />
+
         <DangerNowSection t={t} locale={locale} regions={regions} />
 
         {cards.length === 0 ? (
           <EmptyBriefingState t={t} />
         ) : (
-          <BriefingCardsSection t={t} cards={cards} busy={busy} onUnlock={(runId) => void unlock(runId)} />
+          <BriefingCardsSection t={t} locale={locale} cards={cards} busy={busy} onUnlock={(runId) => void unlock(runId)} />
         )}
 
         <HowItWorks t={t} />

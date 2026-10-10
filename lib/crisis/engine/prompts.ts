@@ -270,6 +270,10 @@ export function judgeSystem(): string {
     'Return JSON: {"groups":[...],"baseline_risks":[{"title":"","stage":2,"possibility":"medium","what_to_do":[""],"reason":""}]}',
     'baseline_risks must list 3 to 5 well-known standard risks for this region (rain, dam, landslide, dengue, etc.), each with stage 1-5, possibility, and what_to_do pairs (local language + English).',
     'groups JSON shape: {"ids":["h0","h3"],"title":"","why_humans_miss":"","what_to_do":[""],"official_links":[{"label":"","url":""}],"non_obviousness":0.7,"on_obvious_list":false,"twist":"","reported_as_news":"","headline_ko":"","headline_en":"","brief_ko":"","brief_en":""}',
+    'Also return 1 to 3 falsifiable predictions. A prediction is a consequence (dam spill, road cut, outbreak, displacement, collapse, eruption), not the forecast itself.',
+    'Reject your own draft if it only restates a public rain, river, or cyclone forecast.',
+    'window_start and window_end are YYYY-MM-DD, inside 90 days. Use the hazard lead-time band as a guide: dam failure and quakes 1–3 days, flood and landslide 3–7 days, outbreak and eruption 7–14 days, slow crises up to 90 days.',
+    'predictions JSON: {"what":"dam spill","where":"named place","window_start":"YYYY-MM-DD","window_end":"YYYY-MM-DD","probability":0.6,"observable":"how anyone verifies it","counts_as_hit":"one sentence"}',
   ].join('\n')
 }
 

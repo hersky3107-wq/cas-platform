@@ -72,6 +72,16 @@ export const hypothesisSchema = z
         z.object({ region_id: z.number(), name: z.string(), iso3: z.string().nullable() }).strict(),
       )
       .optional(),
+    expected_window: z
+      .object({
+        min_days: z.number(),
+        max_days: z.number(),
+        start: z.string(),
+        end: z.string(),
+        label: z.string(),
+      })
+      .strict()
+      .optional(),
   })
   .strict()
 
@@ -167,6 +177,23 @@ export const engineResultSchema = z
           })
           .strict(),
       )
+      .optional(),
+    predictions: z
+      .array(
+        z
+          .object({
+            what: z.string().min(1),
+            where: z.string().min(1),
+            window_start: z.string().min(1),
+            window_end: z.string().min(1),
+            probability: z.number().min(0).max(1),
+            observable: z.string().min(1),
+            counts_as_hit: z.string().min(1),
+            label: z.string().min(1),
+          })
+          .strict(),
+      )
+      .max(3)
       .optional(),
   })
   .strict()

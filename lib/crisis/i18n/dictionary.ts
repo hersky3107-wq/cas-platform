@@ -948,6 +948,8 @@ export function noveltyLabel(novelty: string | undefined, t: CrisisUiPack): stri
   return null
 }
 
+export { getOutcomeUi } from './outcomes'
+
 export function stageBannerText(stage: number, t: CrisisUiPack): string {
   if (stage >= 5) return t.stageBanner[5]
   if (stage >= 4) return t.stageBanner[4]

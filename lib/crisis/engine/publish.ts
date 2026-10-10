@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto'
+import { predictionLedgerInsert } from '../outcomes/ledger'
 import type { EngineRunRecord } from './run'
 import type { Hypothesis } from './schema'
 
@@ -7,7 +8,7 @@ export interface LedgerInsert {
   region_ids: number[]
   stage: number
   confidence: 'low' | 'medium' | 'high'
-  novelty: 'only_us' | 'also_seen_elsewhere'
+  novelty: 'only_us' | 'also_seen_elsewhere' | 'unknown'
   title: string
   body: string
   evidence_signal_ids: number[]
@@ -56,14 +57,17 @@ export function ledgerContentHash(row: Parameters<typeof ledgerPayload>[0]): str
 export function hypothesisBody(hypothesis: Hypothesis): string {
   const steps = hypothesis.what_to_do.map((line) => `- ${line}`).join('\n')
   const links = hypothesis.official_links.map((link) => `${link.label}: ${link.url}`).join('\n')
-  return `${hypothesis.why_humans_miss}\n\nWhat to do:\n${steps}\n\nOfficial sources:\n${links}`
+  const windowLine = hypothesis.expected_window?.label
+  return [windowLine, hypothesis.why_humans_miss, '', 'What to do:', steps, '', 'Official sources:', links]
+    .filter((line) => line != null)
+    .join('\n')
 }
 
 export function buildLedgerInserts(run: EngineRunRecord, indices: number[], createdAt: string): LedgerInsert[] {
   if (!run.result) throw new Error('run has no result to publish')
   if (run.status !== 'done' || run.dryRun) throw new Error('only a finished live run can be published')
   const all = [...run.result.headlines, ...run.result.missed_by_others]
-  return indices.map((index) => {
+  const hypothesisRows = indices.map((index) => {
     const hypothesis = all[index]
     if (!hypothesis) throw new Error(`hypothesis index ${index} is not on this run`)
     return {
@@ -84,6 +88,15 @@ export function buildLedgerInserts(run: EngineRunRecord, indices: number[], crea
       ai_roster: run.roster,
     }
   })
+  const predictionRows = (run.result.predictions ?? []).map((prediction) =>
+    predictionLedgerInsert({
+      prediction,
+      regionId: run.regionId,
+      createdAt,
+      roster: run.roster,
+    }),
+  )
+  return [...hypothesisRows, ...predictionRows]
 }
 
 export interface LedgerClient {

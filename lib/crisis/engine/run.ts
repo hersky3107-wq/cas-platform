@@ -18,6 +18,8 @@ import {
   searchUser,
 } from './prompts'
 import { sameHazard } from '../config/hazard-taxonomy'
+import { settlePredictions } from '../outcomes/predictions'
+import { windowFromLead } from '../outcomes/window'
 import { normalizeName } from '../ingest/iso'
 import { mergeBaselineRisks, type AnalystFinding } from './baseline-fill'
 import {
@@ -227,6 +229,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const notes: string[] = []
   const analystFindings: AnalystFinding[] = []
   let judgeBaselineRows: unknown = null
+  let judgePredictionRows: unknown = null
   const live: EngineRunRecord = {
     cacheKey: key,
     cacheHit: false,
@@ -638,6 +641,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     )
     const record = asRecord(called?.parsed)
     if (record?.baseline_risks != null) judgeBaselineRows = record.baseline_risks
+    if (record && Array.isArray(record.predictions)) judgePredictionRows = record.predictions
     if (record && Array.isArray(record.groups)) grouped = applyJudgeGroups(drafts, record.groups)
   } else if (partial && drafts.length === 0) {
     summaries.headline_en = `${opts.card.name}: run stopped under the cost cap`
@@ -711,6 +715,16 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     summaries.summary_ko = `${opts.card.name}: ${baselineRisks[0].title}`
     summaries.headline_ko = `${opts.card.name}: 표준 지역 위험`
   }
+  const predictions = settlePredictions(
+    judgePredictionRows,
+    now,
+    [...headlines, ...missed_by_others].slice(0, 3).map((row) => ({
+      text: `${row.title} ${row.mechanism ?? ''} ${row.why_humans_miss}`,
+      where: row.entities?.[0] || row.regions?.[0]?.name || opts.card.name,
+      lead: row.lead_time_days,
+      observable: row.falsifier,
+    })),
+  )
   const everyGroup = scored.map((item) => item.hypothesis)
   const noveltyCounts = {
     only_us: everyGroup.filter((row) => row.novelty === 'only_us').length,
@@ -734,6 +748,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       novelty_counts: noveltyCounts,
       rejected,
       obvious: obvious.map((row) => row.line),
+      predictions: predictions.length > 0 ? predictions : undefined,
       zone_key: opts.card.zone_key,
       ...(opts.card.zone_key
         ? (() => {
@@ -996,6 +1011,7 @@ function toHypothesis(
     twist: twist ? hedgeStaleStatusText(twist, stale) : undefined,
     novelty_match: novelty.match,
     regions: draft.regions && draft.regions.length > 0 ? draft.regions : undefined,
+    expected_window: windowFromLead(draft.lead_time_days, now, `${draft.title} ${draft.mechanism}`),
   }
   hypothesis.title = hedgeStaleStatusText(hypothesis.title, stale)
   hypothesis.why_humans_miss = hedgeStaleStatusText(hypothesis.why_humans_miss, stale)
