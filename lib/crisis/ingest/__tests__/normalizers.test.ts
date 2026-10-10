@@ -259,7 +259,7 @@ describe('dedupe key stability', () => {
 })
 
 describe('budget guard math', () => {
-  it('counts one billed call per location at forecast_days=7', () => {
+  it('counts one billed call per location at forecast_days=16', () => {
     expect(estimateBilledCalls(4833)).toBe(4833)
     expect(wouldExceedBudget(4800, 500, OPENMETEO_DAILY_BILLED_CAP)).toBe(true)
     expect(wouldExceedBudget(4000, 500, OPENMETEO_DAILY_BILLED_CAP)).toBe(false)

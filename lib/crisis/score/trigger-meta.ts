@@ -71,7 +71,12 @@ export function expectedWindowForComponent(
   if (component.key === 'quake' && typeof raw.mag === 'number' && raw.mag >= QUAKE.magSoft) {
     return { type: 'relative_hours', min: 24, max: 72 }
   }
-  if (component.key === 'food' || kind === 'drought') {
+  if (component.key === 'heat' || component.key === 'cold') {
+    const min = typeof raw.lead_min === 'number' ? raw.lead_min : null
+    const max = typeof raw.lead_max === 'number' ? raw.lead_max : null
+    if (min != null && max != null) return { type: 'relative_days', min, max }
+  }
+  if (component.key === 'drought' || component.key === 'food' || kind === 'drought') {
     return { type: 'relative_months', min: 1, max: 3 }
   }
   if (component.key === 'internet') {

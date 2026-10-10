@@ -1,4 +1,4 @@
-/** Open-Meteo billed-call weight for forecast_days=7 (probe: factor 1.0 per location). */
+/** Open-Meteo billed-call weight. The free forecast response has no per-day cost header, including forecast_days=16. */
 export const OPEN_METEO_FORECAST_7D_WEIGHT = 1
 
 export const OPENMETEO_DAILY_BILLED_CAP = 5000

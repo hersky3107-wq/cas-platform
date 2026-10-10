@@ -12,7 +12,9 @@ import { printTop30 } from './print'
 import { calibrationReport } from './report'
 import { loadSlowBurn } from './slowburn-load'
 import { enrichTriggerComponents } from './trigger-meta'
-import { loadScoreSnapshot, oilContextLine, watchlistIso3 } from './snapshot'
+import { loadScoreSnapshot, oilContextLine, watchlistIso3, type RegionInputs } from './snapshot'
+import type { ClimateNormals } from '../climate/stats'
+import type { FragilityItem, TriggerComponent } from './types'
 import { isOilDependentIso3 } from '../config/oil'
 import { COMPONENT_FAMILY, CYCLONE, SCORE_SCHEDULE_MINUTES, SCORE_SOURCE } from './thresholds'
 import {
@@ -40,6 +42,7 @@ import {
 import type { RegionScore } from './types'
 import { haversineKm } from './math'
 import { applyEarthquakePrecursor, applyVolcanoPrecursor } from '../precursors/apply'
+import { assessDrought, assessHeatCold, type ForecastDay } from '../climate/assess'
 import {
   bValueDrop,
   dedupeQuakes,
@@ -64,12 +67,13 @@ export interface ScoreJobResult {
 
 export async function runLayer1Score(
   client: SupabaseClient,
-  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void; precursors?: boolean },
+  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void; precursors?: boolean; climate?: boolean },
 ): Promise<ScoreJobResult> {
   const now = opts.now ?? new Date()
   const log = opts.log ?? ((message: string) => console.log(message))
   const snap = await loadScoreSnapshot(client, now)
   const precursorsOn = opts.precursors !== false
+  const climateOn = opts.climate !== false
   const quakePoints: QuakePoint[] = dedupeQuakes(
     snap.quakes.map((row) => ({
       lat: row.lat,
@@ -85,6 +89,9 @@ export async function runLayer1Score(
   const coastalByRegion = new Map<number, boolean>()
   if (precursorsOn) {
     log(`precursors rate_cells=${rateCells.length} swarms=${swarms.length} holocene=${snap.precursors.holocene.length} background_cells=${snap.precursors.yearCounts.size} oaf=${snap.precursors.oaf.length}`)
+  }
+  if (climateOn) {
+    log(`climate regions=${snap.climate.size}`)
   }
   const frpCut = fireCuts(snap.frpByRegion)
   const absCut = conflictAbsCut(snap.conflictCounts)
@@ -200,6 +207,7 @@ export async function runLayer1Score(
       quake,
       gdacsComponent(region.lat, region.lon, region.id, region.iso3, now, snap.gdacs),
       volcano,
+      ...climateSpells(climateOn, input, snap.climate.get(region.id) ?? null, snap.enso),
       fireComponent({
         frpSum: input.frpSum,
         count: input.frpCount,
@@ -302,7 +310,7 @@ export async function runLayer1Score(
     if (vector) context.push(vector)
     const oilLine = isConflictWatchlistIso3(region.iso3) || isOilDependentIso3(region.iso3) ? oilContextLine(snap.oil) : null
     if (oilLine) context.push(oilLine)
-    const extra = snap.plants
+    const extra: FragilityItem[] = snap.plants
       .filter((plant) => plant.region_id === region.id && (plant.kind === 'chemical_plant' || plant.kind === 'port'))
       .slice(0, 3)
       .map((plant) => ({
@@ -311,8 +319,30 @@ export async function runLayer1Score(
         lat: plant.lat,
         lon: plant.lon,
         weight: 0.2,
-        attributes: {},
+        attributes: {} as Record<string, unknown>,
       }))
+    if (components.some((row) => (row.key === 'heat' || row.key === 'cold') && row.value > 0)) {
+      if (input.internet) {
+        extra.push({
+          kind: 'grid_stress',
+          name: 'internet outage history',
+          lat: null,
+          lon: null,
+          weight: 0.45,
+          attributes: { sources: input.internetSources.join(',') },
+        })
+      }
+      if (components.some((row) => (row.key === 'conflict' || row.key === 'advisory') && row.value > 0)) {
+        extra.push({
+          kind: 'conflict_damage',
+          name: 'conflict or advisory',
+          lat: null,
+          lon: null,
+          weight: 0.4,
+          attributes: {},
+        })
+      }
+    }
     const storedComponents = enrichTriggerComponents(components, {
       now,
       lat: region.lat,
@@ -341,6 +371,7 @@ export async function runLayer1Score(
       context,
       extra_items: extra,
       coastal: coastalByRegion.get(region.id) === true,
+      ipc: input.ipc,
     })
     rows.push({ ...scored, lat: region.lat, lon: region.lon, level: region.level })
   }
@@ -454,5 +485,31 @@ export async function runLayer1Score(
     top30,
     rows,
   }
+}
+
+function climateSpells(
+  on: boolean,
+  input: RegionInputs,
+  normals: ClimateNormals | null,
+  enso: { status: string; anomaly: number | null } | null,
+): TriggerComponent[] {
+  if (!on) return []
+  const dates = input.forecastDates ?? []
+  const days: ForecastDay[] = dates.map((date, index) => ({
+    date,
+    tmax: input.tmax?.[index] ?? null,
+    tmin: input.tmin?.[index] ?? null,
+    rh: input.rh?.[index] ?? null,
+    wind: input.wind?.[index] ?? null,
+  }))
+  const spells = assessHeatCold({ days, normals, population: input.urbanPop })
+  const drought = assessDrought({
+    normals,
+    population: input.urbanPop,
+    ensoStatus: enso?.status ?? null,
+    ensoAnomaly: enso?.anomaly ?? null,
+  })
+  if (drought) spells.push(drought)
+  return spells.map((spell) => ({ key: spell.key, department: 'natural', value: spell.value, raw: spell.raw }))
 }
 

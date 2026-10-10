@@ -30,6 +30,21 @@ export const so2DailySource: CrisisSource = {
   },
 }
 
+/** CDI is a Europe WCS raster. A global grid is too heavy for this sweep. */
+export const gdoCdiSource: CrisisSource = {
+  key: 'gdo_cdi',
+  department: 'hydro_weather',
+  scheduleMinutes: 10080,
+  writes: 'signals',
+  async fetch(): Promise<IngestFetchResult> {
+    return {
+      httpCalls: 0,
+      skipped: 'GDO/EDO CDI is a Copernicus WCS raster (Europe coverage cdiad), not a point feed. Global grid not pulled.',
+      signals: [],
+    }
+  },
+}
+
 /** Nevada Geodetic Lab daily holdings timed out and the full series is too heavy. */
 export const gnssNglSource: CrisisSource = {
   key: 'gnss_ngl',

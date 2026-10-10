@@ -146,6 +146,7 @@ export function finalizeScore(opts: {
   context?: string[]
   extra_items?: FragilityItem[]
   coastal?: boolean
+  ipc?: number | null
 }): RegionScore {
   const trigger = combineTrigger(opts.components)
   const hydro = fired(opts.components, DAM_TRIGGER_KEYS)
@@ -180,6 +181,7 @@ export function finalizeScore(opts: {
     urbanPop: opts.urban_pop,
     watchlist: opts.watchlist,
     coastal: opts.coastal,
+    ipc: opts.ipc,
   })
   const compound = compoundBonus(opts.components)
   const cascade = cascadeBonusApplies(watch, opts.kinds, CASCADE_SEEDS) ? SCORE.cascadeBonus : 0

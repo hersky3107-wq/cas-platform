@@ -37,6 +37,27 @@ export function providerAllowance(source: 'openmeteo_forecast' | 'glofas', bille
   return Math.min(GLOFAS_DAILY_BILLED_CAP, Math.max(0, combinedLeft - forecastRoom))
 }
 
+/** Official free-tier daily cap. The 9,000 figure above keeps a buffer for forecast and GloFAS. */
+export const OPENMETEO_FREE_DAILY_CAP = 10_000
+/** Locations of ERA5 history per sweep, after the daily forecast has already run. */
+export const OPENMETEO_CLIMATE_SLICE = 200
+
+/**
+ * Climate backfill waits until the forecast has used most of its 5,000 reservation,
+ * then takes at most 200 locations from the headroom under the 10,000 free cap
+ * while still leaving GloFAS its 4,000.
+ */
+export function climateAllowance(billedToday: number): number {
+  const forecastStill = Math.max(0, OPENMETEO_DAILY_BILLED_CAP - Math.min(billedToday, OPENMETEO_DAILY_BILLED_CAP))
+  if (forecastStill > 800) return 0
+  const glofasReserve = Math.min(
+    GLOFAS_DAILY_BILLED_CAP,
+    Math.max(0, OPENMETEO_COMBINED_DAILY_CAP - Math.max(billedToday, OPENMETEO_DAILY_BILLED_CAP)),
+  )
+  const room = Math.max(0, OPENMETEO_FREE_DAILY_CAP - 600 - billedToday - glofasReserve)
+  return Math.min(OPENMETEO_CLIMATE_SLICE, room)
+}
+
 export function addBilled(ledger: QuotaLedger, additional: number): QuotaLedger {
   return { date_utc: ledger.date_utc, billed_today: ledger.billed_today + Math.max(0, additional) }
 }

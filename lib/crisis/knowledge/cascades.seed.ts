@@ -327,6 +327,16 @@ export const CASCADE_SEEDS: CascadeSeed[] = [
       'Drought does not produce unrest on day one. The plausible chain is a failed season, then higher food prices, then protest. The operational window is two to six months after the drought signal, and only where people are concentrated. Hypothesis only.',
   }),
   hypothesis({
+    id: 'drought-food-crisis',
+    trigger_type: 'drought',
+    effect_type: 'food_crisis',
+    lag_min_days: 30,
+    lag_max_days: 90,
+    conditions: { requires_ipc: true },
+    mechanism:
+      'A seasonal rainfall deficit on top of an existing IPC food-insecurity phase can deepen a food crisis over the next one to three months. The pathway is only attached where an IPC phase is already stored. Hypothesis only.',
+  }),
+  hypothesis({
     id: 'conflict-displacement',
     trigger_type: 'conflict',
     effect_type: 'displacement',

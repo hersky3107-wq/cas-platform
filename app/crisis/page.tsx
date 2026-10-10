@@ -118,6 +118,15 @@ function triggerFactLine(fact: TriggerFact, t: CrisisUiPack): string {
   if (fact.key === 'volcano' && fact.precursors && fact.precursors.length > 0) {
     return t.volcanoProbabilityLine(fact.precursors)
   }
+  if (fact.key === 'heat' && fact.wetBulbC != null) {
+    return t.heatForecastLine(fact.wetBulbC, fact.heatDays ?? 1, fact.anomalyC ?? null)
+  }
+  if (fact.key === 'cold' && fact.windChillC != null) {
+    return t.coldForecastLine(fact.windChillC, fact.heatDays ?? 1, fact.anomalyC ?? null)
+  }
+  if (fact.key === 'drought' && fact.droughtFactors && fact.droughtFactors.length > 0) {
+    return t.droughtForecastLine(fact.rainRatio ?? null, fact.droughtFactors)
+  }
   if (fact.expectedWindow) {
     const line = t.triggerChipLine(fact.key, fact.expectedWindow)
     if (fact.key === 'quake' && fact.oaf) return `${line} · ${t.aftershockWeekLine(fact.oaf.m5, fact.oaf.m6, fact.oaf.m7)}`

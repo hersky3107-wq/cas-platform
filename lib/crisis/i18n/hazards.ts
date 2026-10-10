@@ -26,6 +26,9 @@ export type HazardUiSlice = {
   layerPlates: string
   layerVolcanoes: string
   layerRateCells: string
+  heatForecastLine: (wetBulbC: number, days: number, anomalyC: number | null) => string
+  coldForecastLine: (tempC: number, days: number, anomalyC: number | null) => string
+  droughtForecastLine: (rainRatio: number | null, factors: string[]) => string
 }
 
 const GROUP_KO: Record<HazardGroupKey, string> = {
@@ -270,6 +273,17 @@ function formatUsual(usual: number): string {
   return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
 }
 
+function formatSigned(anomaly: number): string {
+  const rounded = Math.round(anomaly * 10) / 10
+  const text = Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+  return anomaly > 0 ? `+${text}` : text
+}
+
+function formatTemp(value: number): string {
+  const rounded = Math.round(value * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
 function formatPct(probability: number): string {
   const pct = probability * 100
   if (pct >= 10) return `${Math.round(pct)}%`
@@ -347,6 +361,41 @@ function buildSlice(locale: 'ko' | 'en'): HazardUiSlice {
     layerPlates: locale === 'ko' ? '판 경계' : 'Plate boundaries',
     layerVolcanoes: locale === 'ko' ? '홀로세 화산' : 'Holocene volcanoes',
     layerRateCells: locale === 'ko' ? '지진 발생률' : 'Quake rate cells',
+    heatForecastLine: (wetBulbC, days, anomalyC) => {
+      const spell = days >= 2
+        ? (locale === 'ko' ? `${days}일 연속 예보` : `${days} days in a row forecast`)
+        : (locale === 'ko' ? '예보' : 'forecast')
+      const base = locale === 'ko'
+        ? `습구온도 ${formatTemp(wetBulbC)}°C ${spell}`
+        : `Wet-bulb ${formatTemp(wetBulbC)}°C ${spell}`
+      if (anomalyC == null) return base
+      return locale === 'ko'
+        ? `${base} (평년 최고 대비 ${formatSigned(anomalyC)}°C)`
+        : `${base} (${formatSigned(anomalyC)}°C vs normal high)`
+    },
+    coldForecastLine: (tempC, days, anomalyC) => {
+      const spell = days >= 2
+        ? (locale === 'ko' ? `${days}일 연속 예보` : `${days} days in a row forecast`)
+        : (locale === 'ko' ? '예보' : 'forecast')
+      const base = locale === 'ko'
+        ? `체감온도 ${formatTemp(tempC)}°C ${spell}`
+        : `Wind chill ${formatTemp(tempC)}°C ${spell}`
+      if (anomalyC == null) return base
+      return locale === 'ko'
+        ? `${base} (평년 최저 대비 ${formatSigned(anomalyC)}°C)`
+        : `${base} (${formatSigned(anomalyC)}°C vs normal low)`
+    },
+    droughtForecastLine: (rainRatio, factors) => {
+      const bits = factors.map((factor) => {
+        if (factor === 'rain' && rainRatio != null) {
+          return locale === 'ko' ? `90일 강수 평년의 ${Math.round(rainRatio * 100)}%` : `90-day rain ${Math.round(rainRatio * 100)}% of normal`
+        }
+        if (factor === 'soil') return locale === 'ko' ? '토양수분 낮음' : 'low soil moisture'
+        if (factor === 'enso') return locale === 'ko' ? '엔소' : 'ENSO'
+        return factor
+      })
+      return locale === 'ko' ? `가뭄 전망 · ${bits.join(' + ')}` : `Drought outlook · ${bits.join(' + ')}`
+    },
   }
 }
 

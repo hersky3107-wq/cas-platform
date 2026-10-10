@@ -14,7 +14,7 @@ import { loadForecastRegions } from '../regions'
 import { FIXED_SLOTS } from '../schedule'
 import type { CrisisSource, ForecastRegion, IngestContext, IngestFetchResult, NormalizedForecast } from '../types'
 
-const DAILY = 'precipitation_sum,temperature_2m_max,temperature_2m_min,wind_speed_10m_max'
+const DAILY = 'precipitation_sum,temperature_2m_max,temperature_2m_min,relative_humidity_2m_mean,wind_speed_10m_max,soil_moisture_0_to_7cm_mean'
 const GAP_MS = 2_000
 
 function sleep(ms: number): Promise<void> {
@@ -34,7 +34,7 @@ export function gridUrl(base: string, extra: string, regions: ForecastRegion[]):
 export function forecastUrl(regions: ForecastRegion[]): string {
   return gridUrl(
     'https://api.open-meteo.com/v1/forecast',
-    `daily=${DAILY}&forecast_days=7&timezone=UTC&wind_speed_unit=ms`,
+    `daily=${DAILY}&forecast_days=16&timezone=UTC&wind_speed_unit=ms`,
     regions,
   )
 }
@@ -73,7 +73,9 @@ export function buildOpenMeteoForecasts(
     const precip = asArray(daily.precipitation_sum).map((value) => finiteNumber(value))
     const tmax = asArray(daily.temperature_2m_max).map((value) => finiteNumber(value))
     const tmin = asArray(daily.temperature_2m_min).map((value) => finiteNumber(value))
+    const rh = asArray(daily.relative_humidity_2m_mean).map((value) => finiteNumber(value))
     const wind = asArray(daily.wind_speed_10m_max).map((value) => finiteNumber(value))
+    const soil = asArray(daily.soil_moisture_0_to_7cm_mean).map((value) => finiteNumber(value))
     if (!dates.length) return
     out.push({
       region_id: region.id,
@@ -86,7 +88,9 @@ export function buildOpenMeteoForecasts(
         precip_mm: precip,
         tmax_c: tmax,
         tmin_c: tmin,
+        rh_mean_pct: rh,
         wind_max_ms: wind,
+        soil_m3: soil,
       },
     })
   })

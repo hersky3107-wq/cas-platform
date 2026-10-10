@@ -18,6 +18,8 @@ import { loadAllRegions } from '../ingest/regions'
 import { isHealthWikiConcept } from '../config/wiki-health'
 import { wikiTitleRole } from './wiki-roles'
 import { loadPrecursors, type PrecursorBundle } from './precursor-load'
+import { loadClimate } from './climate-load'
+import type { ClimateNormals } from '../climate/stats'
 import type { EventPoint } from '../events/link'
 import { politeFetch } from '../ingest/fetch'
 import { advisoryPairDiverges } from './advisory'
@@ -42,6 +44,11 @@ export interface ScoreRegion {
 
 export interface RegionInputs {
   precip: Array<number | null> | null
+  tmax: Array<number | null> | null
+  tmin: Array<number | null> | null
+  rh: Array<number | null> | null
+  wind: Array<number | null> | null
+  forecastDates: string[] | null
   discharge: Array<number | null> | null
   ratioTo30d: Array<number | null> | null
   glofasDays: number
@@ -97,6 +104,7 @@ export interface ScoreSnapshot {
   observations: EventPoint[]
   rainDays: Map<number, string[]>
   precursors: PrecursorBundle
+  climate: Map<number, ClimateNormals>
 }
 
 export interface OilQuote {
@@ -144,6 +152,11 @@ async function pageSelect<T>(
 function emptyInputs(): RegionInputs {
   return {
     precip: null,
+    tmax: null,
+    tmin: null,
+    rh: null,
+    wind: null,
+    forecastDates: null,
     discharge: null,
     ratioTo30d: null,
     glofasDays: 0,
@@ -243,6 +256,11 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     const cur = put(Number(row.region_id))
     if (row.source === 'openmeteo_forecast') {
       cur.precip = Array.isArray(series.precip_mm) ? series.precip_mm.map((value) => finite(value)) : null
+      cur.tmax = Array.isArray(series.tmax_c) ? series.tmax_c.map((value) => finite(value)) : null
+      cur.tmin = Array.isArray(series.tmin_c) ? series.tmin_c.map((value) => finite(value)) : null
+      cur.rh = Array.isArray(series.rh_mean_pct) ? series.rh_mean_pct.map((value) => finite(value)) : null
+      cur.wind = Array.isArray(series.wind_max_ms) ? series.wind_max_ms.map((value) => finite(value)) : null
+      cur.forecastDates = Array.isArray(series.dates) ? series.dates.map((value) => String(value).slice(0, 10)) : null
     } else if (row.source === 'glofas') {
       cur.discharge = Array.isArray(series.discharge_m3s) ? series.discharge_m3s.map((value) => finite(value)) : null
       cur.ratioTo30d = Array.isArray(series.ratio_to_30d_mean)
@@ -748,6 +766,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
   for (const [id, observed] of await loadObservedRain(client, now)) put(id).observedRain = observed
   const oil = await loadOil(client, now)
   const precursors = await loadPrecursors(client, now)
+  const climate = await loadClimate(client)
 
   return {
     day,
@@ -775,6 +794,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     observations,
     rainDays: await loadRainDays(client, now),
     precursors,
+    climate,
   }
 }
 

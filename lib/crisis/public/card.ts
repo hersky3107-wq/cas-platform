@@ -217,6 +217,12 @@ export type FreeTriggerFact = {
   usual7d?: number
   oaf?: { m5: number; m6: number; m7: number }
   precursors?: Array<{ kind: string; multiplier?: number; steps?: number }>
+  wetBulbC?: number
+  heatDays?: number
+  anomalyC?: number | null
+  windChillC?: number
+  droughtFactors?: string[]
+  rainRatio?: number | null
 }
 
 export function freeLayerFromDetail(detail: unknown): {
@@ -307,6 +313,15 @@ export function freeLayerFromDetail(detail: unknown): {
           }]
         })
         if (bits.length) fact.precursors = bits
+      }
+      if (typeof raw.wet_bulb_c === 'number') fact.wetBulbC = raw.wet_bulb_c
+      if (typeof raw.consecutive_days === 'number') fact.heatDays = raw.consecutive_days
+      if (typeof raw.anomaly_c === 'number') fact.anomalyC = raw.anomaly_c
+      if (typeof raw.wind_chill_c === 'number') fact.windChillC = raw.wind_chill_c
+      if (typeof raw.rain_ratio === 'number') fact.rainRatio = raw.rain_ratio
+      if (Array.isArray(raw.factors)) {
+        const names = raw.factors.filter((item): item is string => typeof item === 'string')
+        if (names.length) fact.droughtFactors = names
       }
       triggerFacts.push(fact)
     }

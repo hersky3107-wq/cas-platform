@@ -9,7 +9,7 @@ import { firmsSource } from './sources/firms'
 import { gdacsSource } from './sources/gdacs'
 import { gdeltEventsSource } from './sources/gdelt'
 import { glofasSource } from './sources/glofas'
-import { gnssNglSource, gvpWeeklySource, so2DailySource } from './sources/precursor-skips'
+import { gdoCdiSource, gnssNglSource, gvpWeeklySource, so2DailySource } from './sources/precursor-skips'
 import { gvpHoloceneSource } from './sources/gvp-holocene'
 import { informSource } from './sources/inform'
 import { iodaSource } from './sources/ioda'
@@ -19,6 +19,7 @@ import { metaculusSource } from './sources/metaculus'
 import { nasaImergSource } from './sources/nasa-imerg'
 import { nhcJtwcSource } from './sources/nhc-jtwc'
 import { nhcOutlookSource } from './sources/nhc-outlook'
+import { openmeteoClimateSource } from './sources/openmeteo-climate'
 import { openmeteoForecastSource } from './sources/openmeteo-forecast'
 import { reliefwebSource } from './sources/reliefweb'
 import { tsunamiSource } from './sources/tsunami'
@@ -53,6 +54,8 @@ export const CRISIS_SOURCES: CrisisSource[] = [
   volcanoUnrestSource,
   firmsSource,
   openmeteoForecastSource,
+  openmeteoClimateSource,
+  gdoCdiSource,
   glofasSource,
   fewsnetSource,
   informSource,

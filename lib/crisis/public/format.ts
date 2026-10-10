@@ -45,6 +45,12 @@ export type TriggerFact = {
   usual7d?: number
   oaf?: { m5: number; m6: number; m7: number }
   precursors?: PrecursorBitFact[]
+  wetBulbC?: number
+  heatDays?: number
+  anomalyC?: number | null
+  windChillC?: number
+  droughtFactors?: string[]
+  rainRatio?: number | null
 }
 
 export function keyTriggerFact(facts: TriggerFact[]): TriggerFact | null {
