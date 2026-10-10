@@ -158,6 +158,7 @@ export function gdacsComponent(
 ): TriggerComponent {
   let value = 0
   let used: string | null = null
+  let eventType: string | null = null
   const since = now.getTime() - GDACS.days * 86_400_000
   for (const event of events) {
     const t = event.event_time ? Date.parse(event.event_time) : now.getTime()
@@ -171,9 +172,10 @@ export function gdacsComponent(
     if (next > value) {
       value = next
       used = event.alert ?? null
+      eventType = typeof event.event_type === 'string' ? event.event_type : null
     }
   }
-  return component('gdacs', value, { alert: used })
+  return component('gdacs', value, { alert: used, event_type: eventType })
 }
 
 export function volcanoComponent(

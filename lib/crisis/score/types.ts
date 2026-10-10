@@ -90,6 +90,7 @@ export interface PointEvent {
   alert?: string | null
   region_id?: number | null
   country_iso3?: string | null
+  event_type?: string | null
 }
 
 export interface DamSite {

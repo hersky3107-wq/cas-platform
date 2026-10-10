@@ -24,8 +24,12 @@ export function num(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
+import type { ExpectedWindow } from '../hazards'
+
 export type TriggerFact = {
   key: string
+  hazardKind?: string
+  expectedWindow?: ExpectedWindow
   sumMm?: number
   maxDayMm?: number
   peakM3s?: number

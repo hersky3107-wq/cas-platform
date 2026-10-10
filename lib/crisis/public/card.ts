@@ -1,4 +1,6 @@
 import { localLanguages } from '../engine/languages'
+import type { ExpectedWindow } from '../hazards'
+import { isHazardKind } from '../hazards'
 import type { BaselineRisk, EngineResult, Hypothesis } from '../engine/schema'
 import { noveltyBadge } from './labels'
 
@@ -191,6 +193,8 @@ export function unlockBriefCard(opts: {
 export type FragilityGroup = { kind: string; names: string[] }
 export type FreeTriggerFact = {
   key: string
+  hazardKind?: string
+  expectedWindow?: ExpectedWindow
   sumMm?: number
   maxDayMm?: number
   peakM3s?: number
@@ -257,6 +261,10 @@ export function freeLayerFromDetail(detail: unknown): {
           ? ((item as { raw: Record<string, unknown> }).raw)
           : {}
       const fact: FreeTriggerFact = { key }
+      if (typeof raw.hazard_kind === 'string' && isHazardKind(raw.hazard_kind)) fact.hazardKind = raw.hazard_kind
+      if (raw.expected_window && typeof raw.expected_window === 'object') {
+        fact.expectedWindow = raw.expected_window as ExpectedWindow
+      }
       if (typeof raw.sum_mm === 'number') fact.sumMm = raw.sum_mm
       if (typeof raw.max_day_mm === 'number') fact.maxDayMm = raw.max_day_mm
       if (typeof raw.peak_m3s === 'number') fact.peakM3s = raw.peak_m3s

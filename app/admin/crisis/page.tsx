@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
+import { TriggerChip } from '@/components/crisis/TriggerChip'
 import { SeverityCard } from '@/components/crisis/SeverityCard'
 import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { projectLonLat, stageColor } from '@/lib/crisis/admin/geo'
@@ -466,9 +467,12 @@ export default function CrisisAdminPage() {
                       <span className="text-xs text-slate-500">—</span>
                     ) : (
                       row.triggers.map((key) => (
-                        <span key={key} className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[10px] text-slate-200">
-                          {t.triggerLabel(key)}
-                        </span>
+                        <TriggerChip
+                          key={key}
+                          t={t}
+                          triggerKey={key}
+                          className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[10px] text-slate-200"
+                        />
                       ))
                     )}
                   </div>

@@ -508,6 +508,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         alert: typeof raw.alert_level === 'string' ? raw.alert_level : null,
         region_id: row.region_id == null ? null : Number(row.region_id),
         country_iso3: row.country_iso3,
+        event_type: typeof raw.event_type === 'string' ? raw.event_type : row.signal_type ?? null,
       })
       if (row.signal_type === 'FL' && row.region_id != null) {
         observations.push({

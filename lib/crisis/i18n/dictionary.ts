@@ -1,4 +1,5 @@
 import type { CrisisLocale } from './locales'
+import { HAZARD_UI_EN, HAZARD_UI_KO, type HazardUiSlice } from './hazards'
 
 export type CrisisUiPack = {
   brand: string
@@ -104,7 +105,6 @@ export type CrisisUiPack = {
   dangerRegionLine: (triggers: string, fragility: string, people: string) => string
   dangerPeopleUnit: (n: string) => string
   dangerFragilityUnit: (n: number) => string
-  triggerLabel: (key: string) => string
   lockedInside: (headlines: number, missed: number, baseline: number) => string
   lockedTeaser: string
   emptyTitle: string
@@ -136,6 +136,7 @@ export type CrisisUiPack = {
   riverPeak: (peak: number) => string
   quakeMag: (mag: number) => string
   fragilityKind: (kind: string) => string
+} & HazardUiSlice & {
   zoneAnalyze: (credits: number) => string
   globalAnalyze: (credits: number) => string
   zonePicker: string
@@ -255,42 +256,7 @@ const ko: CrisisUiPack = {
   dangerRegionLine: (triggers, fragility, people) => `${triggers} + ${fragility} + ${people}`,
   dangerPeopleUnit: (n) => `인구 ${n}`,
   dangerFragilityUnit: (n) => `취약 시설 ${n}곳`,
-  triggerLabel: (key) => {
-    const map: Record<string, string> = {
-      rain: '폭우',
-      flood: '홍수',
-      river: '강 범람',
-      dam: '댐',
-      reservoir: '저수지',
-      disease: '감염병',
-      cholera: '콜레라',
-      dengue: '뎅기열',
-      malaria: '말라리아',
-      conflict: '분쟁',
-      unrest: '소요',
-      war: '전쟁',
-      fire: '화재',
-      wildfire: '산불',
-      heat: '폭염',
-      earthquake: '지진',
-      quake: '지진',
-      volcano: '화산',
-      tsunami: '쓰나미',
-      landslide: '산사태',
-      cyclone: '태풍',
-      storm_surge: '폭풍 해일',
-      drought: '가뭄',
-      silence: '침묵',
-      internet: '인터넷 차단',
-      advisory: '여행경보',
-      food: '식량',
-      slow_burn: '장기 악화',
-      escalation: '확전',
-      health_attention: '보건 관심',
-      gdacs: '경보',
-    }
-    return map[key.trim().toLowerCase()] ?? key
-  },
+  ...HAZARD_UI_KO,
   showStage1: '1단계 표시',
   hideStage1: '1단계 숨김',
   lockedInside: (headlines, missed, baseline) => `주요 경고 ${headlines} · 추가 경고 ${missed} · 일반 위험 ${baseline}`,
@@ -457,26 +423,7 @@ const en: CrisisUiPack = {
   dangerRegionLine: (triggers, fragility, people) => `${triggers} + ${fragility} + ${people}`,
   dangerPeopleUnit: (n) => `${n} people`,
   dangerFragilityUnit: (n) => `${n} fragile sites`,
-  triggerLabel: (key) => {
-    const map: Record<string, string> = {
-      rain: 'heavy rain',
-      river: 'river flood',
-      cyclone: 'cyclone',
-      quake: 'earthquake',
-      volcano: 'volcano',
-      fire: 'wildfire',
-      conflict: 'conflict',
-      silence: 'silence',
-      internet: 'internet outage',
-      advisory: 'travel alert',
-      food: 'food',
-      slow_burn: 'slow burn',
-      escalation: 'escalation',
-      health_attention: 'health watch',
-      gdacs: 'alert',
-    }
-    return map[key.trim().toLowerCase()] ?? key
-  },
+  ...HAZARD_UI_EN,
   showStage1: 'Show stage 1',
   hideStage1: 'Hide stage 1',
   lockedInside: (headlines, missed, baseline) => `${headlines} main warnings · ${missed} extra · ${baseline} general risks`,

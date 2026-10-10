@@ -11,6 +11,7 @@ import { vectorDiseaseContext } from './vector-watch'
 import { printTop30 } from './print'
 import { calibrationReport } from './report'
 import { loadSlowBurn } from './slowburn-load'
+import { enrichTriggerComponents } from './trigger-meta'
 import { loadScoreSnapshot, oilContextLine, watchlistIso3 } from './snapshot'
 import { isOilDependentIso3 } from '../config/oil'
 import { COMPONENT_FAMILY, CYCLONE, SCORE_SCHEDULE_MINUTES, SCORE_SOURCE } from './thresholds'
@@ -235,6 +236,14 @@ export async function runLayer1Score(
         weight: 0.2,
         attributes: {},
       }))
+    const storedComponents = enrichTriggerComponents(components, {
+      now,
+      lat: region.lat,
+      lon: region.lon,
+      precip: input.precip,
+      discharge: input.discharge,
+      cycloneTracks: snap.cyclones,
+    })
     const scored = finalizeScore({
       region_id: region.id,
       name: region.name,
@@ -244,7 +253,7 @@ export async function runLayer1Score(
       inform_exposure: input.informExposure,
       inform_vulnerability: input.informVulnerability,
       inform_coping: input.informCoping,
-      components,
+      components: storedComponents,
       dam_items: damItems,
       camp_count: campHere.length,
       nuclear_items: nuclearItems,

@@ -6,6 +6,8 @@ import { DeepProgress } from '@/components/crisis/DeepProgress'
 import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
+import { HazardMapLegend } from '@/components/crisis/HazardMapLegend'
+import { TriggerChip } from '@/components/crisis/TriggerChip'
 import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { UnlockedCardView, type UnlockedCard } from '@/components/crisis/briefing/BriefingCardsSection'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
@@ -109,12 +111,17 @@ function applyDeepBody(
 }
 
 function triggerFactLine(fact: TriggerFact, t: CrisisUiPack): string {
+  if (fact.expectedWindow) return t.triggerChipLine(fact.key, fact.expectedWindow)
   if (fact.key === 'rain' && fact.sumMm != null) {
     return t.rainForecast(fact.sumMm, fact.maxDayMm ?? 0)
   }
   if (fact.key === 'river' && fact.peakM3s != null) return t.riverPeak(fact.peakM3s)
   if (fact.key === 'quake' && fact.mag != null) return t.quakeMag(fact.mag)
   return t.triggerLabel(fact.key)
+}
+
+function factForKey(facts: TriggerFact[] | undefined, key: string): TriggerFact | undefined {
+  return facts?.find((row) => row.key === key)
 }
 
 export default function CrisisMapPage() {
@@ -445,6 +452,8 @@ export default function CrisisMapPage() {
           </button>
         </div>
 
+        <HazardMapLegend t={t} />
+
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
             <div className="grid w-full grid-cols-12 gap-2 text-xs font-semibold text-slate-400">
@@ -484,9 +493,13 @@ export default function CrisisMapPage() {
                   <div className="col-span-1 text-right tabular-nums">{row.score}</div>
                   <div className="col-span-3 flex flex-wrap gap-1">
                     {row.triggers.map((key) => (
-                      <span key={key} className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
-                        {t.triggerLabel(key)}
-                      </span>
+                      <TriggerChip
+                        key={key}
+                        t={t}
+                        triggerKey={key}
+                        expectedWindow={factForKey(row.triggerFacts, key)?.expectedWindow}
+                        className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100"
+                      />
                     ))}
                   </div>
                   <div className="col-span-2 text-right">
@@ -572,9 +585,13 @@ export default function CrisisMapPage() {
                 ) : (
                   <div className="flex flex-wrap gap-1">
                     {selected.triggers.map((key) => (
-                      <span key={key} className="rounded-full border border-white/12 px-2 py-0.5 text-xs">
-                        {t.triggerLabel(key)}
-                      </span>
+                      <TriggerChip
+                        key={key}
+                        t={t}
+                        triggerKey={key}
+                        expectedWindow={factForKey(selected.triggerFacts, key)?.expectedWindow}
+                        className="rounded-full border border-white/12 px-2 py-0.5 text-xs"
+                      />
                     ))}
                   </div>
                 )}

@@ -1,6 +1,7 @@
 'use client'
 
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
+import { TriggerChip } from '@/components/crisis/TriggerChip'
 import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
 import type { CrisisLocale } from '@/lib/crisis/i18n/locales'
 import { countryDisplayName } from '@/lib/crisis/i18n/place-names'
@@ -89,13 +90,14 @@ export function DangerNowSection({
                   </h3>
                   <div className="mt-2 flex flex-wrap gap-1">
                     {row.triggers.slice(0, 4).map((key) => (
-                      <span
+                      <TriggerChip
                         key={key}
+                        t={t}
+                        triggerKey={key}
+                        expectedWindow={row.triggerFacts?.find((fact) => fact.key === key)?.expectedWindow}
                         className="rounded-full border px-2 py-0.5 text-[11px] font-semibold"
                         style={{ borderColor: `${theme.color}44`, color: theme.color, background: `${theme.color}11` }}
-                      >
-                        {t.triggerLabel(key)}
-                      </span>
+                      />
                     ))}
                   </div>
                   <p className="mt-2 text-sm font-semibold text-slate-300">{dangerLine(row, t, locale)}</p>
