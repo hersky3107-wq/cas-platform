@@ -5,6 +5,7 @@ vi.mock('server-only', () => ({}))
 import { coverageFromSignals, mainstreamFromSearch, noveltyFor, type CoverageItem } from '../coverage'
 import { checkHunterRow, clusterDrafts, entityCorpus, entityGrounded, obviousList, parseLeadTime, type Draft } from '../hunter-rules'
 import { hunterSystem } from '../prompts'
+import { entityMatchContext } from '../fact-precision'
 import { hangulOnly, obviousnessOf, reportedIn, runEngine, type ModelCaller, type Placed } from '../run'
 import type { EngineCard } from '../schema'
 import { citationRecords, normalizeSearchItems } from '../search-items'
@@ -45,9 +46,13 @@ function row(extra: Record<string, unknown> = {}) {
   }
 }
 
+function hunterOpts(c = card()) {
+  return { model: 'm', id: 'h0', card: c, corpus: entityCorpus(c, []), entityCtx: entityMatchContext(c, []) }
+}
+
 function draftOf(extra: Record<string, unknown> = {}, id = 'h0', model = 'm1'): Draft {
   const c = card()
-  const checked = checkHunterRow(row(extra), { model, id, card: c, corpus: entityCorpus(c, []) })
+  const checked = checkHunterRow(row(extra), { ...hunterOpts(c), model, id })
   if (!checked.draft) throw new Error(checked.reasons.join('; '))
   return checked.draft
 }
@@ -60,7 +65,7 @@ describe('hunter requirements', () => {
   it('accepts a row with all six and rejects each missing one', () => {
     const c = card()
     const corpus = entityCorpus(c, [])
-    const check = (extra: Record<string, unknown>) => checkHunterRow(row(extra), { model: 'm', id: 'h0', card: c, corpus })
+    const check = (extra: Record<string, unknown>) => checkHunterRow(row(extra), { ...hunterOpts(c) })
     expect(check({}).draft).not.toBeNull()
     expect(check({ departments: ['natural-hydro'] }).reasons).toContain('crosses fewer than 2 departments')
     expect(check({ entities: ['Badulla'] }).reasons[0]).toMatch(/entity not in card/)
@@ -80,7 +85,7 @@ describe('hunter requirements', () => {
       { type: 'dam', ref: 'Ulhitiya Dam spill note' },
       { type: 'rain', ref: 'card rain' },
     ])
-    expect(check({ entities: ['Ulhitiya Dam'], evidence: [{ type: 'news', ref: 'hospital in badulla temporarily closed' }] }).reasons[0]).toMatch(/entity not named in evidence/)
+    expect(check({ entities: ['Uma Oya'], evidence: [{ type: 'news', ref: 'hospital in badulla temporarily closed' }] }).reasons[0]).toMatch(/entity not named in evidence/)
   })
 
   it('grounds an entity on a specific word, not a generic one or the place name', () => {

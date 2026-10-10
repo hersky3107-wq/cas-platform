@@ -1,21 +1,67 @@
 import { describe, expect, it } from 'vitest'
 import {
+  coreTokens,
+  entityEvidencePrecise,
+  entityMatchContext,
   entityNamedInEvidence,
   hedgeStaleStatusText,
   headlineRootKey,
   pickDiverseHeadlines,
   staleStatusFacts,
 } from '../fact-precision'
-import type { Hypothesis } from '../schema'
+import type { EngineCard, Hypothesis } from '../schema'
 
 const NOW = new Date('2026-10-10T12:00:00Z')
 
-describe('entity precision', () => {
-  it('requires the entity phrase to appear in evidence ref or url', () => {
+function ctx(extra: Partial<EngineCard> = {}) {
+  const card: EngineCard = {
+    region_id: 7,
+    name: 'Badulla',
+    country: 'Sri Lanka',
+    iso3: 'LKA',
+    lat: 6.99,
+    lon: 81.06,
+    level: 1,
+    horizon: '30d',
+    components: [],
+    fragility: [{ kind: 'dam', name: 'Victoria Dam' }, { kind: 'dam', name: 'Randenigala Dam' }],
+    cascades: [],
+    context: [],
+    urban: [],
+    ...extra,
+  }
+  return entityMatchContext(card, [
+    {
+      title: 'Victoria reservoir level high',
+      url: 'https://news.example/victoria-reservoir',
+      published: '2026-10-08',
+      past: false,
+      source: 'search',
+      snippet: 'Operators watch Victoria reservoir inflows.',
+    },
+  ])
+}
+
+describe('entity alias matching', () => {
+  it('matches verbatim, core aliases, and search title/snippet by url', () => {
     const evidence = [{ type: 'news', ref: 'Spring Valley Regional Hospital closed for inspection', url: 'https://x.lk/a' }]
-    expect(entityNamedInEvidence('Spring Valley Regional Hospital', evidence)).toBe(true)
-    expect(entityNamedInEvidence('Badulla referral hospital', evidence)).toBe(false)
-    expect(entityNamedInEvidence('the hospital', evidence)).toBe(false)
+    const spring = ctx()
+    expect(entityNamedInEvidence('Spring Valley Regional Hospital', evidence, spring)).toBe(true)
+    expect(entityNamedInEvidence('Badulla referral hospital', evidence, spring)).toBe(false)
+    expect(entityNamedInEvidence('the hospital', evidence, spring)).toBe(false)
+
+    const victoriaCtx = ctx()
+    expect(entityNamedInEvidence('Victoria Dam', [{ ref: 'Victoria reservoir level rising' }], victoriaCtx)).toBe(true)
+    expect(entityNamedInEvidence('Victoria Dam', [{ ref: 'levels', url: 'https://news.example/victoria-reservoir' }], victoriaCtx)).toBe(true)
+    expect(coreTokens('Victoria Dam')).toEqual(['victoria'])
+  })
+
+  it('accepts atlas fragility names without a text hit', () => {
+    const atlas = ctx()
+    expect(entityNamedInEvidence('Victoria Dam', [], atlas)).toBe(true)
+    expect(entityNamedInEvidence('Victoria', [], atlas)).toBe(true)
+    expect(entityEvidencePrecise({ entities: ['Randenigala Dam'], evidence: [] }, atlas)).toBe(true)
+    expect(entityNamedInEvidence('Ulhitiya Dam', [], atlas)).toBe(false)
   })
 })
 

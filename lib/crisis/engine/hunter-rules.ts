@@ -1,5 +1,5 @@
 import { hazardsOf, isHazard, type Hazard } from '../config/hazard-taxonomy'
-import { entityNamedInEvidence } from './fact-precision'
+import { entityNamedInEvidence, type EntityMatchContext } from './fact-precision'
 import { normalizeName } from '../ingest/iso'
 import { DEPARTMENTS, type Department, type EngineCard, type Horizon } from './schema'
 import type { SearchItem } from './search-items'
@@ -259,7 +259,7 @@ export interface HunterCheck {
 /** Rejects a hunter hypothesis unless all six requirements are present. */
 export function checkHunterRow(
   row: unknown,
-  opts: { model: string; id: string; card: EngineCard; corpus: string },
+  opts: { model: string; id: string; card: EngineCard; corpus: string; entityCtx: EntityMatchContext },
 ): HunterCheck {
   const record = row && typeof row === 'object' && !Array.isArray(row) ? (row as Record<string, unknown>) : null
   const title = text(record?.title)
@@ -289,7 +289,7 @@ export function checkHunterRow(
 
   const named = strings(record.entities ?? record.entity)
   const grounded = named.filter((entity) => entityGrounded(entity, opts.corpus, opts.card))
-  const entities = grounded.filter((entity) => entityNamedInEvidence(entity, evidence))
+  const entities = grounded.filter((entity) => entityNamedInEvidence(entity, evidence, opts.entityCtx))
   if (!entities.length) {
     if (grounded.length) reasons.push(`entity not named in evidence (${grounded.slice(0, 2).join(', ')})`)
     else reasons.push(named.length ? `entity not in card or search items (${named.slice(0, 2).join(', ')})` : 'no specific entity')

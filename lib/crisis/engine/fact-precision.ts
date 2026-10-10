@@ -1,31 +1,132 @@
 import { normalizeName } from '../ingest/iso'
 import type { Draft } from './hunter-rules'
-import type { Hypothesis } from './schema'
+import type { EngineCard, Hypothesis } from './schema'
+import type { SearchItem } from './search-items'
 import { urlDate } from './search-items'
 
 const STATUS_WORDS = /\b(closed|blocked|evacuated|shut down|sealed off)\b/i
 const STALE_DAYS = 60
 
+const GENERIC_ENTITY_WORDS = new Set([
+  'dam',
+  'reservoir',
+  'hospital',
+  'road',
+  'bridge',
+  'river',
+  'plant',
+  'camp',
+  'the',
+  'general',
+  'referral',
+  'regional',
+  'district',
+  'town',
+  'city',
+  'main',
+  'base',
+  'spillway',
+  'authority',
+  'station',
+])
+
 export type EvidenceDates = Map<string, string>
 
-/** Entity strings must appear verbatim (case-insensitive) in an evidence ref or url. */
-export function entityNamedInEvidence(entity: string, evidence: Array<{ ref: string; url?: string }>): boolean {
+export interface EntityMatchContext {
+  fragilityNames: string[]
+  searchTextByUrl: Map<string, string>
+  card: Pick<EngineCard, 'name' | 'country'>
+}
+
+export function entityMatchContext(card: EngineCard, items: SearchItem[]): EntityMatchContext {
+  return {
+    fragilityNames: card.fragility.map((row) => row.name),
+    searchTextByUrl: new Map(items.map((item) => [item.url, `${item.title} ${item.snippet ?? ''}`.trim()])),
+    card: { name: card.name, country: card.country },
+  }
+}
+
+function placeTokens(card: Pick<EngineCard, 'name' | 'country'>): Set<string> {
+  return new Set([...normalizeName(card.name).split(' '), ...normalizeName(card.country).split(' ')].filter((word) => word.length >= 3))
+}
+
+/** Drop generic facility words; keep the named core (Victoria, Spring, Valley, …). */
+export function coreTokens(name: string): string[] {
+  return normalizeName(name)
+    .split(' ')
+    .filter((word) => word.length >= 3 && !GENERIC_ENTITY_WORDS.has(word))
+}
+
+function nonPlaceCore(entity: string, card: Pick<EngineCard, 'name' | 'country'>): string[] {
+  const place = placeTokens(card)
+  return coreTokens(entity).filter((word) => !place.has(word))
+}
+
+function evidenceHaystack(item: { ref: string; url?: string }, ctx: EntityMatchContext): string {
+  const linked = item.url ? ctx.searchTextByUrl.get(item.url) ?? '' : ''
+  return `${item.ref} ${item.url ?? ''} ${linked}`.toLowerCase().replace(/\s+/g, ' ')
+}
+
+function verbatimInHaystack(entity: string, hay: string): boolean {
   const needle = entity.trim().toLowerCase().replace(/\s+/g, ' ')
-  if (needle.length < 3) return false
-  return evidence.some((item) => {
-    const hay = `${item.ref} ${item.url ?? ''}`.toLowerCase().replace(/\s+/g, ' ')
-    return hay.includes(needle)
-  })
+  return needle.length >= 3 && hay.includes(needle)
 }
 
-export function filterEvidencePreciseEntities(draft: Pick<Draft, 'entities' | 'evidence'>): string[] {
-  return draft.entities.filter((entity) => entityNamedInEvidence(entity, draft.evidence))
+function coreInHaystack(entity: string, hay: string, card: Pick<EngineCard, 'name' | 'country'>): boolean {
+  const need = nonPlaceCore(entity, card)
+  if (!need.length) return false
+  const found = new Set(coreTokens(hay))
+  return need.every((token) => found.has(token))
 }
 
-/** Every listed entity is named in evidence; at least one entity remains. */
-export function entityEvidencePrecise(draft: Pick<Draft, 'entities' | 'evidence'>): boolean {
-  if (!draft.entities.length || !draft.evidence.length) return false
-  return draft.entities.every((entity) => entityNamedInEvidence(entity, draft.evidence))
+function matchesFragilityAtlas(entity: string, atlasName: string): boolean {
+  const entityNorm = normalizeName(entity)
+  const atlasNorm = normalizeName(atlasName)
+  if (entityNorm === atlasNorm) return true
+  const eCore = coreTokens(entity)
+  const aCore = coreTokens(atlasName)
+  if (!eCore.length || !aCore.length) return false
+  if (eCore.every((token) => aCore.includes(token))) return true
+  if (aCore.every((token) => eCore.includes(token))) return true
+  return false
+}
+
+/**
+ * Entity is backed by evidence or atlas data. Never accept a generic relabel or a different facility.
+ */
+export function entityNamedInEvidence(
+  entity: string,
+  evidence: Array<{ ref: string; url?: string }>,
+  ctx: EntityMatchContext,
+): boolean {
+  const trimmed = entity.trim()
+  if (trimmed.length < 3) return false
+  if (!nonPlaceCore(trimmed, ctx.card).length && !ctx.fragilityNames.some((name) => matchesFragilityAtlas(trimmed, name))) {
+    return false
+  }
+
+  for (const item of evidence) {
+    const hay = evidenceHaystack(item, ctx)
+    if (verbatimInHaystack(trimmed, hay)) return true
+    if (coreInHaystack(trimmed, hay, ctx.card)) return true
+  }
+
+  return ctx.fragilityNames.some((name) => matchesFragilityAtlas(trimmed, name))
+}
+
+export function filterEvidencePreciseEntities(
+  draft: Pick<Draft, 'entities' | 'evidence'>,
+  ctx: EntityMatchContext,
+): string[] {
+  return draft.entities.filter((entity) => entityNamedInEvidence(entity, draft.evidence, ctx))
+}
+
+export function entityEvidencePrecise(draft: Pick<Draft, 'entities' | 'evidence'>, ctx: EntityMatchContext): boolean {
+  if (!draft.entities.length) return false
+  if (!draft.evidence.length) {
+    return draft.entities.every((entity) => ctx.fragilityNames.some((name) => matchesFragilityAtlas(entity, name)))
+  }
+  return draft.entities.every((entity) => entityNamedInEvidence(entity, draft.evidence, ctx))
 }
 
 export function evidenceItemDate(item: { url?: string }, dates: EvidenceDates): string {
@@ -60,7 +161,6 @@ export function staleStatusFacts(draft: Pick<Draft, 'evidence'>, dates: Evidence
   return facts.sort((a, b) => b.date.localeCompare(a.date))
 }
 
-/** Status claims backed by evidence older than 60 days must not read as current. */
 export function hedgeStaleStatusText(text: string, facts: StaleStatusFact[]): string {
   if (!facts.length || !text.trim()) return text
   if (/current status unverified/i.test(text)) return text
@@ -73,9 +173,14 @@ export function hedgeStaleStatusText(text: string, facts: StaleStatusFact[]): st
   return out
 }
 
-export function applyFactPrecisionToDraft(draft: Draft, dates: EvidenceDates, now: Date): Draft {
+export function applyFactPrecisionToDraft(
+  draft: Draft,
+  dates: EvidenceDates,
+  now: Date,
+  ctx: EntityMatchContext,
+): Draft {
   const facts = staleStatusFacts(draft, dates, now)
-  const entities = filterEvidencePreciseEntities(draft)
+  const entities = filterEvidencePreciseEntities(draft, ctx)
   return {
     ...draft,
     entities: entities.length ? entities : draft.entities,
@@ -86,7 +191,6 @@ export function applyFactPrecisionToDraft(draft: Draft, dates: EvidenceDates, no
   }
 }
 
-/** Primary entity (or title lead-in) for headline de-duplication. */
 export function headlineRootKey(h: Pick<Hypothesis, 'entities' | 'hazards'>): string {
   const entity = normalizeName((h.entities ?? [])[0] ?? '')
   const hazard = (h.hazards ?? [])[0] ?? ''

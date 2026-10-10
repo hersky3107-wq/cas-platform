@@ -23,6 +23,7 @@ import { mergeBaselineRisks, type AnalystFinding } from './baseline-fill'
 import {
   applyFactPrecisionToDraft,
   entityEvidencePrecise,
+  entityMatchContext,
   headlineRootKey,
   hedgeStaleStatusText,
   pickDiverseHeadlines,
@@ -390,6 +391,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     .slice(0, 12)
     .map((item) => ({ source: item.source, title: item.title, url: item.url, date: item.date }))
   const hunterItems = searchItems.slice(0, 8)
+  const entityCtx = entityMatchContext(opts.card, searchItems)
   const corpus = entityCorpus(opts.card, hunterItems, alreadyReported.map((item) => item.title))
 
   const drafts: Draft[] = []
@@ -408,7 +410,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       rejected.push({ model: slot.model, title: stringOr(asRecord(row)?.title, '(no title)'), reasons: [`over the ${HUNTER_MAX_HYPOTHESES} per hunter limit`] })
     })
     for (const row of rows.slice(0, HUNTER_MAX_HYPOTHESES)) {
-      const checked = checkHunterRow(row, { model: slot.model, id: `h${drafts.length}`, card: opts.card, corpus })
+      const checked = checkHunterRow(row, { model: slot.model, id: `h${drafts.length}`, card: opts.card, corpus, entityCtx })
       if (checked.draft) drafts.push(checked.draft)
       else rejected.push({ model: checked.model, title: checked.title, reasons: checked.reasons })
     }
@@ -506,10 +508,10 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const backgroundByUrl = new Map<string, BackgroundCoverageItem>()
   const scored = grouped.map((row) => {
     const verdict = obviousnessOf(row, opts.card, obvious, coverage, now, knownUrls)
-    const preciseDraft = applyFactPrecisionToDraft(row.draft, evidenceDates, now)
+    const preciseDraft = applyFactPrecisionToDraft(row.draft, evidenceDates, now, entityCtx)
     const built = toHypothesis(preciseDraft, row.outsider, opts.card, coverage, verdict.non, row.judge?.twist ?? '', evidenceDates, now)
     for (const entry of built.background) backgroundByUrl.set(entry.url, entry)
-    return { row, verdict, hypothesis: built.hypothesis, entityPrecise: entityEvidencePrecise(preciseDraft) }
+    return { row, verdict, hypothesis: built.hypothesis, entityPrecise: entityEvidencePrecise(preciseDraft, entityCtx) }
   })
   const liveRows = scored.filter((item) => item.verdict.non > 0)
   const rankScore = (item: (typeof scored)[number]) => item.verdict.non * item.hypothesis.stage
