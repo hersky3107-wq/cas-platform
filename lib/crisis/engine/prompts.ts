@@ -164,6 +164,49 @@ export function searchUser(queries: string[]): string {
   return JSON.stringify({ queries })
 }
 
+export function buriedQuerySystem(languages: string[], hazard: string): string {
+  const local = languages.find((code) => code !== 'en') ?? 'en'
+  return [
+    'Write past-warning search queries for named facilities.',
+    `For each entity return exactly 3 queries: 2 in ${local} and 1 in English.`,
+    `Each query names the entity and the top hazard (${hazard}).`,
+    'Aim at the last 5 years only: safety audits, inspection reports, engineering or geology papers, parliamentary questions, budget cuts, maintenance delays, residents complaints, court cases.',
+    'Do not ask for weather forecasts or breaking news.',
+    'Return JSON: {"queries":[{"entity":"","language":"","query":""}]}',
+  ].join('\n')
+}
+
+export function buriedQueryUser(
+  card: EngineCard,
+  entities: Array<{ name: string; kind: string }>,
+  hazard: string,
+  languages: string[],
+  years: string,
+): string {
+  return JSON.stringify({
+    region: card.name,
+    country: card.country,
+    iso3: card.iso3,
+    local_languages: languages,
+    top_hazard: hazard,
+    years,
+    entities,
+  })
+}
+
+export function buriedSearchSystem(): string {
+  return [
+    'Search for old warnings about the named facilities.',
+    'Prefer safety audits, inspection reports, engineering or geology papers, parliamentary questions, budget cuts, maintenance delays, residents complaints, and court cases from the last 5 years.',
+    'Skip weather forecasts and same-day news.',
+    'Do not return JSON. Citations come from the API.',
+  ].join('\n')
+}
+
+export function buriedSearchUser(queries: string[], years: string): string {
+  return JSON.stringify({ task: 'buried_warning', years, queries })
+}
+
 export const HUNTER_WANTED_EXAMPLES = [
   'Dam spill releases displace downstream communities — a controlled spill is not classed as failure, so villages are not warned.',
   'Downstream evacuation routes across the Mahaweli basin may be cut off before warnings reach people.',
@@ -185,6 +228,7 @@ export function hunterSystem(zone = false): string {
     '6. falsifier: one observation that would show the possibility is wrong.',
     'obvious_list holds the textbook outcomes for this card. Do NOT propose these unless you add a specific non-obvious twist, and put the twist in mechanism.',
     'already_reported holds what ReliefWeb, GDACS, Metaculus, and the news already cover. Do not restate it.',
+    'buried_warnings is a separate block of older audits, inspections, papers, complaints, and court cases. It is not already_reported. When a possibility uses one, set evidence.type to "buried_warning" and copy its url, date, and language.',
     'Wanted, the kind of possibility we look for:',
     ...HUNTER_WANTED_EXAMPLES.map((line) => `- "${line}"`),
     `Not wanted: "${HUNTER_UNWANTED_EXAMPLE}" It is in every forecast already and names no hidden mechanism.`,
@@ -205,6 +249,7 @@ export function hunterSystem(zone = false): string {
 export interface HunterExtras {
   obvious?: string[]
   alreadyReported?: Array<{ source: string; title: string; url: string; date: string | null }>
+  buriedWarnings?: Array<{ entity: string; date: string; language: string; title: string; url: string; line: string }>
 }
 
 export function hunterUser(card: EngineCard, notes: string[], items: SearchItem[], extras: HunterExtras = {}): string {
@@ -236,6 +281,7 @@ export function hunterUser(card: EngineCard, notes: string[], items: SearchItem[
     })),
     obvious_list: extras.obvious ?? [],
     already_reported: (extras.alreadyReported ?? []).slice(0, 12),
+    buried_warnings: extras.buriedWarnings ?? [],
   })
 }
 
@@ -258,6 +304,7 @@ export function judgeSystem(): string {
     'You are the judge. Merge near-duplicate hypotheses into groups and score each group. Put every id in exactly one group. You may not drop any.',
     'suggested_groups is a code pre-merge by shared hazard and named entity. Start from it; split a group when the mechanisms differ, merge further when two say the same thing.',
     'non_obviousness is 0 to 1. It is 0 when the group is on obvious_list without a specific twist, or when the same thing is already reported in search_items or already_reported (ReliefWeb, GDACS, Metaculus, news). It is near 1 when a well-informed local official reading one department alone would not think of it.',
+    'buried_warnings is a separate block. Do not treat those urls as reported_as_news. A group that uses one is more non-obvious.',
     'on_obvious_list is true when the core claim matches an obvious_list line. twist is the specific non-obvious addition, or "".',
     'reported_as_news is the url of the item that already reports the same thing, or "".',
     'Entity names in titles and text must match evidence wording exactly. Do not rename facilities (for example do not turn "Spring Valley Regional Hospital" into "referral hospital" or "the hospital").',

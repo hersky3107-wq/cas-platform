@@ -255,14 +255,61 @@ describe('department isolation and hunters', () => {
     expect(new Set(hunters.map((call) => call.user)).size).toBe(1)
     expect(hunters.every((call) => !call.user.includes('HUNTER_SECRET'))).toBe(true)
     const searches = seen.filter((call) => call.role === 'search')
-    expect(searches).toHaveLength(2)
-    expect(searches[0].user).toBe(searches[1].user)
+    const buried = searches.filter((call) => call.user.includes('buried_warning'))
+    const main = searches.filter((call) => !call.user.includes('buried_warning'))
+    expect(buried).toHaveLength(2)
+    expect(main).toHaveLength(2)
+    expect(buried[0].user).toBe(buried[1].user)
+    expect(main[0].user).toBe(main[1].user)
+    expect(buried.every((call) => call.maxTokens === 400)).toBe(true)
+    expect(main.every((call) => call.maxTokens > 400)).toBe(true)
+    expect(hunters[0].user).toContain('buried_warnings')
     expect(record.status).toBe('done')
     expect(record.steps.some((step) => step.slot === 'hunter-qwen' && step.error === 'hunter down')).toBe(true)
     expect(record.result?.headlines.length).toBeGreaterThanOrEqual(1)
     expect(record.result?.headlines.length).toBeLessThanOrEqual(3)
     expect(record.result?.missed_by_others.length).toBeGreaterThanOrEqual(0)
     expect(record.result?.partial).toBe(false)
+  })
+
+  it('keeps a dated buried warning and adds 0.15 non_obviousness', async () => {
+    const seen: ModelCall[] = []
+    const base = caller(seen)
+    const record = await runEngine({
+      card: card(),
+      now: NOW,
+      caller: {
+        async complete(call) {
+          if (call.role === 'search' && call.user.includes('buried_warning')) {
+            return {
+              text: '{}',
+              tokensIn: 10,
+              tokensOut: 10,
+              costUsd: 0.01,
+              searchItems: [
+                {
+                  title: 'Victoria Dam safety audit finds cracks and delay',
+                  url: 'https://example.com/2023/04/02/victoria-dam-audit',
+                  published: '2023-04-02',
+                  past: true,
+                  source: 'audit',
+                  snippet: 'The inspection report warns of structural risk at Victoria Dam.',
+                },
+              ],
+            }
+          }
+          return base.complete(call)
+        },
+      },
+    })
+    const rows = [...(record.result?.headlines ?? []), ...(record.result?.missed_by_others ?? [])]
+    const evidence = rows.flatMap((row) => row.evidence).filter((item) => item.type === 'buried_warning')
+    expect(evidence.length).toBeGreaterThan(0)
+    expect(evidence[0]?.ref).toContain('묻힌 경고 · 2023년 감사 보고서')
+    expect(evidence[0]?.date).toBe('2023-04-02')
+    expect(evidence[0]?.language).toBe('en')
+    expect(rows.some((row) => row.non_obviousness === 1)).toBe(true)
+    expect(rows.filter((row) => row.evidence.some((item) => item.type === 'buried_warning')).every((row) => (row.non_obviousness ?? 0) >= 0.15)).toBe(true)
   })
 
   it('puts omitted hypotheses on the outsider list', async () => {
@@ -507,7 +554,7 @@ describe('parallel stages and live step writes', () => {
     expect(peak.search).toBe(2)
     expect(peak.hunter).toBeGreaterThan(1)
     expect(record.status).toBe('done')
-    expect(seen.filter((call) => call.role === 'search')).toHaveLength(2)
+    expect(seen.filter((call) => call.role === 'search')).toHaveLength(4)
   })
 
   it('skips a timed-out hunter and keeps the run moving', async () => {

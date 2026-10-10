@@ -32,7 +32,7 @@ export type HypothesisRow = {
   what_to_do_ko: string[]
   what_to_do_local?: string[]
   official_links: Array<{ label: string; url: string }>
-  evidence: Array<{ ref: string; url?: string }>
+  evidence: Array<{ ref: string; url?: string; type?: string; date?: string; language?: string }>
   hazards?: string[]
   regions?: Array<{ name: string }>
   expected_window?: { label: string }
@@ -192,8 +192,8 @@ export function UnlockedCardView({ card, t, locale = 'ko' }: { card: UnlockedCar
         <p className="mt-2 text-xs text-slate-400">{t.noveltyLine(card.novelty.only_us, card.novelty.also_seen_elsewhere)}</p>
       </div>
 
-      <Tier title={t.headlines} rows={card.headlines} t={t} />
-      <Tier title={t.missedByOthers} rows={card.missed_by_others} t={t} />
+      <Tier title={t.headlines} rows={card.headlines} t={t} locale={locale} />
+      <Tier title={t.missedByOthers} rows={card.missed_by_others} t={t} locale={locale} />
       <Predictions rows={card.predictions ?? []} locale={locale} />
       {card.zoneKey ? (
         <>
@@ -308,7 +308,16 @@ function BorderLinks({
   )
 }
 
-function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: CrisisUiPack }) {
+function buriedLabel(item: HypothesisRow['evidence'][number], locale: CrisisLocale): string {
+  if (item.type !== 'buried_warning') return item.ref
+  if (item.ref.startsWith('묻힌 경고')) return item.date && !item.ref.includes(item.date) ? `${item.ref} · ${item.date}` : item.ref
+  const year = Number(item.date?.slice(0, 4))
+  if (!year) return item.ref
+  const line = getOutcomeUi(locale).buriedWarning(year, item.ref)
+  return item.date ? `${line} · ${item.date}` : line
+}
+
+function Tier({ title, rows, t, locale }: { title: string; rows: HypothesisRow[]; t: CrisisUiPack; locale: CrisisLocale }) {
   return (
     <section>
       <h3 className="mb-2 text-sm font-black text-slate-300">{title}</h3>
@@ -341,7 +350,11 @@ function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: Cri
                   possibility: row.possibility,
                   evidence: [
                     ...row.official_links.map((link) => ({ label: link.label, url: link.url })),
-                    ...row.evidence.filter((item) => item.url).map((item) => ({ label: item.ref, url: item.url })),
+                    ...row.evidence.filter((item) => item.url || item.type === 'buried_warning').map((item) => ({
+                      label: buriedLabel(item, locale),
+                      url: item.url,
+                      kind: item.type === 'buried_warning' ? ('buried_warning' as const) : undefined,
+                    })),
                   ],
                 }}
               />

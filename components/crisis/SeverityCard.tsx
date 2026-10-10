@@ -5,7 +5,7 @@ import { hazardIconsFor, type HazardIconKind } from '@/lib/crisis/ui/hazards'
 import { severityTheme } from '@/lib/crisis/ui/severity'
 import { HazardIconRow } from './HazardIcon'
 
-export type EvidenceLink = { label: string; url?: string }
+export type EvidenceLink = { label: string; url?: string; kind?: 'buried_warning' }
 
 export type SeverityCardModel = {
   stage: number
@@ -92,25 +92,44 @@ export function SeverityCard({
           <p className="text-sm leading-relaxed text-slate-200">{card.whyMiss}</p>
         </div>
       ) : null}
-      {card.evidence && card.evidence.length > 0 ? (
+      {card.evidence && card.evidence.some((item) => item.kind === 'buried_warning' || item.label.startsWith('묻힌 경고')) ? (
+        <ul className="space-y-1">
+          {card.evidence
+            .filter((item) => item.kind === 'buried_warning' || item.label.startsWith('묻힌 경고'))
+            .map((item) => (
+              <li key={`${item.url ?? item.label}`} className="text-xs font-semibold text-amber-200">
+                {item.url ? (
+                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="hover:underline">
+                    {item.label}
+                  </a>
+                ) : (
+                  item.label
+                )}
+              </li>
+            ))}
+        </ul>
+      ) : null}
+      {card.evidence && card.evidence.some((item) => item.kind !== 'buried_warning' && !item.label.startsWith('묻힌 경고')) ? (
         <details className="group">
           <summary className="cursor-pointer text-xs font-semibold text-slate-400 hover:text-slate-200">
             {t.showEvidence}
           </summary>
           <ul className="mt-2 space-y-1 text-xs">
-            {card.evidence.map((item) =>
-              item.url ? (
-                <li key={item.url}>
-                  <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">
+            {card.evidence
+              .filter((item) => item.kind !== 'buried_warning' && !item.label.startsWith('묻힌 경고'))
+              .map((item) =>
+                item.url ? (
+                  <li key={item.url}>
+                    <a href={item.url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">
+                      {item.label}
+                    </a>
+                  </li>
+                ) : (
+                  <li key={item.label} className="text-slate-400">
                     {item.label}
-                  </a>
-                </li>
-              ) : (
-                <li key={item.label} className="text-slate-400">
-                  {item.label}
-                </li>
-              ),
-            )}
+                  </li>
+                ),
+              )}
           </ul>
         </details>
       ) : null}

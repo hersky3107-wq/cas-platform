@@ -1,5 +1,15 @@
 import type { CrisisLocale } from './locales'
 
+/** Card chip for an older audit, paper, complaint, or court record. */
+export function buriedWarningLine(year: number, document: string): string {
+  return `묻힌 경고 · ${year}년 ${document}`
+}
+
+export function buriedWarningCaption(year: number, document: string, date: string): string {
+  const line = buriedWarningLine(year, document)
+  return date ? `${line} · ${date}` : line
+}
+
 export type OutcomeUi = {
   scoreboardTitle: string
   scoreboardTotal: string
@@ -14,6 +24,7 @@ export type OutcomeUi = {
   expectedWindow: (min: number, max: number) => string
   hitLine: (predicted: string, hit: string) => string
   stamp: (iso: string, withTime: boolean) => string
+  buriedWarning: (year: number, document: string) => string
 }
 
 function seoulParts(iso: string): { month: number; day: number; hour: number; minute: number } | null {
@@ -65,6 +76,7 @@ const ko: OutcomeUi = {
   expectedWindow: (min, max) => (min === max ? `예상 시기: ${min}일 뒤` : `예상 시기: ${min}~${max}일 뒤`),
   hitLine: (predicted, hit) => `${predicted} 예측 → ${hit} 적중`,
   stamp: koStamp,
+  buriedWarning: buriedWarningLine,
 }
 
 const en: OutcomeUi = {
@@ -81,6 +93,7 @@ const en: OutcomeUi = {
   expectedWindow: (min, max) => (min === max ? `Expected: ${min} day(s) out` : `Expected: ${min}–${max} days out`),
   hitLine: (predicted, hit) => `${predicted} predicted → ${hit} hit`,
   stamp: enStamp,
+  buriedWarning: buriedWarningLine,
 }
 
 const packs: Record<CrisisLocale, OutcomeUi> = {

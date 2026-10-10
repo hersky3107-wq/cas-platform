@@ -10,6 +10,10 @@ import {
   hunterUser,
   judgeSystem,
   judgeUser,
+  buriedQuerySystem,
+  buriedQueryUser,
+  buriedSearchSystem,
+  buriedSearchUser,
   queryWriterSystem,
   queryWriterUser,
   redTeamSystem,
@@ -58,6 +62,19 @@ import {
   type Hypothesis,
 } from './schema'
 import { normalizeSearchItems, type SearchItem } from './search-items'
+import { localLanguages } from './languages'
+import {
+  attachBuriedEvidence,
+  BURIED_SEARCH_TOKENS,
+  buriedNonObviousness,
+  buriedTargets,
+  cheapSearchSlot,
+  collectBuriedWarnings,
+  ensureBuriedQueries,
+  parseBuriedQueries,
+  type BuriedWarning,
+  yearSpan,
+} from './buried-warning'
 import { departmentsTouched, structureOf, weaknessOf } from './structure'
 import { buildZoneLinks, tagsForText } from './zone-card'
 
@@ -295,9 +312,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     slot: RosterSlot,
     system: string,
     user: string,
+    limits?: { maxTokens?: number },
   ): Promise<{ parsed: unknown | null; searchItems: SearchItem[] } | null> => {
     const inputEstimate = estimateTokens(`${system}\n${user}`)
-    const outputCap = outputBudget(slot.role, Boolean(slot.reasoning))
+    const roleBudget = outputBudget(slot.role, Boolean(slot.reasoning))
+    const outputCap = Math.min(limits?.maxTokens ?? roleBudget, roleBudget)
     const estimate = costOf(slot.model, inputEstimate, outputCap)
     const base = {
       role: slot.role,
@@ -500,6 +519,53 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   }
 
   const writer = slotsFor(roster, 'query_writer')[0]
+  const buriedPlan = buriedTargets(opts.card)
+  let buriedWarnings: BuriedWarning[] = []
+  if (buriedPlan.entities.length && writer) {
+    const buriedSlot = { ...writer, slot: 'buried-query' }
+    const langs = localLanguages(opts.card.iso3)
+    const buriedCalled = await callSlot(
+      buriedSlot,
+      buriedQuerySystem(langs, buriedPlan.hazard),
+      buriedQueryUser(opts.card, buriedPlan.entities, buriedPlan.hazard, langs, yearSpan(now)),
+    )
+    const buriedSkipped = steps.some((step) => step.slot === 'buried-query' && step.skipped)
+    if (buriedSkipped) {
+      console.log('buried_warning skipped=budget')
+    } else {
+      const buriedQueries = ensureBuriedQueries(
+        buriedPlan.entities,
+        buriedPlan.hazard,
+        langs,
+        parseBuriedQueries(buriedCalled?.parsed),
+        now,
+      )
+      const buriedUser = buriedSearchUser(buriedQueries.map((query) => query.query), yearSpan(now))
+      const buriedSearch = await Promise.all(
+        slotsFor(roster, 'search').map(async (slot) => ({
+          slot,
+          called: await callSlot(cheapSearchSlot(slot), buriedSearchSystem(), buriedUser, { maxTokens: BURIED_SEARCH_TOKENS }),
+        })),
+      )
+      const buriedItems: SearchItem[] = []
+      for (const { slot, called } of buriedSearch) {
+        if (called?.searchItems.length) buriedItems.push(...called.searchItems)
+        else buriedItems.push(...normalizeSearchItems(asRecord(called?.parsed)?.items, slot.slot, now))
+      }
+      buriedWarnings = collectBuriedWarnings(
+        buriedItems,
+        buriedQueries,
+        buriedPlan.entities.map((entity) => entity.name),
+        now,
+      )
+      for (const warning of buriedWarnings) {
+        console.log(
+          `buried_warning entity=${warning.entity} date=${warning.date} language=${warning.language} ${warning.line} | ${warning.statement}`,
+        )
+      }
+    }
+  }
+
   const writerCalled = writer ? await callSlot(writer, queryWriterSystem(opts.card), queryWriterUser(opts.card, notes)) : null
   const queries = ensureQueries(opts.card, stringList(asRecord(writerCalled?.parsed)?.queries))
   const searchQueries = queries.length > 0 ? queries : fallbackQueries(opts.card)
@@ -531,9 +597,18 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
 
   const drafts: Draft[] = []
   const rejected: Array<{ model: string; title: string; reasons: string[] }> = []
+  const buriedBlock = buriedWarnings.map((warning) => ({
+    entity: warning.entity,
+    date: warning.date,
+    language: warning.language,
+    title: warning.title,
+    url: warning.url,
+    line: warning.line,
+  }))
   const hunterPacket = hunterUser(opts.card, notes, hunterItems, {
     obvious: obvious.map((row) => row.line),
     alreadyReported,
+    buriedWarnings: buriedBlock,
   })
   let hunterOk = 0
   const hunterCalled = await Promise.all(
@@ -614,6 +689,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     obvious_list: obvious.map((row) => row.line),
     already_reported: coverage.slice(0, 25).map((item) => ({ source: item.source, title: item.title, url: item.url, date: item.date, hazards: item.hazards })),
     search_items: searchItems.map((item) => ({ title: item.title, url: item.url, published: item.undated ? 'undated' : item.published })),
+    buried_warnings: buriedBlock,
   })
   if (opts.dryRun && judge) {
     await callSlot(judge, judgeSystem(), judgeUser(judgePacket([{ id: 'h0', note: 'Hunter hypotheses and weakness notes are inserted here on a live run.' }])))
@@ -663,9 +739,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const scored = grouped.map((row) => {
     const verdict = obviousnessOf(row, opts.card, obvious, coverage, now, knownUrls)
     const preciseDraft = applyFactPrecisionToDraft(row.draft, evidenceDates, now, entityCtx)
-    const built = toHypothesis(preciseDraft, row.outsider, opts.card, coverage, verdict.non, row.judge?.twist ?? '', evidenceDates, now)
+    attachBuriedEvidence(preciseDraft, buriedWarnings)
+    const non = buriedNonObviousness(verdict.non, preciseDraft)
+    const built = toHypothesis(preciseDraft, row.outsider, opts.card, coverage, non, row.judge?.twist ?? '', evidenceDates, now)
     for (const entry of built.background) backgroundByUrl.set(entry.url, entry)
-    return { row, verdict, hypothesis: built.hypothesis, entityPrecise: entityEvidencePrecise(preciseDraft, entityCtx) }
+    return { row, verdict: { ...verdict, non }, hypothesis: built.hypothesis, entityPrecise: entityEvidencePrecise(preciseDraft, entityCtx) }
   })
   const liveRows = scored.filter((item) => item.verdict.non > 0)
   const rankScore = (item: (typeof scored)[number]) => item.verdict.non * item.hypothesis.stage
@@ -725,6 +803,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       observable: row.falsifier,
     })),
   )
+  for (const prediction of predictions) {
+    console.log(
+      `prediction what=${prediction.what} where=${prediction.where} window=${prediction.window_start}..${prediction.window_end} label=${prediction.label}`,
+    )
+  }
   const everyGroup = scored.map((item) => item.hypothesis)
   const noveltyCounts = {
     only_us: everyGroup.filter((row) => row.novelty === 'only_us').length,

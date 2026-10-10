@@ -39,6 +39,8 @@ export const hypothesisSchema = z
           type: z.string().min(1),
           ref: z.string().min(1),
           url: z.string().optional(),
+          date: z.string().optional(),
+          language: z.string().optional(),
         })
         .strict(),
     ),
