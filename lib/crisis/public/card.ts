@@ -10,6 +10,8 @@ export interface LockedBriefCard {
   status: 'public'
   locked: true
   headline_ko: string
+  stage: number
+  headline_fallback?: boolean
   novelty?: never
 }
 
@@ -31,6 +33,8 @@ export interface UnlockedBriefCard {
   novelty: { only_us: number; also_seen_elsewhere: number }
   evidence: string[]
   costUsd: number
+  stage: number
+  headline_fallback?: boolean
 }
 
 export interface PublicHypothesis {
@@ -39,11 +43,13 @@ export interface PublicHypothesis {
   noveltyBadge: string | null
   stage: number
   possibility: string
+  why_humans_miss: string
   what_to_do_ko: string[]
   what_to_do_local: string[]
   localLanguage: string
   official_links: Array<{ label: string; url: string }>
   evidence: Array<{ type: string; ref: string; url?: string }>
+  hazards: string[]
 }
 
 export function localLanguageCode(iso3: string | null): string {
@@ -59,12 +65,28 @@ function asHypothesis(row: Hypothesis): PublicHypothesis {
     noveltyBadge: noveltyBadge(row.novelty),
     stage: row.stage,
     possibility: row.possibility,
+    why_humans_miss: row.why_humans_miss,
     what_to_do_ko: steps,
     what_to_do_local: steps,
     localLanguage: 'en',
     official_links: row.official_links ?? [],
     evidence: row.evidence ?? [],
+    hazards: row.hazards ?? [],
   }
+}
+
+export function cardStageFromResult(
+  result: Partial<Pick<EngineResult, 'headlines' | 'missed_by_others' | 'baseline_risks'>> | null,
+): number {
+  let max = 1
+  if (!result) return max
+  for (const row of [...(result.headlines ?? []), ...(result.missed_by_others ?? [])]) {
+    if (typeof row.stage === 'number' && row.stage > max) max = row.stage
+  }
+  for (const row of result.baseline_risks ?? []) {
+    if (typeof row.stage === 'number' && row.stage > max) max = row.stage
+  }
+  return max
 }
 
 export function lockBriefCard(opts: {
@@ -72,7 +94,9 @@ export function lockBriefCard(opts: {
   regionId: number
   regionName: string
   country: string
-  result: Pick<EngineResult, 'headline_ko'> | null
+  result: Pick<EngineResult, 'headline_ko'> &
+    Partial<Pick<EngineResult, 'headline_fallback' | 'headlines' | 'missed_by_others' | 'baseline_risks'>> | null
+  stage?: number
 }): LockedBriefCard {
   return {
     runId: opts.runId,
@@ -82,6 +106,8 @@ export function lockBriefCard(opts: {
     status: 'public',
     locked: true,
     headline_ko: opts.result?.headline_ko?.trim() || '브리핑',
+    stage: opts.stage ?? cardStageFromResult(opts.result),
+    headline_fallback: opts.result?.headline_fallback,
   }
 }
 
@@ -118,6 +144,8 @@ export function unlockBriefCard(opts: {
     novelty: opts.result.novelty_counts ?? { only_us: 0, also_seen_elsewhere: 0 },
     evidence: opts.searchUrls,
     costUsd: opts.costUsd,
+    stage: cardStageFromResult(opts.result),
+    headline_fallback: opts.result.headline_fallback,
   }
 }
 

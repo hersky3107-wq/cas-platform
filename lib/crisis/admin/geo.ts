@@ -34,6 +34,6 @@ export function stageColor(stage: number): string {
   if (stage >= 5) return '#fb7185'
   if (stage >= 4) return '#fb923c'
   if (stage >= 3) return '#fbbf24'
-  if (stage >= 2) return '#22d3ee'
-  return '#94a3b8'
+  if (stage >= 2) return '#38bdf8'
+  return '#34d399'
 }

@@ -1,5 +1,10 @@
-export function noveltyBadge(novelty: string | undefined): string | null {
-  return novelty === 'only_us' ? '우리만 봤다' : null
+import { getCrisisUiPack } from '../i18n/dictionary'
+
+export function noveltyBadge(novelty: string | undefined, locale: 'ko' | 'en' = 'ko'): string | null {
+  const t = getCrisisUiPack(locale)
+  if (novelty === 'only_us') return t.onlyUs
+  if (novelty === 'also_seen_elsewhere') return t.alsoSeenElsewhere
+  return null
 }
 
 export function languageLabel(code: string): string {

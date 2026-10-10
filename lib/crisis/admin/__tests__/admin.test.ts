@@ -129,7 +129,7 @@ describe('today regions and map', () => {
     const pt = projectLonLat(0, 0, 800, 400)
     expect(pt).toEqual({ x: 400, y: 200 })
     expect(stageColor(5)).toBe('#fb7185')
-    expect(stageColor(1)).toBe('#94a3b8')
+    expect(stageColor(1)).toBe('#34d399')
 
     // Only regions with score > 0 are shown on admin map/table
     const scoredOnly = rows.filter((r) => r.score > 0)
@@ -178,5 +178,10 @@ describe('migration and npm script', () => {
     expect(pkg.scripts['crisis:worker']).not.toContain('sweep.ts')
     const apply = readFileSync(path.join(process.cwd(), 'docs/crisis/APPLY_ENGINE_REQUESTS.md'), 'utf8')
     expect(apply).toContain("VALUES ('20261010000001','20261010000001_crisis_engine_requests')")
+    const translations = readFileSync(
+      path.join(process.cwd(), 'supabase/migrations/20261010000003_crisis_card_translations.sql'),
+      'utf8',
+    )
+    expect(translations).toContain('crisis_card_translations')
   })
 })

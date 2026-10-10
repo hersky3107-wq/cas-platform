@@ -195,6 +195,7 @@ export async function briefCardsForUser(
           regionName: name,
           country,
           result: run.result,
+          stage: region?.stage,
         }),
       )
       continue

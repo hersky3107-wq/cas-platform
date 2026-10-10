@@ -1,9 +1,11 @@
 import { NextResponse } from 'next/server'
 import { CRISIS_DEEP_CREDITS, CRISIS_DEEP_MODULE, creditsForCrisisDeep } from '@/lib/crisis/credits'
+import { getCrisisUiPack } from '@/lib/crisis/i18n/dictionary'
+import { localeFromRequest } from '@/lib/crisis/i18n/from-request'
 import { requireCrisisUser } from '@/lib/crisis/public/auth'
 import { chargeCrisis } from '@/lib/crisis/public/charge'
 import { enforceUserLimits } from '@/lib/crisis/public/limits'
-import { DEEP_FAILED_COPY, DEEP_WAIT_COPY } from '@/lib/crisis/public/policy'
+import { localizeBriefCards } from '@/lib/crisis/translate/view'
 import { isTimedOutRequest, refundTimedOutUserRequests, refundUserRequest } from '@/lib/crisis/public/refund'
 import {
   cardFromRunId,
@@ -19,6 +21,8 @@ import { supabaseAdmin } from '@/lib/supabase/server'
 export async function GET(req: Request) {
   const auth = await requireCrisisUser(req)
   if ('response' in auth) return auth.response
+  const locale = localeFromRequest(req)
+  const t = getCrisisUiPack(locale)
   const regionIdParam = new URL(req.url).searchParams.get('regionId')
   const now = new Date()
 
@@ -38,7 +42,7 @@ export async function GET(req: Request) {
       return NextResponse.json({
         ok: true,
         activeRegionId: active?.region_id ? Number(active.region_id) : null,
-        message: active ? DEEP_WAIT_COPY : null,
+        message: active ? t.deepWait : null,
       })
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Failed to check deep status'
@@ -60,8 +64,8 @@ export async function GET(req: Request) {
       await refundUserRequest(supabaseAdmin, own.id, auth.userId, regionId)
       return NextResponse.json({
         status: 'failed',
-        message: DEEP_FAILED_COPY,
-        error: DEEP_FAILED_COPY,
+        message: t.deepFailed,
+        error: t.deepFailed,
         refunded: true,
       })
     }
@@ -70,8 +74,8 @@ export async function GET(req: Request) {
       await refundUserRequest(supabaseAdmin, own.id, auth.userId, regionId)
       return NextResponse.json({
         status: 'failed',
-        message: DEEP_FAILED_COPY,
-        error: DEEP_FAILED_COPY,
+        message: t.deepFailed,
+        error: t.deepFailed,
         refunded: true,
       })
     }
@@ -79,7 +83,7 @@ export async function GET(req: Request) {
     if (own && (own.status === 'queued' || own.status === 'running')) {
       return NextResponse.json({
         status: 'pending',
-        message: DEEP_WAIT_COPY,
+        message: t.deepWait,
         requestId: own.id,
         price: creditsForCrisisDeep(),
       })
@@ -88,11 +92,12 @@ export async function GET(req: Request) {
     if (own && own.status === 'done') {
       const ownCard = own.run_id ? await cardFromRunId(supabaseAdmin, own.run_id) : null
       if (ownCard) {
+        const [card] = await localizeBriefCards(supabaseAdmin, [ownCard], locale)
         return NextResponse.json({
           status: 'ready',
           cached: true,
           charged: 0,
-          card: ownCard,
+          card: card ?? ownCard,
           price: creditsForCrisisDeep(),
         })
       }
@@ -102,8 +107,9 @@ export async function GET(req: Request) {
     if (fresh) {
       const unlocked = await hasUnlock(supabaseAdmin, { userId: auth.userId, kind: 'deep', regionId })
       if (unlocked) {
-        const card = await cardFromRunId(supabaseAdmin, fresh.id)
-        return NextResponse.json({ status: 'ready', cached: true, charged: 0, card, price: creditsForCrisisDeep() })
+        const raw = await cardFromRunId(supabaseAdmin, fresh.id)
+        const [card] = raw ? await localizeBriefCards(supabaseAdmin, [raw], locale) : [null]
+        return NextResponse.json({ status: 'ready', cached: true, charged: 0, card: card ?? raw, price: creditsForCrisisDeep() })
       }
     }
 
@@ -123,6 +129,8 @@ export async function POST(req: Request) {
   }
   const auth = await requireCrisisUser(req, body)
   if ('response' in auth) return auth.response
+  const locale = localeFromRequest(req)
+  const t = getCrisisUiPack(locale)
   const regionId = typeof body.regionId === 'number' ? body.regionId : Number(body.regionId)
   if (!Number.isInteger(regionId) || regionId <= 0) {
     return NextResponse.json({ error: 'regionId is required' }, { status: 400 })
@@ -141,7 +149,7 @@ export async function POST(req: Request) {
       await refundUserRequest(supabaseAdmin, own.id, auth.userId, regionId)
       return NextResponse.json({
         status: 'failed',
-        message: DEEP_FAILED_COPY,
+        message: t.deepFailed,
         refunded: true,
       })
     }
@@ -149,7 +157,7 @@ export async function POST(req: Request) {
     if (own && (own.status === 'queued' || own.status === 'running')) {
       return NextResponse.json({
         status: 'pending',
-        message: DEEP_WAIT_COPY,
+        message: t.deepWait,
         requestId: own.id,
         charged: 0,
       })
@@ -158,7 +166,8 @@ export async function POST(req: Request) {
     if (own && own.status === 'done') {
       const ownCard = own.run_id ? await cardFromRunId(supabaseAdmin, own.run_id) : null
       if (ownCard) {
-        return NextResponse.json({ status: 'ready', cached: true, charged: 0, card: ownCard })
+        const [card] = await localizeBriefCards(supabaseAdmin, [ownCard], locale)
+        return NextResponse.json({ status: 'ready', cached: true, charged: 0, card: card ?? ownCard })
       }
     }
 
@@ -170,14 +179,15 @@ export async function POST(req: Request) {
         const charged = await chargeCrisis(auth.userId, CRISIS_DEEP_CREDITS, CRISIS_DEEP_MODULE)
         if (!charged.ok) return charged.response
       }
-      const card = await cardFromRunId(supabaseAdmin, fresh.id)
-      if (card) {
+      const raw = await cardFromRunId(supabaseAdmin, fresh.id)
+      if (raw) {
         await recordUnlock(supabaseAdmin, { userId: auth.userId, kind: 'deep', runId: fresh.id, regionId })
+        const [card] = await localizeBriefCards(supabaseAdmin, [raw], locale)
         return NextResponse.json({
           status: 'ready',
           cached: true,
           charged: already ? 0 : CRISIS_DEEP_CREDITS,
-          card,
+          card: card ?? raw,
         })
       }
     }
@@ -202,7 +212,7 @@ export async function POST(req: Request) {
     const request = await queueDeepRequest(supabaseAdmin, regionId, auth.userId)
     return NextResponse.json({
       status: 'pending',
-      message: DEEP_WAIT_COPY,
+      message: t.deepWait,
       requestId: request.id,
       charged: already ? 0 : CRISIS_DEEP_CREDITS,
     })

@@ -3,6 +3,8 @@ import { requireAdmin } from '@/lib/admin/require-admin'
 import { publishableIndices } from '@/lib/crisis/admin/publish'
 import { buildLedgerInserts } from '@/lib/crisis/engine/publish'
 import { insertHypothesis, loadRun, markPublished } from '@/lib/crisis/engine/store'
+import { cheapTranslateCaller } from '@/lib/crisis/translate/caller'
+import { seedPublishTranslations } from '@/lib/crisis/translate/ensure'
 import { supabaseAdmin } from '@/lib/supabase/server'
 
 export async function POST(req: Request) {
@@ -39,6 +41,13 @@ export async function POST(req: Request) {
       ? existing.published_hypothesis_ids.map(Number)
       : []
     await markPublished(supabaseAdmin, runId, [...previous, ...ids])
+    if (run.result) {
+      try {
+        await seedPublishTranslations(supabaseAdmin, runId, run.result, cheapTranslateCaller)
+      } catch {
+        // Publish still succeeds if the translation table is not applied yet.
+      }
+    }
     return NextResponse.json({ ok: true, publishedIds: ids, public: true })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Publish failed'
