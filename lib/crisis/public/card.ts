@@ -35,7 +35,7 @@ export interface UnlockedBriefCard {
   summary_en: string
   headlines: PublicHypothesis[]
   missed_by_others: PublicHypothesis[]
-  baseline_risks: BaselineRisk[]
+  baseline_risks: Array<BaselineRisk & { what_to_do_local?: string[] }>
   novelty: { only_us: number; also_seen_elsewhere: number }
   evidence: string[]
   costUsd: number
@@ -173,7 +173,10 @@ export function unlockBriefCard(opts: {
     summary_en: opts.result.summary_en,
     headlines: opts.result.headlines.map(localize),
     missed_by_others: opts.result.missed_by_others.map(localize),
-    baseline_risks: opts.result.baseline_risks,
+    baseline_risks: opts.result.baseline_risks.map((row) => ({
+      ...row,
+      what_to_do_local: [...(row.what_to_do ?? [])],
+    })),
     novelty: opts.result.novelty_counts ?? { only_us: 0, also_seen_elsewhere: 0 },
     evidence: opts.searchUrls,
     costUsd: opts.costUsd,

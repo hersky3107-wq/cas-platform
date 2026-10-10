@@ -48,7 +48,7 @@ export function applyPayloadToPublicHypothesis(
     title: text.title || row.title,
     why_humans_miss: text.why_humans_miss || row.why_humans_miss,
     what_to_do_ko: what,
-    what_to_do_local: what,
+    what_to_do_local: row.what_to_do_local.length ? row.what_to_do_local : row.what_to_do_ko,
     noveltyBadge: noveltyBadge(row.novelty),
   }
 }

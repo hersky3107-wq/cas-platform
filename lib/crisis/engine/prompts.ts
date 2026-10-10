@@ -4,6 +4,10 @@ import { localLanguages } from './languages'
 import { DEPARTMENTS, type Department, type EngineCard, type Horizon } from './schema'
 import type { SearchItem } from './search-items'
 
+/** Open-Meteo rain/river totals on the card are always 7-day, even when the run horizon is 30d. */
+export const FORECAST_TOTALS_NOTE =
+  'Rain and river forecast totals (sum_mm, peak_m3s) are 7-day (7일) forecasts. Never write them as 30-day or 30 days, even if the card horizon is 30d.'
+
 export const SHARED_PREAMBLE = [
   'You are looking for what people miss when departments do not talk to each other: a trigger, a hidden fragility, and the people in the way.',
   'One true hit matters more than five misses. A range of voices matters more than strict verification.',
@@ -79,10 +83,11 @@ export function analystUser(card: EngineCard, department: Department): string {
     country: view.country,
     iso3: view.iso3,
     horizon: view.horizon,
+    forecast_totals: '7-day (7일)',
     components: view.components,
     fragility: view.fragility,
     cascades: view.cascades,
-    context: view.context,
+    context: [...view.context, FORECAST_TOTALS_NOTE],
   })
 }
 
@@ -211,10 +216,11 @@ export function hunterUser(card: EngineCard, notes: string[], items: SearchItem[
       lat: card.lat,
       lon: card.lon,
       horizon: card.horizon,
+      forecast_totals: '7-day (7일)',
       components: card.components,
       fragility: card.fragility,
       cascades: card.cascades,
-      context: card.context,
+      context: [...card.context, FORECAST_TOTALS_NOTE],
       urban: card.urban,
       zone_key: card.zone_key,
       members: card.members,
@@ -256,6 +262,7 @@ export function judgeSystem(): string {
     'reported_as_news is the url of the item that already reports the same thing, or "".',
     'Entity names in titles and text must match evidence wording exactly. Do not rename facilities (for example do not turn "Spring Valley Regional Hospital" into "referral hospital" or "the hospital").',
     'If evidence older than 60 days says closed, blocked, or evacuated, write "reported <status> on <date>, current status unverified". Never state that status as current.',
+    FORECAST_TOTALS_NOTE,
     'Stage and confidence are computed in code from how many independent hunters proposed the group, its departments, its weakness notes, and its evidence. Do not score them.',
     'Only for the 3 groups with the highest non_obviousness write headline_ko and headline_en (a news line or a short, at most 16 words) and brief_ko and brief_en (at most 2 sentences). Leave them "" for every other group.',
     'headline_ko and brief_ko are always Korean (한국어, Hangul), whatever the local language. headline_en and brief_en are English.',

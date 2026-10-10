@@ -268,14 +268,15 @@ export default function CrisisMapPage() {
   }, [regions, showAllRows])
   const scoredCount = useMemo(() => regions.filter((row) => row.score > 0).length, [regions])
 
-  async function requestDeep() {
-    if (!selected || busy) return
+  async function requestDeep(regionId: number) {
+    if (busy) return
+    setSelectedId(regionId)
     setBusy(true)
     setDeepMsg(null)
     try {
       const res = await authenticatedFetch('/api/crisis/deep', {
         method: 'POST',
-        json: { regionId: selected.regionId, lang: locale },
+        json: { regionId, lang: locale },
       })
       const body = (await res.json().catch(() => null)) as DeepBody
       if (res.status === 402) throw new Error(t.notEnoughCredits)
@@ -447,11 +448,12 @@ export default function CrisisMapPage() {
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
           <div className="flex flex-wrap items-center justify-between gap-2 border-b border-white/10 px-4 py-3">
             <div className="grid w-full grid-cols-12 gap-2 text-xs font-semibold text-slate-400">
-              <div className="col-span-4">{t.colRegion}</div>
-              <div className="col-span-3">{t.colCountry}</div>
+              <div className="col-span-3">{t.colRegion}</div>
+              <div className="col-span-2">{t.colCountry}</div>
               <div className="col-span-1">{t.colStage}</div>
               <div className="col-span-1 text-right">{t.colScore}</div>
               <div className="col-span-3">{t.colTriggers}</div>
+              <div className="col-span-2 text-right">{t.rowAnalyze}</div>
             </div>
           </div>
           {tableRows.length === 0 ? (
@@ -459,16 +461,23 @@ export default function CrisisMapPage() {
           ) : (
             <div className="divide-y divide-white/8">
               {tableRows.map((row) => (
-                <button
+                <div
                   key={row.regionId}
-                  type="button"
+                  role="button"
+                  tabIndex={0}
                   onClick={() => setSelectedId(row.regionId)}
-                  className={`grid w-full grid-cols-12 items-center gap-2 px-4 py-3 text-left text-sm hover:bg-white/[0.04] ${
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter' || event.key === ' ') {
+                      event.preventDefault()
+                      setSelectedId(row.regionId)
+                    }
+                  }}
+                  className={`grid w-full cursor-pointer grid-cols-12 items-center gap-2 px-4 py-3 text-left text-sm hover:bg-white/[0.04] ${
                     selectedId === row.regionId ? 'bg-cyan-500/10' : ''
                   }`}
                 >
-                  <div className="col-span-4 truncate font-semibold">{row.name}</div>
-                  <div className="col-span-3 truncate text-slate-300">
+                  <div className="col-span-3 truncate font-semibold">{row.name}</div>
+                  <div className="col-span-2 truncate text-slate-300">
                     {countryDisplayName(row.iso3, locale, row.country)}
                   </div>
                   <div className="col-span-1 text-cyan-100">{row.stage}</div>
@@ -480,7 +489,22 @@ export default function CrisisMapPage() {
                       </span>
                     ))}
                   </div>
-                </button>
+                  <div className="col-span-2 text-right">
+                    <button
+                      type="button"
+                      title={t.rowAnalyzeHint(CRISIS_DEEP_CREDITS)}
+                      aria-label={t.rowAnalyzeHint(CRISIS_DEEP_CREDITS)}
+                      disabled={busy || deepStatus === 'pending'}
+                      onClick={(event) => {
+                        event.stopPropagation()
+                        void requestDeep(row.regionId)
+                      }}
+                      className="rounded-xl bg-cyan-600 px-2.5 py-1 text-[11px] font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
+                    >
+                      {t.rowAnalyze} · {CRISIS_DEEP_CREDITS}
+                    </button>
+                  </div>
+                </div>
               ))}
             </div>
           )}
@@ -607,7 +631,7 @@ export default function CrisisMapPage() {
               </Link>
               <button
                 type="button"
-                onClick={() => void requestDeep()}
+                onClick={() => void requestDeep(selected.regionId)}
                 disabled={busy || deepStatus === 'pending'}
                 className="w-full rounded-xl bg-cyan-600 px-4 py-3 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
               >

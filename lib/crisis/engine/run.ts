@@ -600,7 +600,12 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     judge: null,
   }))
   const judgePacket = (hypotheses: unknown[]) => ({
-    card: { region: opts.card.name, country: opts.card.country, horizon: opts.card.horizon },
+    card: {
+      region: opts.card.name,
+      country: opts.card.country,
+      horizon: opts.card.horizon,
+      forecast_totals: '7-day (7일)',
+    },
     hypotheses,
     suggested_groups: suggested,
     obvious_list: obvious.map((row) => row.line),

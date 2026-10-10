@@ -3,6 +3,8 @@
  * vocabulary is shared across the app. Crisis resolution order is its own:
  * saved toggle > Accept-Language > IP country > en.
  */
+import { type LeagueLocale } from '@/lib/league/i18n/locales'
+
 export {
   LEAGUE_LOCALES as CRISIS_LOCALES,
   LEAGUE_SELECTABLE_LOCALES as CRISIS_SELECTABLE_LOCALES,
@@ -14,6 +16,9 @@ export {
 
 export const CRISIS_LANG_COOKIE = 'crisis_lang'
 export const CRISIS_LANG_STORAGE = 'crisis_lang'
+
+/** Admin run views always show the Korean card body. */
+export const ADMIN_CARD_LOCALE: LeagueLocale = 'ko'
 
 export const CRISIS_LOCALE_NAMES: Record<string, string> = {
   en: 'English',

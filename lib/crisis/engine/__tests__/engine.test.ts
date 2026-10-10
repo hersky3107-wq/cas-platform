@@ -4,7 +4,7 @@ vi.mock('server-only', () => ({}))
 
 import { hypothesisSchema } from '../schema'
 import { localLanguages } from '../languages'
-import { analystUser, departmentSliceEmpty, ensureQueries, fallbackQueries, hunterUser, queryWriterSystem, SHARED_PREAMBLE } from '../prompts'
+import { analystUser, departmentSliceEmpty, ensureQueries, fallbackQueries, FORECAST_TOTALS_NOTE, hunterUser, judgeSystem, queryWriterSystem, SHARED_PREAMBLE } from '../prompts'
 import { buildLedgerInserts, ledgerContentHash, memoryLedger, publishHypotheses } from '../publish'
 import { estimateRegionRunUsd, resolveRoster } from '../roster'
 import { extractJson } from '../parse'
@@ -392,7 +392,10 @@ describe('search items and structure', () => {
     expect(queryWriterSystem(card())).toContain('Sinhala')
     expect(queryWriterSystem(card())).toContain('Tamil')
     expect(analystUser(card(), 'natural-hydro')).toContain('Victoria Dam')
+    expect(analystUser(card(), 'natural-hydro')).toContain('7-day (7일)')
     expect(hunterUser(card(), [], [])).toContain('Badulla')
+    expect(hunterUser(card(), [], [])).toContain(FORECAST_TOTALS_NOTE)
+    expect(judgeSystem()).toContain('7일')
     const queries = ensureQueries(card(), ['Badulla flood'])
     expect(queries.length).toBeGreaterThanOrEqual(3)
     expect(queries.some((query) => /[\u0D80-\u0DFF]/.test(query))).toBe(true)

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { CRISIS_UI, getCrisisUiPack, noveltyLabel, stageBannerText } from '../dictionary'
-import { CRISIS_LOCALES, CRISIS_SELECTABLE_LOCALES } from '../locales'
+import { ADMIN_CARD_LOCALE, CRISIS_LOCALES, CRISIS_SELECTABLE_LOCALES } from '../locales'
 import { readCookieValue, resolveCrisisLocale } from '../resolve'
 
 describe('resolveCrisisLocale order', () => {
@@ -35,17 +35,27 @@ describe('cookie reader', () => {
 describe('Korean dictionary', () => {
   it('uses the required plain words', () => {
     const t = getCrisisUiPack('ko')
-    expect(t.onlyUs).toBe('우리만 포착')
-    expect(t.alsoSeenElsewhere).toBe('다른 곳도 보도')
-    expect(t.baselineRisks).toBe('알려진 위험')
-    expect(t.missedByOthers).toBe('남들이 놓친 신호')
+    expect(t.onlyUs).toBe('보도되지 않은 내용')
+    expect(t.alsoSeenElsewhere).toBe('이미 보도된 내용')
+    expect(t.baselineRisks).toBe('일반 위험')
+    expect(t.missedByOthers).toBe('추가 경고')
+    expect(t.headlines).toBe('주요 경고')
+    expect(t.whyMiss).toBe('왜 주목해야 하나')
     expect(t.headlineFallback).toBe('참고용')
+    expect(t.rowAnalyze).toBe('분석')
+    expect(t.rowAnalyzeHint(25)).toBe('이 지역 AI 정밀 분석 · 25크레딧, 약 4분')
+    expect(getCrisisUiPack('en').headlines).toBe('Main warnings')
+    expect(getCrisisUiPack('en').missedByOthers).toBe('Extra warnings')
+    expect(getCrisisUiPack('en').baselineRisks).toBe('General risks')
+    expect(getCrisisUiPack('en').onlyUs).toBe('Not yet reported')
+    expect(getCrisisUiPack('en').alsoSeenElsewhere).toBe('Already reported')
+    expect(getCrisisUiPack('en').whyMiss).toBe('Why this matters')
     expect(t.stageBanner[5]).toBe('즉시 주의')
     expect(t.stageBanner[4]).toBe('경계')
     expect(t.stageBanner[3]).toBe('주의')
     expect(t.stageBanner[2]).toBe('관찰')
     expect(t.calmEmpty).toBe('현재 큰 위험 신호 없음')
-    expect(noveltyLabel('only_us', t)).toBe('우리만 포착')
+    expect(noveltyLabel('only_us', t)).toBe('보도되지 않은 내용')
     expect(stageBannerText(5, t)).toBe('즉시 주의')
     expect(stageBannerText(2, t)).toBe('관찰')
     expect(stageBannerText(1, t)).toBe('현재 큰 위험 신호 없음')
@@ -75,6 +85,7 @@ describe('Korean dictionary', () => {
       expect(getCrisisUiPack(locale).adminTitle.length).toBeGreaterThan(0)
     }
     expect(CRISIS_SELECTABLE_LOCALES).toContain('ko')
+    expect(ADMIN_CARD_LOCALE).toBe('ko')
   })
 })
 

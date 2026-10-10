@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/admin/require-admin'
 import { publishableIndices } from '@/lib/crisis/admin/publish'
 import { loadRun } from '@/lib/crisis/engine/store'
-import { localeFromRequest } from '@/lib/crisis/i18n/from-request'
+import { ADMIN_CARD_LOCALE } from '@/lib/crisis/i18n/locales'
 import { cheapTranslateCaller } from '@/lib/crisis/translate/caller'
 import { applyPayloadToResult } from '@/lib/crisis/translate/apply'
 import { ensureCardTranslation } from '@/lib/crisis/translate/ensure'
@@ -24,13 +24,12 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
     const publishedIds = Array.isArray(extra?.published_hypothesis_ids)
       ? extra.published_hypothesis_ids.map(Number)
       : []
-    const locale = localeFromRequest(req)
     let result = run.result
     if (result) {
       try {
         const payload = await ensureCardTranslation(supabaseAdmin, {
           cardId: run.id ?? id,
-          lang: locale,
+          lang: ADMIN_CARD_LOCALE,
           result,
           caller: cheapTranslateCaller,
         })
@@ -51,7 +50,7 @@ export async function GET(req: Request, ctx: { params: Promise<{ id: string }> }
       publishable: publishableIndices(run.result),
       publishedIds,
       public: publishedIds.length > 0,
-      locale,
+      locale: ADMIN_CARD_LOCALE,
     })
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Failed to load run'

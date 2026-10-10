@@ -29,6 +29,7 @@ export type HypothesisRow = {
   possibility: string
   why_humans_miss: string
   what_to_do_ko: string[]
+  what_to_do_local?: string[]
   official_links: Array<{ label: string; url: string }>
   evidence: Array<{ ref: string; url?: string }>
   hazards?: string[]
@@ -46,7 +47,15 @@ export type UnlockedCard = {
   headline_fallback?: boolean
   headlines: HypothesisRow[]
   missed_by_others: HypothesisRow[]
-  baseline_risks: Array<{ title: string; stage: number; possibility: string; what_to_do: string[]; reason?: string; regions?: Array<{ name: string }> }>
+  baseline_risks: Array<{
+    title: string
+    stage: number
+    possibility: string
+    what_to_do: string[]
+    what_to_do_local?: string[]
+    reason?: string
+    regions?: Array<{ name: string }>
+  }>
   novelty: { only_us: number; also_seen_elsewhere: number }
   evidence: string[]
   zoneKey?: string
@@ -200,6 +209,7 @@ export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiP
                   stage: row.stage,
                   summary: row.title,
                   whatToDo: row.what_to_do,
+                  whatToDoLocal: row.what_to_do_local,
                   whyMiss: row.reason,
                 }}
               />
@@ -282,6 +292,7 @@ function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: Cri
                   stage: row.stage,
                   summary: row.title,
                   whatToDo: row.what_to_do_ko,
+                  whatToDoLocal: row.what_to_do_local,
                   whyMiss: row.why_humans_miss,
                   novelty: row.novelty,
                   hazards: row.hazards,

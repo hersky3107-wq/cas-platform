@@ -118,7 +118,7 @@ export default function CrisisAdminPage() {
   const loadRun = useCallback(
     async (runId: string) => {
       setRunError(null)
-      const res = await fetch(`/api/admin/crisis/runs/${runId}?lang=${encodeURIComponent(locale)}`, {
+      const res = await fetch(`/api/admin/crisis/runs/${runId}?lang=ko`, {
         credentials: 'include',
       })
       const body = (await res.json().catch(() => null)) as RunView & { error?: string }
@@ -126,7 +126,7 @@ export default function CrisisAdminPage() {
       setRun(body)
       setSelectedId(body.regionId)
     },
-    [locale, t.loadRunFailed],
+    [t.loadRunFailed],
   )
 
   useEffect(() => {

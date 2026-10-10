@@ -51,8 +51,8 @@ describe('map and briefing shaping', () => {
     })
     expect(locked).toMatchObject({ locked: true, status: 'public', headline_ko: '바둘라 산사태 위험', stage: 1 })
     expect(locked).not.toHaveProperty('headlines')
-    expect(noveltyBadge('only_us')).toBe('우리만 포착')
-    expect(noveltyBadge('also_seen_elsewhere')).toBe('다른 곳도 보도')
+    expect(noveltyBadge('only_us')).toBe('보도되지 않은 내용')
+    expect(noveltyBadge('also_seen_elsewhere')).toBe('이미 보도된 내용')
     const free = freeLayerFromDetail({
       people_norm: 0.42,
       fragility_items: [{ name: 'Uma Oya' }],
@@ -132,7 +132,7 @@ describe('map and briefing shaping', () => {
       },
     })
     expect(card.locked).toBe(false)
-    expect(card.headlines[0].noveltyBadge).toBe('우리만 포착')
+    expect(card.headlines[0].noveltyBadge).toBe('보도되지 않은 내용')
     expect(card.headlines[0].why_humans_miss).toBe('x')
     expect(card.stage).toBe(3)
     expect(card.headlines[0].what_to_do_ko).toEqual(['Move upslope'])

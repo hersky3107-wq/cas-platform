@@ -141,6 +141,8 @@ export type CrisisUiPack = {
   zonePicker: string
   borderLinks: string
   intraRegionLinks: string
+  rowAnalyze: string
+  rowAnalyzeHint: (credits: number) => string
 }
 
 const ko: CrisisUiPack = {
@@ -184,18 +186,18 @@ const ko: CrisisUiPack = {
   unlock: (credits) => `${credits}크레딧으로 열기`,
   unlocking: '여는 중…',
   unlockFailed: '잠금 해제에 실패했습니다',
-  noveltyLine: (onlyUs, also) => `우리만 포착 ${onlyUs} · 다른 곳도 보도 ${also}`,
+  noveltyLine: (onlyUs, also) => `보도되지 않은 내용 ${onlyUs} · 이미 보도된 내용 ${also}`,
   none: '없음',
   whatToDo: '지금 할 일',
-  whyMiss: '남들이 놓친 이유',
+  whyMiss: '왜 주목해야 하나',
   evidence: '근거',
   showEvidence: '근거 보기',
   hideEvidence: '근거 숨기기',
-  onlyUs: '우리만 포착',
-  alsoSeenElsewhere: '다른 곳도 보도',
-  baselineRisks: '알려진 위험',
-  missedByOthers: '남들이 놓친 신호',
-  headlines: '핵심 신호',
+  onlyUs: '보도되지 않은 내용',
+  alsoSeenElsewhere: '이미 보도된 내용',
+  baselineRisks: '일반 위험',
+  missedByOthers: '추가 경고',
+  headlines: '주요 경고',
   headlineFallback: '참고용',
   stageWord: '단계',
   stageBanner: {
@@ -236,7 +238,7 @@ const ko: CrisisUiPack = {
   publishFailed: '공개에 실패했습니다',
   pickRun: '끝난 대기열 항목을 골라 카드를 확인하세요.',
   noveltyAdmin: (onlyUs, also, cost) =>
-    `우리만 포착 ${onlyUs} · 다른 곳도 보도 ${also} · 비용 $${cost}`,
+    `보도되지 않은 내용 ${onlyUs} · 이미 보도된 내용 ${also} · 비용 $${cost}`,
   loadFailed: '불러오지 못했습니다',
   loadRunFailed: '실행 결과를 불러오지 못했습니다',
   couldNotQueue: '대기열에 넣지 못했습니다',
@@ -291,12 +293,12 @@ const ko: CrisisUiPack = {
   },
   showStage1: '1단계 표시',
   hideStage1: '1단계 숨김',
-  lockedInside: (headlines, missed, baseline) => `핵심 신호 ${headlines} · 놓친 신호 ${missed} · 알려진 위험 ${baseline}`,
+  lockedInside: (headlines, missed, baseline) => `주요 경고 ${headlines} · 추가 경고 ${missed} · 일반 위험 ${baseline}`,
   lockedTeaser: '방류 전 고지대로 이동하고, 72시간 식수·연료를 확보하세요.',
   emptyTitle: '오늘의 AI 브리핑 준비 중',
-  emptyTier1: '핵심 신호 — 지금 당장 대응해야 할 가장 급한 위험',
-  emptyTier2: '남들이 놓친 신호 — 주요 언론·기관이 아직 보지 못한 것',
-  emptyTier3: '알려진 위험 — 배경에 깔린 구조적 취약점',
+  emptyTier1: '주요 경고 — 지금 당장 대응해야 할 가장 급한 위험',
+  emptyTier2: '추가 경고 — 주요 언론·기관이 아직 보지 못한 것',
+  emptyTier3: '일반 위험 — 배경에 깔린 구조적 취약점',
   emptySampleLabel: '예시',
   sampleHeadline: '메콩강 상류 댐 방류로 하류 3개 주 홍수 경계',
   sampleSummary: '7일 폭우 예보와 댐 3곳 동시 방류, 저지대 200만 명 노출',
@@ -341,6 +343,8 @@ const ko: CrisisUiPack = {
   zonePicker: '구역',
   borderLinks: '국경 연결',
   intraRegionLinks: '지역 간 연결',
+  rowAnalyze: '분석',
+  rowAnalyzeHint: (credits) => `이 지역 AI 정밀 분석 · ${credits}크레딧, 약 4분`,
 }
 
 const en: CrisisUiPack = {
@@ -384,18 +388,18 @@ const en: CrisisUiPack = {
   unlock: (credits) => `Unlock for ${credits} credits`,
   unlocking: 'Unlocking…',
   unlockFailed: 'Could not unlock',
-  noveltyLine: (onlyUs, also) => `Only we caught ${onlyUs} · also reported ${also}`,
+  noveltyLine: (onlyUs, also) => `Not yet reported ${onlyUs} · already reported ${also}`,
   none: 'None',
   whatToDo: 'What to do',
-  whyMiss: 'Why others miss it',
+  whyMiss: 'Why this matters',
   evidence: 'Evidence',
   showEvidence: 'Show evidence',
   hideEvidence: 'Hide evidence',
-  onlyUs: 'Only we caught',
-  alsoSeenElsewhere: 'Also reported elsewhere',
-  baselineRisks: 'Known risks',
-  missedByOthers: 'Signals others missed',
-  headlines: 'Key signals',
+  onlyUs: 'Not yet reported',
+  alsoSeenElsewhere: 'Already reported',
+  baselineRisks: 'General risks',
+  missedByOthers: 'Extra warnings',
+  headlines: 'Main warnings',
   headlineFallback: 'For reference',
   stageWord: 'Stage',
   stageBanner: {
@@ -436,7 +440,7 @@ const en: CrisisUiPack = {
   publishFailed: 'Publish failed',
   pickRun: 'Pick a finished queue item to inspect the card.',
   noveltyAdmin: (onlyUs, also, cost) =>
-    `Only we caught ${onlyUs} · also reported ${also} · cost $${cost}`,
+    `Not yet reported ${onlyUs} · already reported ${also} · cost $${cost}`,
   loadFailed: 'Failed to load',
   loadRunFailed: 'Failed to load run',
   couldNotQueue: 'Could not queue',
@@ -475,12 +479,12 @@ const en: CrisisUiPack = {
   },
   showStage1: 'Show stage 1',
   hideStage1: 'Hide stage 1',
-  lockedInside: (headlines, missed, baseline) => `${headlines} key signals · ${missed} missed · ${baseline} known risks`,
+  lockedInside: (headlines, missed, baseline) => `${headlines} main warnings · ${missed} extra · ${baseline} general risks`,
   lockedTeaser: 'Move to higher ground before discharge and secure 72 hours of water and fuel.',
   emptyTitle: 'Today’s AI briefing is being prepared',
-  emptyTier1: 'Key signals — the most urgent dangers to act on now',
-  emptyTier2: 'Signals others missed — what major outlets haven’t caught yet',
-  emptyTier3: 'Known risks — the structural fragility underneath',
+  emptyTier1: 'Main warnings — the most urgent dangers to act on now',
+  emptyTier2: 'Extra warnings — what major outlets haven’t caught yet',
+  emptyTier3: 'General risks — the structural fragility underneath',
   emptySampleLabel: 'Sample',
   sampleHeadline: 'Mekong upstream dam discharge puts three downstream provinces on flood alert',
   sampleSummary: '7-day heavy rain forecast plus three dams discharging at once, 2M people exposed in lowlands',
@@ -512,6 +516,8 @@ const en: CrisisUiPack = {
   zonePicker: 'Zone',
   borderLinks: 'Cross-border links',
   intraRegionLinks: 'Within-country links',
+  rowAnalyze: 'Analyze',
+  rowAnalyzeHint: (credits) => `AI deep analysis for this region · ${credits} credits, about 4 minutes`,
 }
 
 const ja: CrisisUiPack = {

@@ -11,6 +11,7 @@ export type SeverityCardModel = {
   stage: number
   summary: string
   whatToDo: string[]
+  whatToDoLocal?: string[]
   whyMiss?: string
   evidence?: EvidenceLink[]
   novelty?: string
@@ -70,6 +71,17 @@ export function SeverityCard({
               </li>
             ))}
           </ul>
+          {card.whatToDoLocal &&
+          card.whatToDoLocal.length > 0 &&
+          card.whatToDoLocal.join('\n') !== card.whatToDo.join('\n') ? (
+            <ul className="mt-2 space-y-1">
+              {card.whatToDoLocal.slice(0, theme.compact ? 2 : 4).map((line) => (
+                <li key={`local-${line}`} className="text-sm font-medium leading-snug text-slate-400">
+                  {line}
+                </li>
+              ))}
+            </ul>
+          ) : null}
         </div>
       ) : null}
       {card.whyMiss && !theme.compact ? (
