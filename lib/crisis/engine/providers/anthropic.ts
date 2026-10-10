@@ -1,31 +1,12 @@
 import { asRecord, num, postJson, requireText } from './http'
-import { envKey, ProviderHttpError, type ProviderCall, type ProviderResult } from './types'
-
-/** Models that answered 400 "does not support assistant message prefill" in this process. */
-const NO_PREFILL = new Set<string>()
+import { envKey, type ProviderCall, type ProviderResult } from './types'
 
 export async function callAnthropic(call: ProviderCall): Promise<ProviderResult> {
-  const prefill = Boolean(call.jsonMode) && !NO_PREFILL.has(call.model)
-  try {
-    return await once(call, prefill)
-  } catch (error) {
-    if (prefill && error instanceof ProviderHttpError && error.status === 400) {
-      if (/prefill/i.test(error.message)) NO_PREFILL.add(call.model)
-      return once(call, false)
-    }
-    throw error
-  }
-}
-
-async function once(call: ProviderCall, prefill: boolean): Promise<ProviderResult> {
   const body: Record<string, unknown> = {
     model: call.model,
     max_tokens: call.maxTokens,
     system: call.system || undefined,
-    messages: [
-      { role: 'user', content: call.user },
-      ...(prefill ? [{ role: 'assistant', content: '{' }] : []),
-    ],
+    messages: [{ role: 'user', content: call.user }],
   }
   if (call.anthropicThinking === 'disabled') {
     body.thinking = { type: 'disabled' }
@@ -45,11 +26,10 @@ async function once(call: ProviderCall, prefill: boolean): Promise<ProviderResul
     .filter((block) => block?.type === 'text' && typeof block.text === 'string')
     .map((block) => String(block?.text))
     .join('\n')
-  const joined = prefill && text && !text.trimStart().startsWith('{') ? `{${text}` : text
   const usage = asRecord(json.usage)
   const finishReason = typeof json.stop_reason === 'string' ? json.stop_reason : null
   return {
-    text: requireText(call.model, joined, finishReason),
+    text: requireText(call.model, text, finishReason),
     tokensIn: num(usage?.input_tokens) ?? 0,
     tokensOut: num(usage?.output_tokens) ?? 0,
     costUsd: null,
