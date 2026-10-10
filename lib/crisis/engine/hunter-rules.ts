@@ -1,4 +1,5 @@
 import { hazardsOf, isHazard, type Hazard } from '../config/hazard-taxonomy'
+import { entityNamedInEvidence } from './fact-precision'
 import { normalizeName } from '../ingest/iso'
 import { DEPARTMENTS, type Department, type EngineCard, type Horizon } from './schema'
 import type { SearchItem } from './search-items'
@@ -287,8 +288,12 @@ export function checkHunterRow(
   if (departments.length < 2) reasons.push('crosses fewer than 2 departments')
 
   const named = strings(record.entities ?? record.entity)
-  const entities = named.filter((entity) => entityGrounded(entity, opts.corpus, opts.card))
-  if (!entities.length) reasons.push(named.length ? `entity not in card or search items (${named.slice(0, 2).join(', ')})` : 'no specific entity')
+  const grounded = named.filter((entity) => entityGrounded(entity, opts.corpus, opts.card))
+  const entities = grounded.filter((entity) => entityNamedInEvidence(entity, evidence))
+  if (!entities.length) {
+    if (grounded.length) reasons.push(`entity not named in evidence (${grounded.slice(0, 2).join(', ')})`)
+    else reasons.push(named.length ? `entity not in card or search items (${named.slice(0, 2).join(', ')})` : 'no specific entity')
+  }
 
   const mechanism = text(record.mechanism ?? record.hidden_mechanism)
   if (wordCount(mechanism) < 5) reasons.push('no hidden mechanism')

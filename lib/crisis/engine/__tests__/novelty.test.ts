@@ -40,6 +40,7 @@ function row(extra: Record<string, unknown> = {}) {
     early_indicators: ['Spill gates open on two days running'],
     falsifier: 'The reservoir stays under the spill crest all month.',
     what_to_do: ['Keep off the river road when gates open.'],
+    evidence: [{ type: 'dam', ref: 'Ulhitiya Dam spill floods the Uma Oya tunnel adit road' }],
     ...extra,
   }
 }
@@ -71,13 +72,15 @@ describe('hunter requirements', () => {
     const evidence = [
       { type: 'news', ref: '', url: 'https://adaderana.lk/n/1' },
       { type: 'dam', ref: '  ' },
-      { type: '', ref: 'Ulhitiya Dam' },
+      { type: 'dam', ref: 'Ulhitiya Dam spill note' },
       { type: 'rain', ref: 'card rain', url: '' },
     ]
-    expect(check({ evidence }).draft?.evidence).toEqual([
+    expect(check({ evidence, entities: ['Ulhitiya Dam'] }).draft?.evidence).toEqual([
       { type: 'news', ref: 'https://adaderana.lk/n/1', url: 'https://adaderana.lk/n/1' },
+      { type: 'dam', ref: 'Ulhitiya Dam spill note' },
       { type: 'rain', ref: 'card rain' },
     ])
+    expect(check({ entities: ['Ulhitiya Dam'], evidence: [{ type: 'news', ref: 'hospital in badulla temporarily closed' }] }).reasons[0]).toMatch(/entity not named in evidence/)
   })
 
   it('grounds an entity on a specific word, not a generic one or the place name', () => {

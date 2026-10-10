@@ -241,6 +241,8 @@ export function judgeSystem(): string {
     'non_obviousness is 0 to 1. It is 0 when the group is on obvious_list without a specific twist, or when the same thing is already reported in search_items or already_reported (ReliefWeb, GDACS, Metaculus, news). It is near 1 when a well-informed local official reading one department alone would not think of it.',
     'on_obvious_list is true when the core claim matches an obvious_list line. twist is the specific non-obvious addition, or "".',
     'reported_as_news is the url of the item that already reports the same thing, or "".',
+    'Entity names in titles and text must match evidence wording exactly. Do not rename facilities (for example do not turn "Spring Valley Regional Hospital" into "referral hospital" or "the hospital").',
+    'If evidence older than 60 days says closed, blocked, or evacuated, write "reported <status> on <date>, current status unverified". Never state that status as current.',
     'Stage and confidence are computed in code from how many independent hunters proposed the group, its departments, its weakness notes, and its evidence. Do not score them.',
     'Only for the 3 groups with the highest non_obviousness write headline_ko and headline_en (a news line or a short, at most 16 words) and brief_ko and brief_en (at most 2 sentences). Leave them "" for every other group.',
     'headline_ko and brief_ko are always Korean (한국어, Hangul), whatever the local language. headline_en and brief_en are English.',

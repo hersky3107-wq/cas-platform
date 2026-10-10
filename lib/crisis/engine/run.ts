@@ -20,6 +20,15 @@ import {
 import { sameHazard } from '../config/hazard-taxonomy'
 import { normalizeName } from '../ingest/iso'
 import { mergeBaselineRisks, type AnalystFinding } from './baseline-fill'
+import {
+  applyFactPrecisionToDraft,
+  entityEvidencePrecise,
+  headlineRootKey,
+  hedgeStaleStatusText,
+  pickDiverseHeadlines,
+  staleStatusFacts,
+  type EvidenceDates,
+} from './fact-precision'
 import { coverageCounts, mainstreamFromSearch, noveltyFor, withinDays, type BackgroundCoverageItem, type CoverageItem } from './coverage'
 import { checkHunterRow, clusterDrafts, entityCorpus, entityWords, HUNTER_MAX_HYPOTHESES, obviousList, type Draft, type ObviousEntry } from './hunter-rules'
 import { extractJson, logParseFailure, RETRY_JSON_HINT } from './parse'
@@ -493,25 +502,30 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     ...coverage.map((item) => item.url),
     ...drafts.flatMap((draft) => [...draft.evidence.flatMap((item) => (item.url ? [item.url] : [])), ...draft.official_links.map((link) => link.url)]),
   ])
+  const evidenceDates: EvidenceDates = new Map(searchItems.map((item) => [item.url, item.published]))
   const backgroundByUrl = new Map<string, BackgroundCoverageItem>()
   const scored = grouped.map((row) => {
     const verdict = obviousnessOf(row, opts.card, obvious, coverage, now, knownUrls)
-    const built = toHypothesis(row.draft, row.outsider, opts.card, coverage, verdict.non, row.judge?.twist ?? '')
+    const preciseDraft = applyFactPrecisionToDraft(row.draft, evidenceDates, now)
+    const built = toHypothesis(preciseDraft, row.outsider, opts.card, coverage, verdict.non, row.judge?.twist ?? '', evidenceDates, now)
     for (const entry of built.background) backgroundByUrl.set(entry.url, entry)
-    return { row, verdict, hypothesis: built.hypothesis }
+    return { row, verdict, hypothesis: built.hypothesis, entityPrecise: entityEvidencePrecise(preciseDraft) }
   })
   const liveRows = scored.filter((item) => item.verdict.non > 0)
   const rankScore = (item: (typeof scored)[number]) => item.verdict.non * item.hypothesis.stage
-  const headlinePool = liveRows
-    .filter((item) => !item.row.outsider)
-    .sort((a, b) => rankScore(b) - rankScore(a) || b.hypothesis.proposed_by.length - a.hypothesis.proposed_by.length)
+  const headlinePool = liveRows.filter((item) => !item.row.outsider && item.entityPrecise)
   let headline_fallback = false
-  let headlineRows = headlinePool.filter((item) => item.hypothesis.stage >= 3)
-  if (headlineRows.length === 0 && headlinePool.length > 0) {
+  let headlineCandidates = headlinePool.filter((item) => item.hypothesis.stage >= 3)
+  if (headlineCandidates.length === 0 && headlinePool.length > 0) {
     headline_fallback = true
-    headlineRows = [...headlinePool].sort((a, b) => b.hypothesis.stage - a.hypothesis.stage || rankScore(b) - rankScore(a))
+    headlineCandidates = [...headlinePool].sort((a, b) => b.hypothesis.stage - a.hypothesis.stage || rankScore(b) - rankScore(a))
   }
-  headlineRows = headlineRows.slice(0, 3)
+  const headlineRows = pickDiverseHeadlines(
+    headlineCandidates,
+    (item) => rankScore(item),
+    (item) => headlineRootKey(item.hypothesis),
+    3,
+  )
   const headlineIds = new Set(headlineRows.flatMap((item) => item.row.sourceIds))
   const headlines = headlineRows.map((item) => ({ ...item.hypothesis, outsider: false }))
   const missed_by_others = liveRows
@@ -523,11 +537,12 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   const lead = headlineRows[0]
   if (lead) {
     const judged = lead.row.judge
+    const stale = staleStatusFacts(lead.row.draft, evidenceDates, now)
     const title = lead.hypothesis.title
     summaries = {
-      headline_en: stringOr(judged?.headline_en, `${opts.card.name}: ${title}`),
+      headline_en: hedgeStaleStatusText(stringOr(judged?.headline_en, `${opts.card.name}: ${title}`), stale),
       headline_ko: stringOr(hangulOnly(judged?.headline_ko), `${opts.card.name}: ${title}`),
-      summary_en: stringOr(judged?.brief_en, `${title}. ${lead.hypothesis.why_humans_miss}`),
+      summary_en: hedgeStaleStatusText(stringOr(judged?.brief_en, `${title}. ${lead.hypothesis.why_humans_miss}`), stale),
       summary_ko: stringOr(hangulOnly(judged?.brief_ko), stringOr(hangulOnly(judged?.headline_ko), `${opts.card.name}: ${title}`)),
     }
   } else if (baselineRisks.length) {
@@ -767,7 +782,10 @@ function toHypothesis(
   coverage: CoverageItem[],
   nonObviousness: number,
   twist: string,
+  evidenceDates: EvidenceDates,
+  now: Date,
 ): { hypothesis: Hypothesis; background: BackgroundCoverageItem[] } {
+  const stale = staleStatusFacts(draft, evidenceDates, now)
   const departments = new Set<string>([...draft.departments, ...departmentsTouched(draft)])
   const structure = structureOf({
     hunters: draft.proposed_by.length,
@@ -802,8 +820,11 @@ function toHypothesis(
     early_indicators: draft.early_indicators,
     falsifier: draft.falsifier,
     non_obviousness: Math.round(nonObviousness * 100) / 100,
-    twist: twist || undefined,
+    twist: twist ? hedgeStaleStatusText(twist, stale) : undefined,
     novelty_match: novelty.match,
   }
+  hypothesis.title = hedgeStaleStatusText(hypothesis.title, stale)
+  hypothesis.why_humans_miss = hedgeStaleStatusText(hypothesis.why_humans_miss, stale)
+  if (hypothesis.mechanism) hypothesis.mechanism = hedgeStaleStatusText(hypothesis.mechanism, stale)
   return { hypothesis: hypothesisSchema.parse(hypothesis), background: novelty.background }
 }
