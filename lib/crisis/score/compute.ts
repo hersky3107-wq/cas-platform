@@ -75,6 +75,7 @@ export function isExtremeTrigger(c: TriggerComponent): boolean {
   }
   if (c.key === 'quake') {
     const mag = typeof c.raw.mag === 'number' ? c.raw.mag : 0
+    if (c.raw.forecast === 'probability' && mag < QUAKE.magHard) return false
     return mag >= QUAKE.magHard || c.value >= QUAKE.magHardValue
   }
   if (c.key === 'conflict') {
@@ -144,6 +145,7 @@ export function finalizeScore(opts: {
   watchlist?: boolean
   context?: string[]
   extra_items?: FragilityItem[]
+  coastal?: boolean
 }): RegionScore {
   const trigger = combineTrigger(opts.components)
   const hydro = fired(opts.components, DAM_TRIGGER_KEYS)
@@ -177,6 +179,7 @@ export function finalizeScore(opts: {
     kinds: opts.kinds,
     urbanPop: opts.urban_pop,
     watchlist: opts.watchlist,
+    coastal: opts.coastal,
   })
   const compound = compoundBonus(opts.components)
   const cascade = cascadeBonusApplies(watch, opts.kinds, CASCADE_SEEDS) ? SCORE.cascadeBonus : 0

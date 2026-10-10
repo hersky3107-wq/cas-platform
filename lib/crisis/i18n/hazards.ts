@@ -19,6 +19,13 @@ export type HazardUiSlice = {
   triggerExplanation: (key: string) => string
   formatExpectedWindow: (window: ExpectedWindow | null | undefined) => string
   triggerChipLine: (key: string, window: ExpectedWindow | null | undefined) => string
+  probabilityForecast: string
+  earthquakeProbabilityLine: (multiplier: number, recent: number, usual: number, oaf?: { m5: number; m6: number; m7: number } | null) => string
+  aftershockWeekLine: (m5: number, m6: number, m7: number) => string
+  volcanoProbabilityLine: (bits: Array<{ kind: string; multiplier?: number; steps?: number }>) => string
+  layerPlates: string
+  layerVolcanoes: string
+  layerRateCells: string
 }
 
 const GROUP_KO: Record<HazardGroupKey, string> = {
@@ -216,6 +223,7 @@ function formatWindowKo(window: ExpectedWindow | null | undefined): string {
     if (window.min === window.max) return `${window.min}개월 뒤`
     return `${window.min}~${window.max}개월 뒤`
   }
+  if (window.type === 'lead') return window.key === 'days_to_weeks' ? '수일~수주' : '수일~수주'
   const band = window.band
   if (band === 'hours_24_72') return '24~72시간 뒤'
   if (band === 'days_3_7') return '3~7일 뒤'
@@ -240,6 +248,7 @@ function formatWindowEn(window: ExpectedWindow | null | undefined): string {
     if (window.min === window.max) return `in ${window.min} months`
     return `in ${window.min}–${window.max} months`
   }
+  if (window.type === 'lead') return 'days to weeks'
   const band = window.band
   if (band === 'hours_24_72') return 'in 24–72 hours'
   if (band === 'days_3_7') return 'in 3–7 days'
@@ -247,6 +256,44 @@ function formatWindowEn(window: ExpectedWindow | null | undefined): string {
   if (band === 'weeks_2_6') return 'in 2–6 weeks'
   if (band === 'months_1_3') return 'in 1–3 months'
   return 'timing unclear'
+}
+
+function formatRate(multiplier: number): string {
+  const rounded = Math.round(multiplier * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
+function formatUsual(usual: number): string {
+  if (usual >= 10) return String(Math.round(usual))
+  if (usual > 0 && usual < 1) return String(Math.round(usual * 100) / 100)
+  const rounded = Math.round(usual * 10) / 10
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1)
+}
+
+function formatPct(probability: number): string {
+  const pct = probability * 100
+  if (pct >= 10) return `${Math.round(pct)}%`
+  if (pct >= 1) return `${pct.toFixed(1)}%`
+  return `${pct.toFixed(2)}%`
+}
+
+function volcanoBits(locale: 'ko' | 'en', bits: Array<{ kind: string; multiplier?: number; steps?: number }>): string {
+  return bits
+    .map((bit) => {
+      if (bit.kind === 'seismic') {
+        return locale === 'ko' ? `화산 아래 지진 ${formatRate(bit.multiplier ?? 1)}배` : `quakes under the volcano ${formatRate(bit.multiplier ?? 1)}×`
+      }
+      if (bit.kind === 'thermal') return locale === 'ko' ? '열 이상' : 'thermal anomaly'
+      if (bit.kind === 'alert') {
+        if (bit.steps != null) return locale === 'ko' ? `경보 ${bit.steps}단계 상향` : `alert up ${bit.steps} step${bit.steps === 1 ? '' : 's'}`
+        return locale === 'ko' ? '경보 상향' : 'alert raised'
+      }
+      if (bit.kind === 'ash') return locale === 'ko' ? '화산재 주의보' : 'ash advisory'
+      if (bit.kind === 'so2') return locale === 'ko' ? '이산화황 이상' : 'SO2 anomaly'
+      if (bit.kind === 'weekly') return locale === 'ko' ? '주간 활동' : 'weekly activity'
+      return bit.kind
+    })
+    .join(' + ')
 }
 
 function buildSlice(locale: 'ko' | 'en'): HazardUiSlice {
@@ -278,6 +325,28 @@ function buildSlice(locale: 'ko' | 'en'): HazardUiSlice {
       const when = formatExpectedWindow(window)
       return when ? `${label} · ${when}` : label
     },
+    probabilityForecast: locale === 'ko' ? '확률 예보' : 'Probability forecast',
+    earthquakeProbabilityLine: (multiplier, recent, usual, oaf) => {
+      const base = locale === 'ko'
+        ? `확률 예보 · 큰 지진 확률 평소의 ${formatRate(multiplier)}배 (근거: 7일간 M2.5+ ${recent}회, 평소 ${formatUsual(usual)}회)`
+        : `Probability forecast · large-earthquake chance ${formatRate(multiplier)}× usual (basis: ${recent} M2.5+ events in 7 days, usually ${formatUsual(usual)})`
+      if (!oaf) return base
+      const after = locale === 'ko'
+        ? `여진 1주 M5+ ${formatPct(oaf.m5)} M6+ ${formatPct(oaf.m6)} M7+ ${formatPct(oaf.m7)}`
+        : `aftershocks next week M5+ ${formatPct(oaf.m5)} M6+ ${formatPct(oaf.m6)} M7+ ${formatPct(oaf.m7)}`
+      return `${base} · ${after}`
+    },
+    aftershockWeekLine: (m5, m6, m7) =>
+      locale === 'ko'
+        ? `확률 예보 · 여진 1주 M5+ ${formatPct(m5)} M6+ ${formatPct(m6)} M7+ ${formatPct(m7)}`
+        : `Probability forecast · aftershocks next week M5+ ${formatPct(m5)} M6+ ${formatPct(m6)} M7+ ${formatPct(m7)}`,
+    volcanoProbabilityLine: (bits) => {
+      const body = volcanoBits(locale, bits)
+      return locale === 'ko' ? `확률 예보 · ${body}` : `Probability forecast · ${body}`
+    },
+    layerPlates: locale === 'ko' ? '판 경계' : 'Plate boundaries',
+    layerVolcanoes: locale === 'ko' ? '홀로세 화산' : 'Holocene volcanoes',
+    layerRateCells: locale === 'ko' ? '지진 발생률' : 'Quake rate cells',
   }
 }
 

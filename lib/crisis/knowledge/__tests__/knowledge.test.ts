@@ -23,9 +23,9 @@ describe('cascade seed', () => {
   it('accepts the library', () => {
     expect(validateCascades(CASCADE_SEEDS)).toEqual([])
     const counts = cascadeCounts()
-    expect(counts.total).toBe(39)
+    expect(counts.total).toBe(42)
     expect(counts.sourced).toBe(10)
-    expect(counts.hypothesis).toBe(29)
+    expect(counts.hypothesis).toBe(32)
   })
 
   it('only allows https URLs that were checked, and empty sources on hypotheses', () => {

@@ -7,6 +7,7 @@ import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
 import { HazardMapLegend } from '@/components/crisis/HazardMapLegend'
+import { PrecursorLayerShapes, PrecursorLayerToggles, usePrecursorGeo } from '@/components/crisis/PrecursorLayers'
 import { TriggerChip } from '@/components/crisis/TriggerChip'
 import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { UnlockedCardView, type UnlockedCard } from '@/components/crisis/briefing/BriefingCardsSection'
@@ -111,17 +112,36 @@ function applyDeepBody(
 }
 
 function triggerFactLine(fact: TriggerFact, t: CrisisUiPack): string {
-  if (fact.expectedWindow) return t.triggerChipLine(fact.key, fact.expectedWindow)
+  if (fact.key === 'quake' && fact.rateMultiplier != null && fact.count7d != null && fact.usual7d != null) {
+    return t.earthquakeProbabilityLine(fact.rateMultiplier, fact.count7d, fact.usual7d, fact.oaf)
+  }
+  if (fact.key === 'volcano' && fact.precursors && fact.precursors.length > 0) {
+    return t.volcanoProbabilityLine(fact.precursors)
+  }
+  if (fact.expectedWindow) {
+    const line = t.triggerChipLine(fact.key, fact.expectedWindow)
+    if (fact.key === 'quake' && fact.oaf) return `${line} · ${t.aftershockWeekLine(fact.oaf.m5, fact.oaf.m6, fact.oaf.m7)}`
+    return line
+  }
   if (fact.key === 'rain' && fact.sumMm != null) {
     return t.rainForecast(fact.sumMm, fact.maxDayMm ?? 0)
   }
   if (fact.key === 'river' && fact.peakM3s != null) return t.riverPeak(fact.peakM3s)
-  if (fact.key === 'quake' && fact.mag != null) return t.quakeMag(fact.mag)
+  if (fact.key === 'quake' && fact.mag != null) {
+    return fact.oaf
+      ? `${t.quakeMag(fact.mag)} · ${t.aftershockWeekLine(fact.oaf.m5, fact.oaf.m6, fact.oaf.m7)}`
+      : t.quakeMag(fact.mag)
+  }
   return t.triggerLabel(fact.key)
 }
 
 function factForKey(facts: TriggerFact[] | undefined, key: string): TriggerFact | undefined {
   return facts?.find((row) => row.key === key)
+}
+
+function isProbability(fact: TriggerFact | undefined): boolean {
+  if (!fact) return false
+  return fact.rateMultiplier != null || Boolean(fact.precursors?.length) || fact.oaf != null
 }
 
 export default function CrisisMapPage() {
@@ -137,6 +157,10 @@ export default function CrisisMapPage() {
   const [deepProgress, setDeepProgress] = useState<DeepProgressState | null>(null)
   const [busy, setBusy] = useState(false)
   const [showStage1, setShowStage1] = useState(false)
+  const [showPlates, setShowPlates] = useState(false)
+  const [showVolcanoes, setShowVolcanoes] = useState(false)
+  const [showRateCells, setShowRateCells] = useState(false)
+  const precursorGeo = usePrecursorGeo(showPlates || showVolcanoes || showRateCells)
   const [showAllRows, setShowAllRows] = useState(false)
   const [zoneKey, setZoneKey] = useState<ZoneKey>('south_asia')
   const [zoneStatus, setZoneStatus] = useState<DeepStatus>('idle')
@@ -404,6 +428,14 @@ export default function CrisisMapPage() {
               </filter>
             </defs>
             <WorldBasemap width={MAP_W} height={MAP_H} />
+            <PrecursorLayerShapes
+              data={precursorGeo}
+              showPlates={showPlates}
+              showVolcanoes={showVolcanoes}
+              showCells={showRateCells}
+              width={MAP_W}
+              height={MAP_H}
+            />
             {mapDots.map((row) => {
               const pt = projectLonLat(row.lon, row.lat, MAP_W, MAP_H)
               const color = stageColor(row.stage)
@@ -450,6 +482,15 @@ export default function CrisisMapPage() {
           >
             {showStage1 ? t.hideStage1 : t.showStage1}
           </button>
+          <PrecursorLayerToggles
+            t={t}
+            plates={showPlates}
+            volcanoes={showVolcanoes}
+            cells={showRateCells}
+            onPlates={setShowPlates}
+            onVolcanoes={setShowVolcanoes}
+            onCells={setShowRateCells}
+          />
         </div>
 
         <HazardMapLegend t={t} />
@@ -498,6 +539,7 @@ export default function CrisisMapPage() {
                         t={t}
                         triggerKey={key}
                         expectedWindow={factForKey(row.triggerFacts, key)?.expectedWindow}
+                        probability={isProbability(factForKey(row.triggerFacts, key))}
                         className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100"
                       />
                     ))}
@@ -590,6 +632,7 @@ export default function CrisisMapPage() {
                         t={t}
                         triggerKey={key}
                         expectedWindow={factForKey(selected.triggerFacts, key)?.expectedWindow}
+                        probability={isProbability(factForKey(selected.triggerFacts, key))}
                         className="rounded-full border border-white/12 px-2 py-0.5 text-xs"
                       />
                     ))}

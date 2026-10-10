@@ -212,6 +212,11 @@ export type FreeTriggerFact = {
   maxDayMm?: number
   peakM3s?: number
   mag?: number
+  rateMultiplier?: number
+  count7d?: number
+  usual7d?: number
+  oaf?: { m5: number; m6: number; m7: number }
+  precursors?: Array<{ kind: string; multiplier?: number; steps?: number }>
 }
 
 export function freeLayerFromDetail(detail: unknown): {
@@ -282,6 +287,27 @@ export function freeLayerFromDetail(detail: unknown): {
       if (typeof raw.max_day_mm === 'number') fact.maxDayMm = raw.max_day_mm
       if (typeof raw.peak_m3s === 'number') fact.peakM3s = raw.peak_m3s
       if (typeof raw.mag === 'number') fact.mag = raw.mag
+      if (typeof raw.rate_multiplier === 'number') fact.rateMultiplier = raw.rate_multiplier
+      if (typeof raw.count_7d === 'number') fact.count7d = raw.count_7d
+      if (typeof raw.usual_7d === 'number') fact.usual7d = raw.usual_7d
+      if (typeof raw.oaf_m5 === 'number' && typeof raw.oaf_m6 === 'number' && typeof raw.oaf_m7 === 'number') {
+        fact.oaf = { m5: raw.oaf_m5, m6: raw.oaf_m6, m7: raw.oaf_m7 }
+      }
+      if (Array.isArray(raw.precursors)) {
+        const bits = raw.precursors.flatMap((bit) => {
+          if (!bit || typeof bit !== 'object') return []
+          const kind = (bit as { kind?: unknown }).kind
+          if (typeof kind !== 'string') return []
+          const multiplier = (bit as { multiplier?: unknown }).multiplier
+          const steps = (bit as { steps?: unknown }).steps
+          return [{
+            kind,
+            ...(typeof multiplier === 'number' ? { multiplier } : {}),
+            ...(typeof steps === 'number' ? { steps } : {}),
+          }]
+        })
+        if (bits.length) fact.precursors = bits
+      }
       triggerFacts.push(fact)
     }
   }

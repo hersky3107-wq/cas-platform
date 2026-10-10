@@ -38,6 +38,20 @@ import {
   slowBurnComponent,
 } from './trigger'
 import type { RegionScore } from './types'
+import { haversineKm } from './math'
+import { applyEarthquakePrecursor, applyVolcanoPrecursor } from '../precursors/apply'
+import {
+  bValueDrop,
+  dedupeQuakes,
+  flagNear,
+  rateFlags,
+  swarmClusters,
+  swarmNear,
+  type QuakePoint,
+} from '../precursors/earthquake'
+import { hazardZoneFromPlateKm, isCoastalKm, nearestKm } from '../precursors/geometry'
+import { coastIndex, plateIndex } from '../precursors/geometry-load'
+import { volcanoPrecursors } from '../precursors/volcano'
 
 export interface ScoreJobResult {
   day: string
@@ -50,11 +64,28 @@ export interface ScoreJobResult {
 
 export async function runLayer1Score(
   client: SupabaseClient,
-  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void },
+  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void; precursors?: boolean },
 ): Promise<ScoreJobResult> {
   const now = opts.now ?? new Date()
   const log = opts.log ?? ((message: string) => console.log(message))
   const snap = await loadScoreSnapshot(client, now)
+  const precursorsOn = opts.precursors !== false
+  const quakePoints: QuakePoint[] = dedupeQuakes(
+    snap.quakes.map((row) => ({
+      lat: row.lat,
+      lon: row.lon,
+      mag: row.mag,
+      at: row.event_time,
+    })),
+  )
+  const rateCells = precursorsOn ? rateFlags(quakePoints, snap.precursors.yearCounts, now) : []
+  const swarms = precursorsOn ? swarmClusters(quakePoints, now) : []
+  const plates = precursorsOn ? plateIndex() : null
+  const coasts = precursorsOn ? coastIndex() : null
+  const coastalByRegion = new Map<number, boolean>()
+  if (precursorsOn) {
+    log(`precursors rate_cells=${rateCells.length} swarms=${swarms.length} holocene=${snap.precursors.holocene.length} background_cells=${snap.precursors.yearCounts.size} oaf=${snap.precursors.oaf.length}`)
+  }
   const frpCut = fireCuts(snap.frpByRegion)
   const absCut = conflictAbsCut(snap.conflictCounts)
   const nowYear = now.getUTCFullYear()
@@ -112,6 +143,52 @@ export async function runLayer1Score(
       }
     }
 
+    const hazardZone = plates ? hazardZoneFromPlateKm(nearestKm(plates, region.lat, region.lon, 4)) : 0.35
+    const coastal = coasts ? isCoastalKm(nearestKm(coasts, region.lat, region.lon, 2)) : false
+    coastalByRegion.set(region.id, coastal)
+    const recentMags = quakePoints
+      .filter((row) => {
+        const t = row.at ? Date.parse(row.at) : NaN
+        return haversineKm(region.lat, region.lon, row.lat, row.lon) <= 50 && (!Number.isFinite(t) || t >= now.getTime() - 72 * 3_600_000)
+      })
+      .map((row) => row.mag)
+    const olderMags = quakePoints
+      .filter((row) => {
+        const t = row.at ? Date.parse(row.at) : NaN
+        return haversineKm(region.lat, region.lon, row.lat, row.lon) <= 50 && Number.isFinite(t) && t < now.getTime() - 72 * 3_600_000
+      })
+      .map((row) => row.mag)
+    const oafHit = precursorsOn
+      ? snap.precursors.oaf
+          .map((row) => ({ row, km: haversineKm(region.lat, region.lon, row.lat, row.lon) }))
+          .filter((row) => row.km <= 150)
+          .sort((a, b) => a.km - b.km)[0]?.row ?? null
+      : null
+    const quake = precursorsOn
+      ? applyEarthquakePrecursor(quakeComponent(region.lat, region.lon, now, snap.quakes), {
+          flag: flagNear(region.lat, region.lon, rateCells),
+          hazardZone,
+          swarm: swarmNear(region.lat, region.lon, swarms),
+          bDrop: bValueDrop(recentMags, olderMags),
+          oaf: oafHit ? { m5: oafHit.m5, m6: oafHit.m6, m7: oafHit.m7 } : null,
+        })
+      : quakeComponent(region.lat, region.lon, now, snap.quakes)
+    const volcanoBase = volcanoComponent(region.lat, region.lon, now, snap.volcanoes)
+    const volcano = precursorsOn
+      ? applyVolcanoPrecursor(
+          volcanoBase,
+          volcanoPrecursors({
+            lat: region.lat,
+            lon: region.lon,
+            now,
+            volcanoes: snap.precursors.holocene,
+            quakes: quakePoints,
+            yearCounts: snap.precursors.yearCounts,
+            points: snap.precursors.points,
+          }),
+        )
+      : volcanoBase
+
     let components = [
       observedRainAdjust(rainComponent(input.precip), input.observedRain),
       riverComponent({
@@ -120,9 +197,9 @@ export async function runLayer1Score(
         historyDays: input.glofasDays,
       }),
       cycloneComponent(region.lat, region.lon, now, snap.cyclones),
-      quakeComponent(region.lat, region.lon, now, snap.quakes),
+      quake,
       gdacsComponent(region.lat, region.lon, region.id, region.iso3, now, snap.gdacs),
-      volcanoComponent(region.lat, region.lon, now, snap.volcanoes),
+      volcano,
       fireComponent({
         frpSum: input.frpSum,
         count: input.frpCount,
@@ -263,6 +340,7 @@ export async function runLayer1Score(
       watchlist: isConflictWatchlistIso3(region.iso3),
       context,
       extra_items: extra,
+      coastal: coastalByRegion.get(region.id) === true,
     })
     rows.push({ ...scored, lat: region.lat, lon: region.lon, level: region.level })
   }

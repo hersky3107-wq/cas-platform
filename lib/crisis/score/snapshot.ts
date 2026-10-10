@@ -17,6 +17,7 @@ import { isConflictWatchlistIso3 } from '../config/watchlist'
 import { loadAllRegions } from '../ingest/regions'
 import { isHealthWikiConcept } from '../config/wiki-health'
 import { wikiTitleRole } from './wiki-roles'
+import { loadPrecursors, type PrecursorBundle } from './precursor-load'
 import type { EventPoint } from '../events/link'
 import { politeFetch } from '../ingest/fetch'
 import { advisoryPairDiverges } from './advisory'
@@ -95,6 +96,7 @@ export interface ScoreSnapshot {
   oil: OilContext | null
   observations: EventPoint[]
   rainDays: Map<number, string[]>
+  precursors: PrecursorBundle
 }
 
 export interface OilQuote {
@@ -745,6 +747,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
 
   for (const [id, observed] of await loadObservedRain(client, now)) put(id).observedRain = observed
   const oil = await loadOil(client, now)
+  const precursors = await loadPrecursors(client, now)
 
   return {
     day,
@@ -771,6 +774,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     oil,
     observations,
     rainDays: await loadRainDays(client, now),
+    precursors,
   }
 }
 

@@ -138,6 +138,7 @@ export type ExpectedWindow =
   | { type: 'relative_hours'; min: number; max: number }
   | { type: 'relative_months'; min: number; max: number }
   | { type: 'ongoing' }
+  | { type: 'lead'; key: 'days_to_weeks' }
   | { type: 'band'; band: LeadTimeBand }
 
 export function kindsByGroup(): Map<HazardGroupKey, HazardKind[]> {

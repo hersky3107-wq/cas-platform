@@ -8,13 +8,14 @@ type Props = {
   t: CrisisUiPack
   triggerKey: string
   expectedWindow?: ExpectedWindow | null
+  probability?: boolean
   className?: string
   style?: CSSProperties
 }
 
-export function TriggerChip({ t, triggerKey, expectedWindow, className, style }: Props) {
+export function TriggerChip({ t, triggerKey, expectedWindow, probability, className, style }: Props) {
   const line = t.triggerChipLine(triggerKey, expectedWindow)
-  const tip = t.triggerExplanation(triggerKey)
+  const tip = probability ? `${t.probabilityForecast}. ${t.triggerExplanation(triggerKey)}` : t.triggerExplanation(triggerKey)
   return (
     <span title={tip} className={className} style={style}>
       {line}

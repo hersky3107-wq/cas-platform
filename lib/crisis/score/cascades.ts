@@ -8,6 +8,7 @@ export function matchCascades(opts: {
   kinds: Set<string>
   urbanPop: number
   watchlist?: boolean
+  coastal?: boolean
 }): CascadeWatch[] {
   const fired = new Set(opts.components.filter((row) => row.value > 0).map((row) => row.key))
   const out: CascadeWatch[] = []
@@ -19,6 +20,7 @@ export function matchCascades(opts: {
     const minPop = row.conditions.min_population
     if (typeof minPop === 'number' && opts.urbanPop < minPop) continue
     if (row.conditions.requires_watchlist === true && !opts.watchlist) continue
+    if (row.conditions.requires_coastal === true && !opts.coastal) continue
     out.push({
       id: row.id,
       trigger_type: row.trigger_type,

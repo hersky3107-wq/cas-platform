@@ -9,6 +9,8 @@ import { firmsSource } from './sources/firms'
 import { gdacsSource } from './sources/gdacs'
 import { gdeltEventsSource } from './sources/gdelt'
 import { glofasSource } from './sources/glofas'
+import { gnssNglSource, gvpWeeklySource, so2DailySource } from './sources/precursor-skips'
+import { gvpHoloceneSource } from './sources/gvp-holocene'
 import { informSource } from './sources/inform'
 import { iodaSource } from './sources/ioda'
 import { ensoSource } from './sources/enso'
@@ -20,13 +22,19 @@ import { nhcOutlookSource } from './sources/nhc-outlook'
 import { openmeteoForecastSource } from './sources/openmeteo-forecast'
 import { reliefwebSource } from './sources/reliefweb'
 import { tsunamiSource } from './sources/tsunami'
+import { usgsCatalogSource } from './sources/usgs-catalog'
+import { usgsOafSource } from './sources/usgs-oaf'
 import { usgsSource } from './sources/usgs'
+import { vaacSource } from './sources/vaac'
 import { volcanoSource } from './sources/volcano'
+import { volcanoThermalSource } from './sources/volcano-thermal'
 import { volcanoUnrestSource } from './sources/volcano-unrest'
 import { wikiTopSource } from './sources/wiki-top'
 
 export const CRISIS_SOURCES: CrisisSource[] = [
   usgsSource,
+  usgsCatalogSource,
+  usgsOafSource,
   emscSource,
   gdacsSource,
   eonetSource,
@@ -36,6 +44,12 @@ export const CRISIS_SOURCES: CrisisSource[] = [
   ensoSource,
   tsunamiSource,
   volcanoSource,
+  gvpHoloceneSource,
+  gvpWeeklySource,
+  vaacSource,
+  volcanoThermalSource,
+  so2DailySource,
+  gnssNglSource,
   volcanoUnrestSource,
   firmsSource,
   openmeteoForecastSource,

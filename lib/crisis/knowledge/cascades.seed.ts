@@ -217,6 +217,36 @@ export const CASCADE_SEEDS: CascadeSeed[] = [
       'Shaking can crack a dam, damage spillways, or start internal erosion. The structure may not fail in the quake itself; the dangerous window is the following days if the reservoir stays high and inspections do not happen. This seed does not attach a verified source.',
   }),
   hypothesis({
+    id: 'earthquake-building-collapse',
+    trigger_type: 'earthquake',
+    effect_type: 'building_collapse',
+    lag_min_days: 0,
+    lag_max_days: 7,
+    conditions: { min_population: 50000 },
+    mechanism:
+      'Shaking collapses older or poorly tied buildings where many people live. This seed uses urban population as the exposure we can measure; a separate inventory of building age is not loaded. The dangerous window is the quake itself and the following days of aftershocks.',
+  }),
+  hypothesis({
+    id: 'earthquake-landslide-dam',
+    trigger_type: 'earthquake',
+    effect_type: 'landslide_dam',
+    lag_min_days: 0,
+    lag_max_days: 14,
+    conditions: {},
+    mechanism:
+      'A quake-triggered landslide can block a valley and pond a river. The new lake may overtop within days to two weeks. No slope layer is attached, so the pathway stays a hypothesis whenever the earthquake trigger is on.',
+  }),
+  hypothesis({
+    id: 'earthquake-tsunami',
+    trigger_type: 'earthquake',
+    effect_type: 'tsunami',
+    lag_min_days: 0,
+    lag_max_days: 1,
+    conditions: { requires_coastal: true, min_population: 10000 },
+    mechanism:
+      'A large offshore or coastal quake can send a tsunami into the same coast within hours. This seed fires only when the region sits near the Natural Earth coastline.',
+  }),
+  hypothesis({
     id: 'glof-downstream-flood',
     trigger_type: 'glacial_lake',
     effect_type: 'outburst_flood',

@@ -26,6 +26,12 @@ export function num(value: unknown): number | null {
 
 import type { ExpectedWindow } from '../hazards'
 
+export type PrecursorBitFact = {
+  kind: string
+  multiplier?: number
+  steps?: number
+}
+
 export type TriggerFact = {
   key: string
   hazardKind?: string
@@ -34,6 +40,11 @@ export type TriggerFact = {
   maxDayMm?: number
   peakM3s?: number
   mag?: number
+  rateMultiplier?: number
+  count7d?: number
+  usual7d?: number
+  oaf?: { m5: number; m6: number; m7: number }
+  precursors?: PrecursorBitFact[]
 }
 
 export function keyTriggerFact(facts: TriggerFact[]): TriggerFact | null {

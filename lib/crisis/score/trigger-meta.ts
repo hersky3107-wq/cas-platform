@@ -65,6 +65,9 @@ export function expectedWindowForComponent(
     const eta = cycloneEtaDays(ctx.lat, ctx.lon, ctx.now, ctx.cycloneTracks)
     if (eta) return eta
   }
+  if (component.key === 'quake' && raw.forecast === 'probability') {
+    return { type: 'lead', key: 'days_to_weeks' }
+  }
   if (component.key === 'quake' && typeof raw.mag === 'number' && raw.mag >= QUAKE.magSoft) {
     return { type: 'relative_hours', min: 24, max: 72 }
   }
@@ -88,6 +91,9 @@ export function expectedWindowForComponent(
   }
   if (component.key === 'fire') {
     return { type: 'relative_days', min: 3, max: 7 }
+  }
+  if (component.key === 'volcano' && raw.forecast === 'probability') {
+    return { type: 'lead', key: 'days_to_weeks' }
   }
   if (component.key === 'volcano') {
     return { type: 'relative_days', min: 7, max: 14 }
