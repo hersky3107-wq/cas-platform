@@ -3,8 +3,8 @@ import path from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { ISO2_TO_ISO3 } from '../../ingest/iso'
 import { CRISIS_ZONES, ZONE_KEYS, zoneForIso3 } from '../../zones'
-import { ZONE_COST_CAP_USD } from '../prices'
-import { crossBorderLinks, pickZoneMembers, tagsForText } from '../zone-card'
+import { HUNTER_DEEPSEEK_TIMEOUT_MS, ZONE_COST_CAP_USD } from '../prices'
+import { buildZoneLinks, pickZoneMembers, tagsForText, zoneLinkKeepReason } from '../zone-card'
 
 describe('crisis zones', () => {
   it('maps every ingest ISO3 to exactly one of 15 zones, including Sri Lanka', () => {
@@ -18,7 +18,7 @@ describe('crisis zones', () => {
     expect(zoneForIso3('USA')?.nameEn).toBe('North America')
   })
 
-  it('takes the top 8 stage >= 2 regions and names cross-border links', () => {
+  it('takes the top 8 stage >= 2 regions and keeps grounded cross-border links', () => {
     const rows = [
       { iso3: 'LKA', stage: 4, score: 9, name: 'Badulla' },
       { iso3: 'IND', stage: 3, score: 8, name: 'Tamil Nadu' },
@@ -37,11 +37,11 @@ describe('crisis zones', () => {
       { region_id: 2, name: 'Tamil Nadu', iso3: 'IND' },
     ]
     expect(tagsForText('Badulla dam and Tamil Nadu camps', members)).toHaveLength(2)
-    const links = crossBorderLinks(
+    const built = buildZoneLinks(
       [{ title: 'Spill reaches Tamil Nadu', mechanism: 'Badulla release crosses into Tamil Nadu', regions: undefined }],
-      members,
+      { members, neighborEdges: [], hydroNames: [] },
     )
-    expect(links).toEqual([
+    expect(built.cross_border).toEqual([
       {
         title: 'Spill reaches Tamil Nadu',
         from_region: 'Badulla',
@@ -49,7 +49,54 @@ describe('crisis zones', () => {
         link: 'Badulla release crosses into Tamil Nadu',
       },
     ])
+    expect(built.intra_zone).toEqual([])
     expect(ZONE_COST_CAP_USD).toBe(1.2)
+    expect(HUNTER_DEEPSEEK_TIMEOUT_MS).toBe(120_000)
+  })
+
+  it('drops Nangarhar → Mahanuvara returnee link without grounding', () => {
+    const members = [
+      { region_id: 10, name: 'Nangarhar', iso3: 'AFG' },
+      { region_id: 20, name: 'Mahanuvara', iso3: 'LKA' },
+    ]
+    const row = {
+      title: 'Returnee flows',
+      mechanism: 'Returnees from Nangarhar linked to Mahanuvara resettlement narrative',
+      regions: [
+        { region_id: 10, name: 'Nangarhar', iso3: 'AFG' },
+        { region_id: 20, name: 'Mahanuvara', iso3: 'LKA' },
+      ],
+    }
+    const logs: string[] = []
+    const built = buildZoneLinks([row], {
+      members,
+      neighborEdges: [],
+      hydroNames: [],
+      log: (message) => logs.push(message),
+    })
+    expect(built.cross_border).toEqual([])
+    expect(built.intra_zone).toEqual([])
+    expect(zoneLinkKeepReason(row.regions, row, { members, neighborEdges: [], hydroNames: [] })).toBe(
+      'returnee_without_grounding',
+    )
+    expect(logs.some((line) => line.includes('returnee_without_grounding') && line.includes('Nangarhar'))).toBe(true)
+  })
+
+  it('keeps neighbor pairs even when evidence is thin', () => {
+    const members = [
+      { region_id: 1, name: 'Sindh', iso3: 'PAK' },
+      { region_id: 2, name: 'Balochistan', iso3: 'PAK' },
+    ]
+    const built = buildZoneLinks(
+      [{ title: 'Local tension', mechanism: 'Sindh and Balochistan mentioned together', regions: members }],
+      {
+        members,
+        neighborEdges: [{ regionId: 1, neighborId: 2, sharedBorder: true }],
+        hydroNames: [],
+      },
+    )
+    expect(built.intra_zone).toHaveLength(1)
+    expect(built.cross_border).toEqual([])
   })
 
   it('declares zone scope in the unapplied migration and the worker', () => {

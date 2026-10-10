@@ -8,7 +8,7 @@ import { analystUser, departmentSliceEmpty, ensureQueries, fallbackQueries, hunt
 import { buildLedgerInserts, ledgerContentHash, memoryLedger, publishHypotheses } from '../publish'
 import { estimateRegionRunUsd, resolveRoster } from '../roster'
 import { extractJson } from '../parse'
-import { ROLE_TIMEOUT_MS, TOKEN_CAPS } from '../prices'
+import { HUNTER_DEEPSEEK_TIMEOUT_MS, ROLE_TIMEOUT_MS, TOKEN_CAPS } from '../prices'
 import { persistRun } from '../store'
 import { applyJudgeGroups, applyWeakness, runEngine, withTimeout, type Draft, type EngineRunRecord, type ModelCall, type ModelCaller } from '../run'
 import type { EngineCard } from '../schema'
@@ -201,6 +201,7 @@ describe('roster', () => {
     expect(ROLE_TIMEOUT_MS.search).toBe(90_000)
     expect(ROLE_TIMEOUT_MS.red_team).toBe(120_000)
     expect(ROLE_TIMEOUT_MS.judge).toBe(240_000)
+    expect(HUNTER_DEEPSEEK_TIMEOUT_MS).toBe(120_000)
     expect(hunters.find((slot) => slot.slot === 'hunter-qwen')?.extraBody).toEqual({ reasoning: { enabled: false } })
     expect(hunters.find((slot) => slot.slot === 'hunter-deepseek')?.extraBody).toEqual({ reasoning: { enabled: false } })
   })

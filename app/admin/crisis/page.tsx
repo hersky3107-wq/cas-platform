@@ -63,6 +63,7 @@ type RunView = {
     headline_fallback?: boolean
     zone_key?: string
     cross_border?: Array<{ title: string; from_region: string; to_region: string; link: string }>
+    intra_zone?: Array<{ title: string; from_region: string; to_region: string; link: string }>
   } | null
   searchUrls: string[]
   public: boolean
@@ -611,22 +612,10 @@ function AdminResult({
           <AdminTier title={t.headlines} rows={result.headlines} t={t} />
           <AdminTier title={t.missedByOthers} rows={result.missed_by_others} t={t} />
           {result.zone_key ? (
-            <div>
-              <h3 className="mb-2 text-sm font-black text-slate-300">{t.borderLinks}</h3>
-              {(result.cross_border ?? []).length === 0 ? (
-                <p className="text-xs text-slate-500">{t.none}</p>
-              ) : (
-                <ul className="space-y-2">
-                  {(result.cross_border ?? []).map((row) => (
-                    <li key={`${row.title}-${row.from_region}-${row.to_region}`} className="rounded-xl border border-white/10 px-3 py-2 text-sm">
-                      <p className="font-semibold">{row.from_region} → {row.to_region}</p>
-                      <p>{row.title}</p>
-                      <p className="text-xs text-slate-400">{row.link}</p>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
+            <>
+              <ZoneLinkBlock title={t.intraRegionLinks} rows={result.intra_zone ?? []} none={t.none} />
+              <ZoneLinkBlock title={t.borderLinks} rows={result.cross_border ?? []} none={t.none} />
+            </>
           ) : null}
           <div>
             <h3 className="mb-2 text-sm font-black text-slate-300">{t.baselineRisks}</h3>
@@ -670,6 +659,37 @@ function AdminResult({
         </div>
       )}
     </section>
+  )
+}
+
+function ZoneLinkBlock({
+  title,
+  rows,
+  none,
+}: {
+  title: string
+  rows: Array<{ title: string; from_region: string; to_region: string; link: string }>
+  none: string
+}) {
+  return (
+    <div>
+      <h3 className="mb-2 text-sm font-black text-slate-300">{title}</h3>
+      {rows.length === 0 ? (
+        <p className="text-xs text-slate-500">{none}</p>
+      ) : (
+        <ul className="space-y-2">
+          {rows.map((row) => (
+            <li key={`${row.title}-${row.from_region}-${row.to_region}`} className="rounded-xl border border-white/10 px-3 py-2 text-sm">
+              <p className="font-semibold">
+                {row.from_region} → {row.to_region}
+              </p>
+              <p>{row.title}</p>
+              <p className="text-xs text-slate-400">{row.link}</p>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   )
 }
 

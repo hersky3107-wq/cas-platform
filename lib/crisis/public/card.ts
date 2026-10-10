@@ -43,6 +43,7 @@ export interface UnlockedBriefCard {
   headline_fallback?: boolean
   zoneKey?: string
   crossBorder?: Array<{ title: string; from_region: string; to_region: string; link: string }>
+  intraZone?: Array<{ title: string; from_region: string; to_region: string; link: string }>
 }
 
 export interface PublicHypothesis {
@@ -180,6 +181,7 @@ export function unlockBriefCard(opts: {
     headline_fallback: opts.result.headline_fallback,
     zoneKey: opts.result.zone_key,
     crossBorder: opts.result.cross_border,
+    intraZone: opts.result.intra_zone,
   }
 }
 

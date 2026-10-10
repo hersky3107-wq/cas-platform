@@ -156,6 +156,18 @@ export const engineResultSchema = z
           .strict(),
       )
       .optional(),
+    intra_zone: z
+      .array(
+        z
+          .object({
+            title: z.string(),
+            from_region: z.string(),
+            to_region: z.string(),
+            link: z.string(),
+          })
+          .strict(),
+      )
+      .optional(),
   })
   .strict()
 
@@ -176,6 +188,7 @@ export interface EngineCard {
   context: string[]
   urban: Array<{ name: string; pop: number }>
   zone_key?: string
-  members?: Array<{ region_id: number; name: string; country: string; iso3: string | null }>
+  members?: Array<{ region_id: number; name: string; country: string; iso3: string | null; lat?: number; lon?: number }>
+  neighbor_edges?: Array<{ regionId: number; neighborId: number; sharedBorder: boolean }>
   neighbors?: string[]
 }

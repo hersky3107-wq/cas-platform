@@ -59,6 +59,9 @@ export const ROLE_TIMEOUT_MS: Record<EngineRole, number> = {
   judge: 240_000,
 }
 
+/** DeepSeek hunter slot only; other hunters use ROLE_TIMEOUT_MS.hunter. */
+export const HUNTER_DEEPSEEK_TIMEOUT_MS = 120_000
+
 export const DEFAULT_COST_CAP_USD = 1.5
 /** One zone run (top 8 regions, same pipeline). */
 export const ZONE_COST_CAP_USD = 1.2

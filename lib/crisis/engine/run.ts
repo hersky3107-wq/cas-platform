@@ -33,7 +33,16 @@ import {
 import { coverageCounts, mainstreamFromSearch, noveltyFor, withinDays, type BackgroundCoverageItem, type CoverageItem } from './coverage'
 import { checkHunterRow, clusterDrafts, entityCorpus, entityWords, HUNTER_MAX_HYPOTHESES, obviousList, type Draft, type ObviousEntry } from './hunter-rules'
 import { extractJson, logParseFailure, RETRY_JSON_HINT } from './parse'
-import { DEFAULT_COST_CAP_USD, estimateTokens, listPriceCost, outputBudget, ROLE_TIMEOUT_MS, TOKEN_CAPS, TYPICAL_OUTPUT_TOKENS } from './prices'
+import {
+  DEFAULT_COST_CAP_USD,
+  estimateTokens,
+  HUNTER_DEEPSEEK_TIMEOUT_MS,
+  listPriceCost,
+  outputBudget,
+  ROLE_TIMEOUT_MS,
+  TOKEN_CAPS,
+  TYPICAL_OUTPUT_TOKENS,
+} from './prices'
 import { resolveRoster, slotsFor, type ResolvedRoster, type RosterSlot } from './roster'
 import {
   engineResultSchema,
@@ -48,7 +57,7 @@ import {
 } from './schema'
 import { normalizeSearchItems, type SearchItem } from './search-items'
 import { departmentsTouched, structureOf, weaknessOf } from './structure'
-import { crossBorderLinks, tagsForText } from './zone-card'
+import { buildZoneLinks, tagsForText } from './zone-card'
 
 export type { Draft } from './hunter-rules'
 
@@ -238,7 +247,12 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     dryRun: Boolean(opts.dryRun),
   }
 
-  const timeoutFor = (role: EngineRole) => opts.roleTimeouts?.[role] ?? ROLE_TIMEOUT_MS[role]
+  const timeoutFor = (slot: RosterSlot) => {
+    const override = opts.roleTimeouts?.[slot.role]
+    if (override != null) return override
+    if (slot.slot === 'hunter-deepseek') return HUNTER_DEEPSEEK_TIMEOUT_MS
+    return ROLE_TIMEOUT_MS[slot.role]
+  }
 
   let persistTail = Promise.resolve()
   const flushLive = async (status: EngineRunRecord['status'] = 'running') => {
@@ -338,7 +352,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     })
     await flushLive()
     const started = Date.now()
-    const timeoutMs = timeoutFor(slot.role)
+    const timeoutMs = timeoutFor(slot)
     const settle = (actual: number, inTok: number, outTok: number) => {
       reserved -= estimate
       spent += actual
@@ -716,16 +730,27 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       rejected,
       obvious: obvious.map((row) => row.line),
       zone_key: opts.card.zone_key,
-      cross_border: opts.card.zone_key
-        ? crossBorderLinks(
-            [...headlines, ...missed_by_others].map((row) => ({
-              title: row.title,
-              mechanism: row.mechanism,
-              regions: row.regions,
-            })),
-            opts.card.members ?? [],
-          )
-        : undefined,
+      ...(opts.card.zone_key
+        ? (() => {
+            const built = buildZoneLinks(
+              [...headlines, ...missed_by_others].map((row) => ({
+                title: row.title,
+                mechanism: row.mechanism,
+                regions: row.regions,
+                evidence: row.evidence,
+                why_humans_miss: row.why_humans_miss,
+                entities: row.entities,
+                chain: row.chain,
+              })),
+              {
+                members: opts.card.members ?? [],
+                neighborEdges: opts.card.neighbor_edges ?? [],
+                hydroNames: opts.card.fragility.map((item) => item.name),
+              },
+            )
+            return { cross_border: built.cross_border, intra_zone: built.intra_zone }
+          })()
+        : {}),
     }
     const parsed = engineResultSchema.safeParse(candidate)
     if (!parsed.success) {

@@ -51,6 +51,7 @@ export type UnlockedCard = {
   evidence: string[]
   zoneKey?: string
   crossBorder?: Array<{ title: string; from_region: string; to_region: string; link: string }>
+  intraZone?: Array<{ title: string; from_region: string; to_region: string; link: string }>
 }
 
 export type BriefingCard = LockedCard | UnlockedCard
@@ -172,7 +173,12 @@ export function UnlockedCardView({ card, t }: { card: UnlockedCard; t: CrisisUiP
 
       <Tier title={t.headlines} rows={card.headlines} t={t} />
       <Tier title={t.missedByOthers} rows={card.missed_by_others} t={t} />
-      {card.zoneKey ? <BorderLinks title={t.borderLinks} rows={card.crossBorder ?? []} empty={t.none} /> : null}
+      {card.zoneKey ? (
+        <>
+          <BorderLinks title={t.intraRegionLinks} rows={card.intraZone ?? []} empty={t.none} />
+          <BorderLinks title={t.borderLinks} rows={card.crossBorder ?? []} empty={t.none} />
+        </>
+      ) : null}
 
       <section>
         <h3 className="mb-2 text-sm font-black text-slate-300">{t.baselineRisks}</h3>

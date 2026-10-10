@@ -140,6 +140,7 @@ export type CrisisUiPack = {
   globalAnalyze: (credits: number) => string
   zonePicker: string
   borderLinks: string
+  intraRegionLinks: string
 }
 
 const ko: CrisisUiPack = {
@@ -339,6 +340,7 @@ const ko: CrisisUiPack = {
   globalAnalyze: (credits) => `전 세계 분석 · ${credits}크레딧`,
   zonePicker: '구역',
   borderLinks: '국경 연결',
+  intraRegionLinks: '지역 간 연결',
 }
 
 const en: CrisisUiPack = {
@@ -509,6 +511,7 @@ const en: CrisisUiPack = {
   globalAnalyze: (credits) => `Worldwide analysis · ${credits} credits`,
   zonePicker: 'Zone',
   borderLinks: 'Cross-border links',
+  intraRegionLinks: 'Within-country links',
 }
 
 const ja: CrisisUiPack = {

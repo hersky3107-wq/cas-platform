@@ -63,6 +63,8 @@ describe('Korean dictionary', () => {
     expect(t.rainForecastShort(310)).toBe('7일 강수 310mm 예보')
     expect(t.fragilityKind('dam')).toBe('댐')
     expect(t.peopleAbout('120만')).toBe('인구 약 120만 명')
+    expect(t.borderLinks).toBe('국경 연결')
+    expect(t.intraRegionLinks).toBe('지역 간 연결')
   })
 
   it('has a pack for every locale and a complete Korean pack', () => {
