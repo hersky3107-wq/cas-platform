@@ -97,6 +97,8 @@ export type CrisisUiPack = {
   worldRiskStage5: string
   worldRiskStage4: string
   worldRiskStage3: string
+  showStage1: string
+  hideStage1: string
   dangerNowTitle: string
   dangerNowSubtitle: string
   dangerRegionLine: (triggers: string, fragility: string, people: string) => string
@@ -175,7 +177,7 @@ const ko: CrisisUiPack = {
   stageWord: '단계',
   stageBanner: {
     1: '현재 큰 위험 신호 없음',
-    2: '현재 큰 위험 신호 없음',
+    2: '관찰',
     3: '주의',
     4: '경계',
     5: '즉시 주의',
@@ -253,9 +255,19 @@ const ko: CrisisUiPack = {
       cyclone: '태풍',
       storm_surge: '폭풍 해일',
       drought: '가뭄',
+      silence: '침묵',
+      internet: '인터넷 차단',
+      advisory: '여행경보',
+      food: '식량',
+      slow_burn: '장기 악화',
+      escalation: '확전',
+      health_attention: '보건 관심',
+      gdacs: '경보',
     }
     return map[key.trim().toLowerCase()] ?? key
   },
+  showStage1: '1단계 표시',
+  hideStage1: '1단계 숨김',
   lockedInside: (headlines, missed, baseline) => `핵심 신호 ${headlines} · 놓친 신호 ${missed} · 알려진 위험 ${baseline}`,
   lockedTeaser: '방류 전 고지대로 이동하고, 72시간 식수·연료를 확보하세요.',
   emptyTitle: '오늘의 AI 브리핑 준비 중',
@@ -328,8 +340,8 @@ const en: CrisisUiPack = {
   stageWord: 'Stage',
   stageBanner: {
     1: 'No major danger signal now',
-    2: 'No major danger signal now',
-    3: 'Watch',
+    2: 'Watch',
+    3: 'Caution',
     4: 'Alert',
     5: 'Act now',
   },
@@ -381,7 +393,28 @@ const en: CrisisUiPack = {
   dangerRegionLine: (triggers, fragility, people) => `${triggers} + ${fragility} + ${people}`,
   dangerPeopleUnit: (n) => `${n} people`,
   dangerFragilityUnit: (n) => `${n} fragile sites`,
-  triggerLabel: (key) => key,
+  triggerLabel: (key) => {
+    const map: Record<string, string> = {
+      rain: 'heavy rain',
+      river: 'river flood',
+      cyclone: 'cyclone',
+      quake: 'earthquake',
+      volcano: 'volcano',
+      fire: 'wildfire',
+      conflict: 'conflict',
+      silence: 'silence',
+      internet: 'internet outage',
+      advisory: 'travel alert',
+      food: 'food',
+      slow_burn: 'slow burn',
+      escalation: 'escalation',
+      health_attention: 'health watch',
+      gdacs: 'alert',
+    }
+    return map[key.trim().toLowerCase()] ?? key
+  },
+  showStage1: 'Show stage 1',
+  hideStage1: 'Hide stage 1',
   lockedInside: (headlines, missed, baseline) => `${headlines} key signals · ${missed} missed · ${baseline} known risks`,
   lockedTeaser: 'Move to higher ground before discharge and secure 72 hours of water and fuel.',
   emptyTitle: 'Today’s AI briefing is being prepared',
@@ -452,7 +485,7 @@ const ja: CrisisUiPack = {
   headlines: '主な信号',
   headlineFallback: '参考',
   stageWord: '段階',
-  stageBanner: { 1: '今は大きな危険信号なし', 2: '今は大きな危険信号なし', 3: '注意', 4: '警戒', 5: '直ちに注意' },
+  stageBanner: { 1: '今は大きな危険信号なし', 2: '観察', 3: '注意', 4: '警戒', 5: '直ちに注意' },
   calmEmpty: '今は大きな危険信号なし',
   possibility: { low: '低', medium: '中', high: '高' },
   adminSubtitle: (day) => `今日 ${day} · 点数順 · エンジン待ち`,
@@ -544,7 +577,7 @@ const zhTW: CrisisUiPack = {
   headlines: '主要訊號',
   headlineFallback: '參考用',
   stageWord: '階段',
-  stageBanner: { 1: '目前沒有重大危險訊號', 2: '目前沒有重大危險訊號', 3: '注意', 4: '警戒', 5: '立刻注意' },
+  stageBanner: { 1: '目前沒有重大危險訊號', 2: '觀察', 3: '注意', 4: '警戒', 5: '立刻注意' },
   calmEmpty: '目前沒有重大危險訊號',
   possibility: { low: '低', medium: '中', high: '高' },
   adminSubtitle: (day) => `今天 ${day} · 依分數排序 · 引擎佇列`,
@@ -636,7 +669,7 @@ const fr: CrisisUiPack = {
   headlines: 'Signaux clés',
   headlineFallback: 'Pour référence',
   stageWord: 'Niveau',
-  stageBanner: { 1: 'Pas de grand signal de danger', 2: 'Pas de grand signal de danger', 3: 'Vigilance', 4: 'Alerte', 5: 'Attention immédiate' },
+  stageBanner: { 1: 'Pas de grand signal de danger', 2: 'Observation', 3: 'Vigilance', 4: 'Alerte', 5: 'Attention immédiate' },
   calmEmpty: 'Pas de grand signal de danger',
   possibility: { low: 'faible', medium: 'moyenne', high: 'haute' },
   adminSubtitle: (day) => `Aujourd’hui ${day} · régions par score · file moteur`,
@@ -728,7 +761,7 @@ const es: CrisisUiPack = {
   headlines: 'Señales clave',
   headlineFallback: 'De referencia',
   stageWord: 'Nivel',
-  stageBanner: { 1: 'Ahora no hay una señal de gran peligro', 2: 'Ahora no hay una señal de gran peligro', 3: 'Atención', 4: 'Alerta', 5: 'Atención inmediata' },
+  stageBanner: { 1: 'Ahora no hay una señal de gran peligro', 2: 'Observación', 3: 'Atención', 4: 'Alerta', 5: 'Atención inmediata' },
   calmEmpty: 'Ahora no hay una señal de gran peligro',
   possibility: { low: 'baja', medium: 'media', high: 'alta' },
   adminSubtitle: (day) => `Hoy ${day} · regiones por puntos · cola del motor`,
@@ -820,7 +853,7 @@ const ar: CrisisUiPack = {
   headlines: 'إشارات أساسية',
   headlineFallback: 'للمرجع',
   stageWord: 'المرحلة',
-  stageBanner: { 1: 'لا توجد إشارة خطر كبيرة الآن', 2: 'لا توجد إشارة خطر كبيرة الآن', 3: 'انتباه', 4: 'تأهب', 5: 'انتباه فوري' },
+  stageBanner: { 1: 'لا توجد إشارة خطر كبيرة الآن', 2: 'رصد', 3: 'انتباه', 4: 'تأهب', 5: 'انتباه فوري' },
   calmEmpty: 'لا توجد إشارة خطر كبيرة الآن',
   possibility: { low: 'منخفض', medium: 'متوسط', high: 'عالٍ' },
   adminSubtitle: (day) => `اليوم ${day} · المناطق حسب النقاط · طابور المحرك`,
@@ -882,5 +915,6 @@ export function stageBannerText(stage: number, t: CrisisUiPack): string {
   if (stage >= 5) return t.stageBanner[5]
   if (stage >= 4) return t.stageBanner[4]
   if (stage >= 3) return t.stageBanner[3]
+  if (stage >= 2) return t.stageBanner[2]
   return t.calmEmpty
 }

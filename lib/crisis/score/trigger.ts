@@ -221,22 +221,45 @@ export function fireComponent(opts: {
   })
 }
 
+export type ConflictGeo = 'adm1' | 'adm0' | 'country_centroid'
+
+/** ADM0 rows and country-centroid dumps are not a regional conflict signal. */
+export function conflictGeoQuality(opts: {
+  level: number
+  lat: number
+  lon: number
+  countryLat?: number | null
+  countryLon?: number | null
+}): ConflictGeo {
+  if (opts.level < 1) return 'adm0'
+  if (opts.countryLat == null || opts.countryLon == null) return 'adm1'
+  const km = haversineKm(opts.lat, opts.lon, opts.countryLat, opts.countryLon)
+  if (km <= CONFLICT.countryCentroidKm) return 'country_centroid'
+  return 'adm1'
+}
+
 export function conflictComponent(opts: {
   conflictCount: number
   mean30d: number | null
   historyDays: number
   absCut: number | null
+  geo?: ConflictGeo
 }): TriggerComponent {
+  const geo = opts.geo ?? 'adm1'
+  const gated =
+    opts.conflictCount >= CONFLICT.minToday &&
+    (opts.mean30d ?? 0) >= CONFLICT.minBaselineMean &&
+    geo === 'adm1'
   let value = 0
   let ratio: number | null = null
-  if (opts.historyDays >= CONFLICT.minHistoryDays && opts.mean30d != null && opts.mean30d > 0) {
+  if (gated && opts.historyDays >= CONFLICT.minHistoryDays && opts.mean30d != null && opts.mean30d > 0) {
     ratio = opts.conflictCount / opts.mean30d
     if (ratio >= CONFLICT.ratioHard) value = CONFLICT.hardValue
     else if (ratio >= CONFLICT.ratioSoft) {
       value = CONFLICT.softValue +
         ((ratio - CONFLICT.ratioSoft) / (CONFLICT.ratioHard - CONFLICT.ratioSoft)) * (CONFLICT.hardValue - CONFLICT.softValue)
     }
-  } else if (opts.absCut != null && opts.conflictCount > 0 && opts.conflictCount >= opts.absCut) {
+  } else if (gated && opts.absCut != null && opts.conflictCount > 0 && opts.conflictCount >= opts.absCut) {
     value = CONFLICT.absValue
   }
   return component('conflict', value, {
@@ -244,6 +267,8 @@ export function conflictComponent(opts: {
     mean_30d: opts.mean30d,
     history_days: opts.historyDays,
     ratio,
+    geo,
+    gated,
   })
 }
 

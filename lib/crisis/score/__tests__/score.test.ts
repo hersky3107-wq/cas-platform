@@ -24,6 +24,7 @@ import {
   combineTrigger,
   conflictAbsCut,
   conflictComponent,
+  conflictGeoQuality,
   cycloneComponent,
   fireComponent,
   fireCuts,
@@ -128,8 +129,19 @@ describe('alerts and human components', () => {
   it('scores conflict ratios and a short-history absolute tail', () => {
     expect(conflictComponent({ conflictCount: 30, mean30d: 10, historyDays: 10, absCut: 99 }).value).toBe(0.6)
     expect(conflictComponent({ conflictCount: 50, mean30d: 10, historyDays: 10, absCut: 99 }).value).toBe(1)
-    expect(conflictComponent({ conflictCount: 20, mean30d: null, historyDays: 2, absCut: 20 }).value).toBe(0.5)
+    expect(conflictComponent({ conflictCount: 20, mean30d: 4, historyDays: 2, absCut: 20 }).value).toBe(0.5)
     expect(conflictAbsCut([1, 2, 3, 100])).toBeGreaterThan(2)
+  })
+
+  it('requires CAMEO 18-20 >= 10, baseline mean >= 3, and ADM1+ geolocation', () => {
+    expect(conflictComponent({ conflictCount: 8, mean30d: 10, historyDays: 10, absCut: 99 }).value).toBe(0)
+    expect(conflictComponent({ conflictCount: 30, mean30d: 2, historyDays: 10, absCut: 99 }).value).toBe(0)
+    expect(conflictComponent({ conflictCount: 30, mean30d: 10, historyDays: 10, absCut: 99, geo: 'adm0' }).value).toBe(0)
+    expect(conflictComponent({ conflictCount: 30, mean30d: 10, historyDays: 10, absCut: 99, geo: 'country_centroid' }).value).toBe(0)
+    expect(conflictComponent({ conflictCount: 30, mean30d: 10, historyDays: 10, absCut: 99, geo: 'adm1' }).value).toBe(0.6)
+    expect(conflictGeoQuality({ level: 0, lat: 40, lon: -3 })).toBe('adm0')
+    expect(conflictGeoQuality({ level: 1, lat: 40.4, lon: -3.7, countryLat: 40.4, countryLon: -3.7 })).toBe('country_centroid')
+    expect(conflictGeoQuality({ level: 1, lat: 38.4, lon: 27.1, countryLat: 39.0, countryLon: 35.0 })).toBe('adm1')
   })
 
   it('scores silence, internet, advisory, wiki, food', () => {

@@ -89,6 +89,12 @@ export const CONFLICT = {
   minHistoryDays: 7,
   absTopPercentile: 0.98,
   absValue: 0.5,
+  /** Today's CAMEO 18–20 events required before the trigger can fire. */
+  minToday: 10,
+  /** 30-day mean CAMEO 18–20 / day required (drops one-off centroid dumps). */
+  minBaselineMean: 3,
+  /** Admin1 whose centroid sits this close to the country centroid ate GDELT COUNTRY points. */
+  countryCentroidKm: 80,
 }
 
 export const SILENCE = {

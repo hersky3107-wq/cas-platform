@@ -18,6 +18,7 @@ import {
   advisoryComponent,
   conflictAbsCut,
   conflictComponent,
+  conflictGeoQuality,
   cycloneComponent,
   fireComponent,
   fireCuts,
@@ -57,6 +58,10 @@ export async function runLayer1Score(
   const absCut = conflictAbsCut(snap.conflictCounts)
   const nowYear = now.getUTCFullYear()
   const day = snap.day
+  const countryCentroid = new Map<string, { lat: number; lon: number }>()
+  for (const row of snap.regions) {
+    if (row.level === 0 && row.iso3) countryCentroid.set(row.iso3, { lat: row.lat, lon: row.lon })
+  }
 
   const triggerByRegion = new Map<number, ReturnType<typeof rainComponent>[]>()
   const naturalTitleByRegion = new Map<number, string>()
@@ -128,6 +133,13 @@ export async function runLayer1Score(
         mean30d: input.conflictMean,
         historyDays: input.conflictDays,
         absCut,
+        geo: conflictGeoQuality({
+          level: region.level,
+          lat: region.lat,
+          lon: region.lon,
+          countryLat: region.iso3 ? countryCentroid.get(region.iso3)?.lat : null,
+          countryLon: region.iso3 ? countryCentroid.get(region.iso3)?.lon : null,
+        }),
       }),
       silenceComponent({
         series: input.gdeltSeries,

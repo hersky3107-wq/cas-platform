@@ -1,37 +1,41 @@
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { loadTodayRegions } from '../../lib/crisis/admin/store'
+import { isExtremeTrigger } from '../../lib/crisis/score/compute'
 import { runLayer1Score } from '../../lib/crisis/score/job'
-import type { RegionScore } from '../../lib/crisis/score/types'
+import { RAIN } from '../../lib/crisis/score/thresholds'
+import type { TriggerComponent } from '../../lib/crisis/score/types'
 
-const BEFORE_TOP_20 = [
-  { rank: 1, name: 'Paraná', country: 'Brazil', stage: 5, score: 100.0, triggers: 'rain, conflict' },
-  { rank: 2, name: 'São Paulo', country: 'Brazil', stage: 5, score: 100.0, triggers: 'rain, slow_burn' },
-  { rank: 3, name: 'Istanbul', country: 'Turkey', stage: 5, score: 97.6, triggers: 'rain' },
-  { rank: 4, name: 'Guizhou', country: "People's Republic of China", stage: 5, score: 96.4, triggers: 'rain, escalation' },
-  { rank: 5, name: 'Manubah', country: 'Tunisia', stage: 5, score: 96.1, triggers: 'river' },
-  { rank: 6, name: 'Bursa', country: 'Turkey', stage: 5, score: 94.8, triggers: 'rain' },
-  { rank: 7, name: 'Kocaeli', country: 'Turkey', stage: 5, score: 94.1, triggers: 'rain' },
-  { rank: 8, name: 'Nairobi', country: 'Kenya', stage: 5, score: 92.1, triggers: 'river, internet' },
-  { rank: 9, name: 'Chiriquí', country: 'Panama', stage: 5, score: 85.5, triggers: 'rain, internet' },
-  { rank: 10, name: 'Nord-Kivu', country: 'Democratic Republic of the Congo', stage: 5, score: 85.5, triggers: 'rain, internet, advisory' },
-  { rank: 11, name: 'Shabeellaha Hoose', country: 'Somalia', stage: 4, score: 78.9, triggers: 'rain, advisory' },
-  { rank: 12, name: 'Quezaltenango', country: 'Guatemala', stage: 4, score: 73.1, triggers: 'rain, internet' },
-  { rank: 13, name: 'San Marcos', country: 'Guatemala', stage: 4, score: 73.0, triggers: 'rain, internet' },
-  { rank: 14, name: 'Virginia', country: 'United States of America', stage: 3, score: 68.8, triggers: 'rain' },
-  { rank: 15, name: 'Jubbada Dhexe', country: 'Somalia', stage: 3, score: 65.3, triggers: 'rain, advisory' },
-  { rank: 16, name: 'Bujumbura Mairie', country: 'Burundi', stage: 3, score: 65.3, triggers: 'conflict' },
-  { rank: 17, name: 'Veraguas', country: 'Panama', stage: 3, score: 64.6, triggers: 'quake, conflict, internet' },
-  { rank: 18, name: 'Izmir', country: 'Turkey', stage: 3, score: 64.0, triggers: 'conflict' },
-  { rank: 19, name: 'Los Rios', country: 'Ecuador', stage: 3, score: 62.2, triggers: 'rain' },
-  { rank: 20, name: 'Nariño', country: 'Colombia', stage: 3, score: 62.1, triggers: 'rain' },
-]
+type Named = { name: string; country: string; stage: number; score: number; triggers: string[] }
 
-const BEFORE_STAGES = { '1': 4594, '2': 191, '3': 35, '4': 3, '5': 10 }
-
-function stageCounts(rows: RegionScore[]): Record<number, number> {
+function stageCounts(rows: Array<{ stage: number }>): Record<number, number> {
   const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 }
   for (const r of rows) counts[r.stage] = (counts[r.stage] ?? 0) + 1
   return counts
+}
+
+function triggerKeys(components: TriggerComponent[]): string[] {
+  return components.filter((c) => c.value > 0).map((c) => c.key)
+}
+
+function line(row: Named, rank: number): string {
+  return `${rank}. ${row.name} / ${row.country} — stage=${row.stage} score=${row.score.toFixed(1)} triggers=[${row.triggers.join(', ') || 'none'}]`
+}
+
+function printList(title: string, rows: Named[]): void {
+  console.log(`\n========================================`)
+  console.log(title)
+  console.log('========================================')
+  if (rows.length === 0) {
+    console.log('(none)')
+    return
+  }
+  for (let i = 0; i < rows.length; i++) console.log(line(rows[i], i + 1))
+}
+
+function rainNum(raw: Record<string, unknown>, key: string): number {
+  const v = raw[key]
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0
 }
 
 async function main(): Promise<void> {
@@ -39,38 +43,100 @@ async function main(): Promise<void> {
   if (!existsSync(envPath)) throw new Error('Copy cas-platform/.env.local into cas-platform-crisis first')
   const { supabaseAdmin } = await import('../../lib/supabase/server')
 
-  console.log('=== STEP 1: DRY RUN RESCORE ===')
+  const today = await loadTodayRegions(supabaseAdmin)
+  const beforeSorted = [...today.regions].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+  const beforeConflict = beforeSorted.filter((r) => r.triggers.includes('conflict'))
+  const beforeStages = stageCounts(beforeSorted)
+
+  console.log(`=== BEFORE (stored ${today.day}) scored=${beforeSorted.length} conflict=${beforeConflict.length} ===`)
+  printList('REGIONS WITH CONFLICT — BEFORE', beforeConflict.map((r) => ({
+    name: r.name,
+    country: r.country,
+    stage: r.stage,
+    score: r.score,
+    triggers: r.triggers,
+  })))
+
+  console.log('\n=== DRY RUN RESCORE ===')
   const dryResult = await runLayer1Score(supabaseAdmin, { dryRun: true, write: false })
-  const newSorted = [...dryResult.rows].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
-  const newStages = stageCounts(dryResult.rows)
+  const afterSorted = [...dryResult.rows].sort((a, b) => b.score - a.score || a.name.localeCompare(b.name))
+  const afterConflict = afterSorted.filter((r) => r.components.some((c) => c.key === 'conflict' && c.value > 0))
+  const afterStages = stageCounts(dryResult.rows)
+
+  printList('REGIONS WITH CONFLICT — AFTER', afterConflict.map((r) => ({
+    name: r.name,
+    country: r.country,
+    stage: r.stage,
+    score: r.score,
+    triggers: triggerKeys(r.components),
+  })))
+
+  console.log('\n========================================')
+  console.log('TURKEY RAIN vs SINGLE-TRIGGER CAP')
+  console.log('========================================')
+  const sumSoft2x = 2 * RAIN.sumSoftMm
+  const day2x = 2 * RAIN.dayMm
+  const sumHard2x = 2 * RAIN.sumHardMm
+  console.log(`thresholds: 2x sumSoftMm=${sumSoft2x}mm  2x dayMm=${day2x}mm  2x sumHardMm=${sumHard2x}mm`)
+  for (const name of ['Istanbul', 'Bursa', 'Kocaeli']) {
+    const row = afterSorted.find((r) => r.name === name && (r.iso3 === 'TUR' || /turkey|türkiye/i.test(r.country)))
+    if (!row) {
+      console.log(`${name}: not in rescore rows`)
+      continue
+    }
+    const rain = row.components.find((c) => c.key === 'rain')
+    const sum = rain ? rainNum(rain.raw, 'sum_mm') : 0
+    const maxDay = rain ? rainNum(rain.raw, 'max_day_mm') : 0
+    const extreme = rain ? isExtremeTrigger(rain) : false
+    const families = new Set(row.components.filter((c) => c.value > 0).map((c) => c.key))
+    console.log(
+      `${name}: stage=${row.stage} score=${row.score.toFixed(1)} rain.value=${rain?.value ?? 0} ` +
+        `sum_mm=${sum} max_day_mm=${maxDay} extreme=${extreme} triggers=[${[...families].join(', ')}]`,
+    )
+    if (extreme) {
+      console.log(
+        `  single-trigger cap skipped: rain is >= 2x threshold ` +
+          `(sum ${sum}>=${sumSoft2x} or maxDay ${maxDay}>=${day2x} or sum ${sum}>=${sumHard2x})`,
+      )
+    } else if (row.stage >= 5) {
+      console.log('  BUG: stage 5 with rain only and not extreme — cap should have applied')
+    } else {
+      console.log('  cap applied or stage < 5 (not a single-rain stage-5)')
+    }
+  }
 
   console.log('\n========================================')
   console.log('STAGE COUNTS COMPARISON (BEFORE -> AFTER)')
   console.log('========================================')
-  console.log(`Stage 1: ${BEFORE_STAGES[1]} -> ${newStages[1]}`)
-  console.log(`Stage 2: ${BEFORE_STAGES[2]} -> ${newStages[2]}`)
-  console.log(`Stage 3: ${BEFORE_STAGES[3]} -> ${newStages[3]}`)
-  console.log(`Stage 4: ${BEFORE_STAGES[4]} -> ${newStages[4]}`)
-  console.log(`Stage 5: ${BEFORE_STAGES[5]} -> ${newStages[5]}`)
-  console.log(`Cards (stage >= 2): ${BEFORE_STAGES[2] + BEFORE_STAGES[3] + BEFORE_STAGES[4] + BEFORE_STAGES[5]} -> ${newStages[2] + newStages[3] + newStages[4] + newStages[5]}`)
-
-  console.log('\n========================================')
-  console.log('TOP 20 BEFORE RESCORE:')
-  console.log('========================================')
-  for (const b of BEFORE_TOP_20) {
-    console.log(`${b.rank}. ${b.name} / ${b.country} — stage=${b.stage} score=${b.score.toFixed(1)} triggers=[${b.triggers}]`)
+  for (const s of [1, 2, 3, 4, 5] as const) {
+    console.log(`Stage ${s}: ${beforeStages[s] ?? 0} -> ${afterStages[s] ?? 0}`)
   }
+  const cardsBefore = (beforeStages[2] ?? 0) + (beforeStages[3] ?? 0) + (beforeStages[4] ?? 0) + (beforeStages[5] ?? 0)
+  const cardsAfter = (afterStages[2] ?? 0) + (afterStages[3] ?? 0) + (afterStages[4] ?? 0) + (afterStages[5] ?? 0)
+  console.log(`Cards (stage >= 2): ${cardsBefore} -> ${cardsAfter}`)
 
-  console.log('\n========================================')
-  console.log('TOP 20 AFTER RESCORE:')
-  console.log('========================================')
-  for (let i = 0; i < Math.min(20, newSorted.length); i++) {
-    const r = newSorted[i]
-    const triggers = r.components.map((c) => c.key).join(', ') || 'none'
-    console.log(`${i + 1}. ${r.name} / ${r.country} — stage=${r.stage} score=${r.score.toFixed(1)} triggers=[${triggers}]`)
-  }
+  printList(
+    'TOP 20 BEFORE RESCORE',
+    beforeSorted.slice(0, 20).map((r) => ({
+      name: r.name,
+      country: r.country,
+      stage: r.stage,
+      score: r.score,
+      triggers: r.triggers,
+    })),
+  )
+  printList(
+    'TOP 20 AFTER RESCORE',
+    afterSorted.slice(0, 20).map((r) => ({
+      name: r.name,
+      country: r.country,
+      stage: r.stage,
+      score: r.score,
+      triggers: triggerKeys(r.components),
+    })),
+  )
 
-  console.log('\n=== STEP 2: WRITING NEW SCORES TO DB ===')
+  console.log('\n=== WRITING NEW SCORES TO DB ===')
   const writeResult = await runLayer1Score(supabaseAdmin, { dryRun: false, write: true })
   console.log(`Successfully wrote ${writeResult.scored} flags, ${writeResult.cards} cards for day ${writeResult.day}`)
 }

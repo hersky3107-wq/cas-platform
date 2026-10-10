@@ -5,10 +5,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
+import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
 import { projectLonLat, stageColor } from '@/lib/crisis/admin/geo'
 import { CRISIS_BRIEF_CREDITS, CRISIS_DEEP_CREDITS } from '@/lib/crisis/credits'
 import { stageBannerText } from '@/lib/crisis/i18n/dictionary'
+import { countryDisplayName, regionDisplayName } from '@/lib/crisis/i18n/place-names'
 import { useCrisisLocale } from '@/lib/crisis/i18n/use-crisis-locale'
 import { shouldPulse } from '@/lib/crisis/public/policy'
 import { hazardIconsFor } from '@/lib/crisis/ui/hazards'
@@ -22,6 +24,7 @@ type MapRegion = {
   regionId: number
   name: string
   country: string
+  iso3: string | null
   stage: number
   score: number
   triggers: string[]
@@ -44,6 +47,7 @@ export default function CrisisMapPage() {
   const [deepStatus, setDeepStatus] = useState<DeepStatus>('idle')
   const [deepMsg, setDeepMsg] = useState<string | null>(null)
   const [busy, setBusy] = useState(false)
+  const [showStage1, setShowStage1] = useState(false)
 
   useEffect(() => {
     void (async () => {
@@ -146,6 +150,10 @@ export default function CrisisMapPage() {
   }, [deepStatus, selectedId, t.deepCached, t.deepFailed, t.deepReady])
 
   const selected = useMemo(() => regions.find((row) => row.regionId === selectedId) ?? null, [regions, selectedId])
+  const mapDots = useMemo(
+    () => regions.filter((row) => showStage1 || row.stage >= 2),
+    [regions, showStage1],
+  )
 
   async function requestDeep() {
     if (!selected || busy) return
@@ -231,14 +239,8 @@ export default function CrisisMapPage() {
                 </feMerge>
               </filter>
             </defs>
-            <rect width={MAP_W} height={MAP_H} fill="#050816" />
-            {[...Array(7)].map((_, i) => (
-              <line key={`lat-${i}`} x1="0" x2={MAP_W} y1={(i / 6) * MAP_H} y2={(i / 6) * MAP_H} stroke="rgba(34,211,238,0.06)" />
-            ))}
-            {[...Array(13)].map((_, i) => (
-              <line key={`lon-${i}`} y1="0" y2={MAP_H} x1={(i / 12) * MAP_W} x2={(i / 12) * MAP_W} stroke="rgba(34,211,238,0.05)" />
-            ))}
-            {regions.map((row) => {
+            <WorldBasemap width={MAP_W} height={MAP_H} />
+            {mapDots.map((row) => {
               const pt = projectLonLat(row.lon, row.lat, MAP_W, MAP_H)
               const color = stageColor(row.stage)
               const pulse = shouldPulse(row.stage)
@@ -258,7 +260,7 @@ export default function CrisisMapPage() {
                     stroke={isSelected ? '#fff' : 'transparent'}
                     strokeWidth={1.4}
                   >
-                    <title>{`${row.name} · ${row.country} · ${t.stageWord} ${row.stage}`}</title>
+                    <title>{`${regionDisplayName(row.name, row.iso3, locale, row.country)} · ${t.stageWord} ${row.stage}`}</title>
                   </circle>
                 </g>
               )
@@ -266,17 +268,24 @@ export default function CrisisMapPage() {
           </svg>
         </section>
 
-        <div className="flex flex-wrap gap-3 text-xs text-slate-400">
+        <div className="flex flex-wrap items-center gap-3 text-xs text-slate-400">
           {[1, 2, 3, 4, 5].map((stage) => (
             <span key={stage} className="inline-flex items-center gap-1.5">
               <span
                 className={`inline-block h-2.5 w-2.5 rounded-full ${shouldPulse(stage) ? 'crisis-flare-dot' : ''}`}
                 style={{ background: stageColor(stage), boxShadow: `0 0 10px ${stageColor(stage)}` }}
               />
-              {t.stageWord} {stage}
+              {t.stageWord} {stage} · {stageBannerText(stage, t)}
               {shouldPulse(stage) ? ` · ${t.pulse}` : ''}
             </span>
           ))}
+          <button
+            type="button"
+            onClick={() => setShowStage1((prev) => !prev)}
+            className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-white/10"
+          >
+            {showStage1 ? t.hideStage1 : t.showStage1}
+          </button>
         </div>
 
         <section className="overflow-hidden rounded-2xl border border-white/10 bg-white/[0.03]">
@@ -300,14 +309,18 @@ export default function CrisisMapPage() {
                     selectedId === row.regionId ? 'bg-cyan-500/10' : ''
                   }`}
                 >
-                  <div className="col-span-4 truncate font-semibold">{row.name}</div>
-                  <div className="col-span-3 truncate text-slate-300">{row.country}</div>
+                  <div className="col-span-4 truncate font-semibold">
+                    {regionDisplayName(row.name, row.iso3, locale, row.country)}
+                  </div>
+                  <div className="col-span-3 truncate text-slate-300">
+                    {countryDisplayName(row.iso3, locale, row.country)}
+                  </div>
                   <div className="col-span-1 text-cyan-100">{row.stage}</div>
                   <div className="col-span-1 text-right tabular-nums">{row.score}</div>
                   <div className="col-span-3 flex flex-wrap gap-1">
                     {row.triggers.map((key) => (
                       <span key={key} className="rounded-full border border-cyan-400/20 bg-cyan-500/10 px-2 py-0.5 text-[10px] text-cyan-100">
-                        {key}
+                        {t.triggerLabel(key)}
                       </span>
                     ))}
                   </div>
@@ -337,8 +350,10 @@ export default function CrisisMapPage() {
           <div className="mb-4 flex items-start justify-between gap-3">
             <div>
               <p className="text-[11px] uppercase tracking-[0.2em] text-cyan-300/70">{t.freeLayer}</p>
-              <h2 className="text-2xl font-black">{selected.name}</h2>
-              <p className="text-sm text-slate-400">{selected.country}</p>
+              <h2 className="text-2xl font-black">
+                {regionDisplayName(selected.name, selected.iso3, locale, selected.country)}
+              </h2>
+              <p className="text-sm text-slate-400">{countryDisplayName(selected.iso3, locale, selected.country)}</p>
               <div className="mt-2">
                 <HazardIconRow kinds={hazardIconsFor(selected.triggers)} color={stageColor(selected.stage)} />
               </div>
@@ -361,7 +376,7 @@ export default function CrisisMapPage() {
                   ? '—'
                   : selected.triggers.map((key) => (
                       <span key={key} className="rounded-full border border-white/12 px-2 py-0.5 text-xs">
-                        {key}
+                        {t.triggerLabel(key)}
                       </span>
                     ))}
               </dd>

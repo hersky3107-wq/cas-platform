@@ -5,10 +5,13 @@ import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
 import { HazardIconRow } from '@/components/crisis/HazardIcon'
 import { SeverityCard } from '@/components/crisis/SeverityCard'
+import { WorldBasemap } from '@/components/crisis/WorldBasemap'
 import { projectLonLat, stageColor } from '@/lib/crisis/admin/geo'
+import { countryDisplayName, regionDisplayName } from '@/lib/crisis/i18n/place-names'
 import { ESTIMATE_USD_PER_REGION } from '@/lib/crisis/admin/types'
 import type { AdminRegion, QueueRow, QueueStatus } from '@/lib/crisis/admin/types'
 import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
+import type { CrisisLocale } from '@/lib/crisis/i18n/locales'
 import { useCrisisLocale } from '@/lib/crisis/i18n/use-crisis-locale'
 import { hazardIconsFor } from '@/lib/crisis/ui/hazards'
 import { maxStage, severityTheme } from '@/lib/crisis/ui/severity'
@@ -96,6 +99,7 @@ export default function CrisisAdminPage() {
   const [runError, setRunError] = useState<string | null>(null)
   const [publishMsg, setPublishMsg] = useState<string | null>(null)
   const [showAll, setShowAll] = useState(false)
+  const [showStage1, setShowStage1] = useState(false)
 
   const loadOverview = useCallback(async () => {
     const res = await fetch('/api/admin/crisis', { credentials: 'include' })
@@ -161,6 +165,10 @@ export default function CrisisAdminPage() {
   const displayedRegions = useMemo(
     () => (showAll ? scoredRegions : scoredRegions.slice(0, 200)),
     [scoredRegions, showAll],
+  )
+  const mapDots = useMemo(
+    () => scoredRegions.filter((row) => showStage1 || row.stage >= 2),
+    [scoredRegions, showStage1],
   )
 
   const selected = useMemo(
@@ -300,28 +308,9 @@ export default function CrisisAdminPage() {
 
         <section className="rounded-2xl border border-white/10 bg-white/[0.04] p-4">
           <h2 className="mb-3 text-sm font-semibold uppercase tracking-wide text-slate-400">{t.worldMap}</h2>
-          <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="h-auto w-full rounded-xl bg-[#07101f]" role="img" aria-label={t.worldMap}>
-            {[...Array(7)].map((_, i) => (
-              <line
-                key={`lat-${i}`}
-                x1="0"
-                x2={MAP_W}
-                y1={(i / 6) * MAP_H}
-                y2={(i / 6) * MAP_H}
-                stroke="rgba(255,255,255,0.06)"
-              />
-            ))}
-            {[...Array(13)].map((_, i) => (
-              <line
-                key={`lon-${i}`}
-                y1="0"
-                y2={MAP_H}
-                x1={(i / 12) * MAP_W}
-                x2={(i / 12) * MAP_W}
-                stroke="rgba(255,255,255,0.06)"
-              />
-            ))}
-            {scoredRegions.map((row) => {
+          <svg viewBox={`0 0 ${MAP_W} ${MAP_H}`} className="h-auto w-full rounded-xl bg-[#071018]" role="img" aria-label={t.worldMap}>
+            <WorldBasemap width={MAP_W} height={MAP_H} />
+            {mapDots.map((row) => {
               const pt = projectLonLat(row.lon, row.lat, MAP_W, MAP_H)
               const selectedDot = row.regionId === selectedId
               return (
@@ -336,18 +325,25 @@ export default function CrisisAdminPage() {
                   className="cursor-pointer"
                   onClick={() => setSelectedId(row.regionId)}
                 >
-                  <title>{`${row.name} · ${row.country} · ${t.stageWord} ${row.stage}`}</title>
+                  <title>{`${regionDisplayName(row.name, row.iso3, locale, row.country)} · ${t.stageWord} ${row.stage}`}</title>
                 </circle>
               )
             })}
           </svg>
-          <div className="mt-3 flex flex-wrap gap-3 text-xs text-slate-400">
+          <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-slate-400">
             {[1, 2, 3, 4, 5].map((stage) => (
               <span key={stage} className="inline-flex items-center gap-1.5">
                 <span className="inline-block h-2.5 w-2.5 rounded-full" style={{ background: stageColor(stage) }} />
                 {t.stageWord} {stage} · {stageBannerText(stage, t)}
               </span>
             ))}
+            <button
+              type="button"
+              onClick={() => setShowStage1((prev) => !prev)}
+              className="rounded-lg border border-white/15 bg-white/5 px-2.5 py-1 text-[11px] font-semibold text-slate-200 hover:bg-white/10"
+            >
+              {showStage1 ? t.hideStage1 : t.showStage1}
+            </button>
           </div>
         </section>
 
@@ -399,9 +395,9 @@ export default function CrisisAdminPage() {
                   }`}
                 >
                   <button type="button" className="col-span-3 truncate text-left font-semibold text-white" onClick={() => setSelectedId(row.regionId)}>
-                    {row.name}
+                    {regionDisplayName(row.name, row.iso3, locale, row.country)}
                   </button>
-                  <div className="col-span-2 truncate text-slate-300">{row.country}</div>
+                  <div className="col-span-2 truncate text-slate-300">{countryDisplayName(row.iso3, locale, row.country)}</div>
                   <div className="col-span-1">
                     <span
                       className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-semibold"
@@ -418,7 +414,7 @@ export default function CrisisAdminPage() {
                     ) : (
                       row.triggers.map((key) => (
                         <span key={key} className="rounded-full border border-white/12 bg-white/5 px-2 py-0.5 text-[10px] text-slate-200">
-                          {key}
+                          {t.triggerLabel(key)}
                         </span>
                       ))
                     )}
@@ -479,6 +475,7 @@ export default function CrisisAdminPage() {
 
         <AdminResult
           t={t}
+          locale={locale}
           selected={selected}
           run={run}
           runError={runError}
@@ -493,6 +490,7 @@ export default function CrisisAdminPage() {
 
 function AdminResult({
   t,
+  locale,
   selected,
   run,
   runError,
@@ -501,6 +499,7 @@ function AdminResult({
   onPublish,
 }: {
   t: CrisisUiPack
+  locale: CrisisLocale
   selected: AdminRegion | null
   run: RunView | null
   runError: string | null
@@ -537,7 +536,7 @@ function AdminResult({
       </div>
       {selected ? (
         <p className="mb-3 text-sm text-slate-400">
-          {selected.name} / {selected.country} · {t.stageWord} {selected.stage} · {t.colScore} {selected.score}
+          {regionDisplayName(selected.name, selected.iso3, locale, selected.country)} · {t.stageWord} {selected.stage} · {t.colScore} {selected.score}
         </p>
       ) : null}
       {runError ? <p className="mb-3 text-sm text-rose-200">{runError}</p> : null}
