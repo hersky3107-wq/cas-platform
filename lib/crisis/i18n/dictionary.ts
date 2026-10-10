@@ -91,6 +91,31 @@ export type CrisisUiPack = {
   couldNotQueue: string
   today: string
   cost: string
+  worldRiskTitle: string
+  worldRiskSummary: (act: number, alert: number, watch: number) => string
+  worldRiskUpdated: (at: string) => string
+  worldRiskStage5: string
+  worldRiskStage4: string
+  worldRiskStage3: string
+  dangerNowTitle: string
+  dangerNowSubtitle: string
+  dangerRegionLine: (triggers: string, fragility: string, people: string) => string
+  dangerPeopleUnit: (n: string) => string
+  dangerFragilityUnit: (n: number) => string
+  triggerLabel: (key: string) => string
+  lockedInside: (headlines: number, missed: number, baseline: number) => string
+  lockedTeaser: string
+  emptyTitle: string
+  emptyTier1: string
+  emptyTier2: string
+  emptyTier3: string
+  emptySampleLabel: string
+  sampleHeadline: string
+  sampleSummary: string
+  howItWorksTitle: string
+  howItWorksLine1: string
+  howItWorksLine2: string
+  howItWorksLine3: string
 }
 
 const ko: CrisisUiPack = {
@@ -192,6 +217,58 @@ const ko: CrisisUiPack = {
   couldNotQueue: '대기열에 넣지 못했습니다',
   today: '오늘',
   cost: '비용',
+  worldRiskTitle: '오늘의 세계 위험',
+  worldRiskSummary: (act, alert, watch) => `즉시 주의 ${act}곳 · 경계 ${alert}곳 · 주의 ${watch}곳`,
+  worldRiskUpdated: (at) => `데이터 ${at} 기준`,
+  worldRiskStage5: '즉시 주의',
+  worldRiskStage4: '경계',
+  worldRiskStage3: '주의',
+  dangerNowTitle: '지금 가장 위험한 곳',
+  dangerNowSubtitle: '오늘 점수 상위 5개 지역',
+  dangerRegionLine: (triggers, fragility, people) => `${triggers} + ${fragility} + ${people}`,
+  dangerPeopleUnit: (n) => `인구 ${n}`,
+  dangerFragilityUnit: (n) => `취약 시설 ${n}곳`,
+  triggerLabel: (key) => {
+    const map: Record<string, string> = {
+      rain: '폭우',
+      flood: '홍수',
+      river: '강 범람',
+      dam: '댐',
+      reservoir: '저수지',
+      disease: '감염병',
+      cholera: '콜레라',
+      dengue: '뎅기열',
+      malaria: '말라리아',
+      conflict: '분쟁',
+      unrest: '소요',
+      war: '전쟁',
+      fire: '화재',
+      wildfire: '산불',
+      heat: '폭염',
+      earthquake: '지진',
+      quake: '지진',
+      volcano: '화산',
+      tsunami: '쓰나미',
+      landslide: '산사태',
+      cyclone: '태풍',
+      storm_surge: '폭풍 해일',
+      drought: '가뭄',
+    }
+    return map[key.trim().toLowerCase()] ?? key
+  },
+  lockedInside: (headlines, missed, baseline) => `핵심 신호 ${headlines} · 놓친 신호 ${missed} · 알려진 위험 ${baseline}`,
+  lockedTeaser: '방류 전 고지대로 이동하고, 72시간 식수·연료를 확보하세요.',
+  emptyTitle: '오늘의 AI 브리핑 준비 중',
+  emptyTier1: '핵심 신호 — 지금 당장 대응해야 할 가장 급한 위험',
+  emptyTier2: '남들이 놓친 신호 — 주요 언론·기관이 아직 보지 못한 것',
+  emptyTier3: '알려진 위험 — 배경에 깔린 구조적 취약점',
+  emptySampleLabel: '예시',
+  sampleHeadline: '메콩강 상류 댐 방류로 하류 3개 주 홍수 경계',
+  sampleSummary: '7일 폭우 예보와 댐 3곳 동시 방류, 저지대 200만 명 노출',
+  howItWorksTitle: '이렇게 봅니다',
+  howItWorksLine1: '트리거: 폭우·지진·분쟁 같은 즉시 사건',
+  howItWorksLine2: '숨은 취약점: 노후 댐, 밀집 저지대, 끊긴 전력망',
+  howItWorksLine3: '사람: 그 위에 사는 인구 — 2023년 리비아 데르나는 트리거와 취약점이 겹쳐 11,000명이 사망했습니다',
 }
 
 const en: CrisisUiPack = {
@@ -293,6 +370,31 @@ const en: CrisisUiPack = {
   couldNotQueue: 'Could not queue',
   today: 'Today',
   cost: 'Cost',
+  worldRiskTitle: 'Today’s world risk',
+  worldRiskSummary: (act, alert, watch) => `Act now ${act} · Alert ${alert} · Watch ${watch}`,
+  worldRiskUpdated: (at) => `Data as of ${at}`,
+  worldRiskStage5: 'Act now',
+  worldRiskStage4: 'Alert',
+  worldRiskStage3: 'Watch',
+  dangerNowTitle: 'Most dangerous right now',
+  dangerNowSubtitle: 'Top 5 regions by today’s score',
+  dangerRegionLine: (triggers, fragility, people) => `${triggers} + ${fragility} + ${people}`,
+  dangerPeopleUnit: (n) => `${n} people`,
+  dangerFragilityUnit: (n) => `${n} fragile sites`,
+  triggerLabel: (key) => key,
+  lockedInside: (headlines, missed, baseline) => `${headlines} key signals · ${missed} missed · ${baseline} known risks`,
+  lockedTeaser: 'Move to higher ground before discharge and secure 72 hours of water and fuel.',
+  emptyTitle: 'Today’s AI briefing is being prepared',
+  emptyTier1: 'Key signals — the most urgent dangers to act on now',
+  emptyTier2: 'Signals others missed — what major outlets haven’t caught yet',
+  emptyTier3: 'Known risks — the structural fragility underneath',
+  emptySampleLabel: 'Sample',
+  sampleHeadline: 'Mekong upstream dam discharge puts three downstream provinces on flood alert',
+  sampleSummary: '7-day heavy rain forecast plus three dams discharging at once, 2M people exposed in lowlands',
+  howItWorksTitle: 'How to read this',
+  howItWorksLine1: 'Trigger: immediate events like heavy rain, earthquakes, conflict',
+  howItWorksLine2: 'Hidden fragility: aging dams, crowded lowlands, fragile power grids',
+  howItWorksLine3: 'People: the population living on top — Derna, Libya 2023 killed 11,000 when trigger met fragility',
 }
 
 const ja: CrisisUiPack = {

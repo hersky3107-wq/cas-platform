@@ -1,70 +1,45 @@
 'use client'
 
 import Link from 'next/link'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { CrisisLanguageToggle } from '@/components/crisis/LanguageToggle'
 import { CrisisPulseStyles } from '@/components/crisis/CrisisPulseStyles'
-import { SeverityCard } from '@/components/crisis/SeverityCard'
+import { BriefingCardsSection, type BriefingCard, type UnlockedCard } from '@/components/crisis/briefing/BriefingCardsSection'
+import { DangerNowSection, type DangerRegion } from '@/components/crisis/briefing/DangerNowSection'
+import { EmptyBriefingState } from '@/components/crisis/briefing/EmptyBriefingState'
+import { HowItWorks } from '@/components/crisis/briefing/HowItWorks'
+import { WorldRiskStrip } from '@/components/crisis/briefing/WorldRiskStrip'
 import { authenticatedFetch } from '@/lib/api/authenticated-fetch'
-import { CRISIS_BRIEF_CREDITS } from '@/lib/crisis/credits'
-import { stageBannerText, type CrisisUiPack } from '@/lib/crisis/i18n/dictionary'
 import { useCrisisLocale } from '@/lib/crisis/i18n/use-crisis-locale'
-import { severityTheme } from '@/lib/crisis/ui/severity'
 import { supabase } from '@/lib/db/supabase'
-
-type LockedCard = {
-  runId: string
-  regionName: string
-  country: string
-  locked: true
-  headline_ko: string
-  stage: number
-  headline_fallback?: boolean
-}
-
-type HypothesisRow = {
-  title: string
-  novelty: string
-  noveltyBadge: string | null
-  stage: number
-  possibility: string
-  why_humans_miss: string
-  what_to_do_ko: string[]
-  official_links: Array<{ label: string; url: string }>
-  evidence: Array<{ ref: string; url?: string }>
-  hazards?: string[]
-}
-
-type UnlockedCard = {
-  runId: string
-  regionName: string
-  country: string
-  locked: false
-  headline_ko: string
-  summary_ko: string
-  stage: number
-  headline_fallback?: boolean
-  headlines: HypothesisRow[]
-  missed_by_others: HypothesisRow[]
-  baseline_risks: Array<{ title: string; stage: number; possibility: string; what_to_do: string[]; reason?: string }>
-  novelty: { only_us: number; also_seen_elsewhere: number }
-  evidence: string[]
-}
-
-type Card = LockedCard | UnlockedCard
 
 export default function CrisisBriefingPage() {
   const { locale, t, dir, setLocale } = useCrisisLocale()
   const [ready, setReady] = useState(false)
-  const [cards, setCards] = useState<Card[]>([])
+  const [cards, setCards] = useState<BriefingCard[]>([])
+  const [mapDay, setMapDay] = useState<string | null>(null)
+  const [regions, setRegions] = useState<DangerRegion[]>([])
   const [error, setError] = useState<string | null>(null)
   const [busy, setBusy] = useState<string | null>(null)
 
   async function load() {
-    const res = await authenticatedFetch(`/api/crisis/briefing?lang=${encodeURIComponent(locale)}`)
-    const body = (await res.json().catch(() => null)) as { cards?: Card[]; error?: string }
-    if (!res.ok) throw new Error(body?.error ?? t.briefingLoadError)
-    setCards(body.cards ?? [])
+    const [briefRes, mapRes] = await Promise.all([
+      authenticatedFetch(`/api/crisis/briefing?lang=${encodeURIComponent(locale)}`),
+      authenticatedFetch('/api/crisis/map'),
+    ])
+    const briefBody = (await briefRes.json().catch(() => null)) as { cards?: BriefingCard[]; error?: string }
+    if (!briefRes.ok) throw new Error(briefBody?.error ?? t.briefingLoadError)
+    setCards(briefBody.cards ?? [])
+
+    const mapBody = (await mapRes.json().catch(() => null)) as {
+      day?: string
+      regions?: DangerRegion[]
+      error?: string
+    }
+    if (mapRes.ok) {
+      setMapDay(mapBody.day ?? null)
+      setRegions(mapBody.regions ?? [])
+    }
   }
 
   useEffect(() => {
@@ -93,6 +68,18 @@ export default function CrisisBriefingPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locale])
 
+  const stageCounts = useMemo(() => {
+    let s5 = 0
+    let s4 = 0
+    let s3 = 0
+    for (const row of regions) {
+      if (row.stage >= 5) s5 += 1
+      else if (row.stage >= 4) s4 += 1
+      else if (row.stage >= 3) s3 += 1
+    }
+    return { s5, s4, s3 }
+  }, [regions])
+
   async function unlock(runId: string) {
     if (busy) return
     setBusy(runId)
@@ -116,180 +103,49 @@ export default function CrisisBriefingPage() {
 
   if (!ready) {
     return (
-      <main className="flex min-h-screen items-center justify-center bg-[#0a0f1e] text-slate-400" dir={dir}>
+      <main className="flex min-h-screen items-center justify-center bg-[#03050c] text-slate-400" dir={dir}>
         {t.loading}
       </main>
     )
   }
 
   return (
-    <main className="min-h-screen bg-[#0a0f1e] px-4 py-8 text-white" dir={dir}>
+    <main className="min-h-screen bg-[#03050c] text-white" dir={dir}>
       <CrisisPulseStyles />
-      <div className="mx-auto max-w-3xl space-y-6">
-        <div className="flex flex-wrap items-end justify-between gap-3">
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(34,211,238,0.10),transparent_45%),radial-gradient(circle_at_80%_80%,rgba(251,113,133,0.07),transparent_40%)]" />
+      <div className="relative mx-auto max-w-3xl space-y-8 px-4 py-8">
+        <header className="flex flex-wrap items-end justify-between gap-3">
           <div>
-            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">{t.brand}</p>
-            <h1 className="text-3xl font-black">{t.briefingTitle}</h1>
-            <p className="mt-1 text-sm text-slate-400">{t.briefingSubtitle(CRISIS_BRIEF_CREDITS)}</p>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-cyan-300/80">{t.brand}</p>
+            <h1 className="mt-1 text-3xl font-black tracking-tight">{t.briefingTitle}</h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <CrisisLanguageToggle locale={locale} onChange={setLocale} label={t.languageToggle} />
-            <Link href="/crisis" className="rounded-xl border border-white/12 bg-white/5 px-4 py-2 text-sm text-slate-200">
+            <Link
+              href="/crisis"
+              className="rounded-xl border border-white/12 bg-white/5 px-4 py-2 text-sm text-slate-200 hover:bg-white/10"
+            >
               ← {t.backToMap}
             </Link>
           </div>
-        </div>
+        </header>
 
         {error ? (
           <div className="rounded-2xl border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-100">{error}</div>
         ) : null}
 
+        <WorldRiskStrip t={t} day={mapDay} stage5={stageCounts.s5} stage4={stageCounts.s4} stage3={stageCounts.s3} />
+
+        <DangerNowSection t={t} locale={locale} regions={regions} />
+
         {cards.length === 0 ? (
-          <p className="rounded-2xl border border-white/10 bg-white/[0.04] px-4 py-10 text-center text-sm text-slate-400">
-            {t.noCards}
-          </p>
+          <EmptyBriefingState t={t} />
         ) : (
-          <div className="space-y-4">
-            {cards.map((card) =>
-              card.locked ? (
-                <LockedView key={card.runId} card={card} t={t} busy={busy} onUnlock={() => void unlock(card.runId)} />
-              ) : (
-                <UnlockedView key={card.runId} card={card} t={t} />
-              ),
-            )}
-          </div>
+          <BriefingCardsSection t={t} cards={cards} busy={busy} onUnlock={(runId) => void unlock(runId)} />
         )}
+
+        <HowItWorks t={t} />
       </div>
     </main>
-  )
-}
-
-function LockedView({
-  card,
-  t,
-  busy,
-  onUnlock,
-}: {
-  card: LockedCard
-  t: CrisisUiPack
-  busy: string | null
-  onUnlock: () => void
-}) {
-  const theme = severityTheme(card.stage)
-  return (
-    <article
-      className={`rounded-2xl px-4 py-4 ${theme.pulseBorder ? 'crisis-pulse-border' : ''}`}
-      style={{ background: theme.bg, border: `2px solid ${theme.border}` }}
-    >
-      <div className="mb-3 rounded-xl px-3 py-2 text-sm font-black" style={{ background: theme.bannerBg, color: theme.color }}>
-        {stageBannerText(card.stage, t)}
-      </div>
-      <p className="text-xs text-slate-500">
-        {card.regionName} / {card.country}
-      </p>
-      <h2 className="mt-1 text-xl font-black leading-snug">{card.headline_ko}</h2>
-      {card.headline_fallback ? (
-        <p className="mt-1 text-xs text-slate-400">{t.headlineFallback}</p>
-      ) : null}
-      <button
-        type="button"
-        onClick={onUnlock}
-        disabled={busy !== null}
-        className="mt-3 rounded-xl bg-cyan-600 px-4 py-2 text-sm font-semibold text-white hover:bg-cyan-500 disabled:opacity-50"
-      >
-        {busy === card.runId ? t.unlocking : t.unlock(CRISIS_BRIEF_CREDITS)}
-      </button>
-    </article>
-  )
-}
-
-function UnlockedView({ card, t }: { card: UnlockedCard; t: CrisisUiPack }) {
-  const theme = severityTheme(card.stage)
-  return (
-    <article className="space-y-4">
-      <div
-        className={`rounded-2xl px-4 py-4 ${theme.pulseBorder ? 'crisis-pulse-border' : ''}`}
-        style={{ background: theme.bg, border: `2px solid ${theme.border}` }}
-      >
-        <div className="mb-3 rounded-xl px-3 py-2 text-sm font-black" style={{ background: theme.bannerBg, color: theme.color }}>
-          {stageBannerText(card.stage, t)}
-        </div>
-        <p className="text-xs text-slate-500">
-          {card.regionName} / {card.country}
-        </p>
-        <h2 className="mt-1 text-2xl font-black leading-snug">{card.headline_ko}</h2>
-        <p className="mt-2 text-lg font-semibold leading-snug text-white">{card.summary_ko}</p>
-        <p className="mt-2 text-xs text-slate-400">{t.noveltyLine(card.novelty.only_us, card.novelty.also_seen_elsewhere)}</p>
-      </div>
-
-      <Tier title={t.headlines} rows={card.headlines} t={t} />
-      <Tier title={t.missedByOthers} rows={card.missed_by_others} t={t} />
-
-      <section>
-        <h3 className="mb-2 text-sm font-black text-slate-300">{t.baselineRisks}</h3>
-        <div className="space-y-3">
-          {card.baseline_risks.map((row) => (
-            <SeverityCard
-              key={row.title}
-              t={t}
-              card={{
-                stage: row.stage,
-                summary: row.title,
-                whatToDo: row.what_to_do,
-                whyMiss: row.reason,
-              }}
-            />
-          ))}
-        </div>
-      </section>
-
-      {card.evidence.length > 0 ? (
-        <details>
-          <summary className="cursor-pointer text-xs font-semibold text-slate-400">{t.showEvidence}</summary>
-          <ul className="mt-2 space-y-1 text-xs">
-            {card.evidence.slice(0, 12).map((url) => (
-              <li key={url}>
-                <a href={url} target="_blank" rel="noopener noreferrer" className="text-cyan-300 hover:underline">
-                  {url}
-                </a>
-              </li>
-            ))}
-          </ul>
-        </details>
-      ) : null}
-    </article>
-  )
-}
-
-function Tier({ title, rows, t }: { title: string; rows: HypothesisRow[]; t: CrisisUiPack }) {
-  return (
-    <section>
-      <h3 className="mb-2 text-sm font-black text-slate-300">{title}</h3>
-      {rows.length === 0 ? (
-        <p className="text-sm text-slate-500">{t.none}</p>
-      ) : (
-        <div className="space-y-3">
-          {rows.map((row) => (
-            <SeverityCard
-              key={row.title}
-              t={t}
-              card={{
-                stage: row.stage,
-                summary: row.title,
-                whatToDo: row.what_to_do_ko,
-                whyMiss: row.why_humans_miss,
-                novelty: row.novelty,
-                hazards: row.hazards,
-                possibility: row.possibility,
-                evidence: [
-                  ...row.official_links.map((link) => ({ label: link.label, url: link.url })),
-                  ...row.evidence.filter((item) => item.url).map((item) => ({ label: item.ref, url: item.url })),
-                ],
-              }}
-            />
-          ))}
-        </div>
-      )}
-    </section>
   )
 }

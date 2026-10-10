@@ -12,7 +12,13 @@ export interface LockedBriefCard {
   headline_ko: string
   stage: number
   headline_fallback?: boolean
-  novelty?: never
+  /** Teaser counts shown on the locked card; never the content itself. */
+  novelty?: { only_us: number; also_seen_elsewhere: number }
+  tierCounts?: { headlines: number; missed: number; baseline: number }
+  /** First action line, only ever shown blurred. */
+  teaser?: string
+  /** Hazard keywords across tiers, for icons only. */
+  hazards?: string[]
 }
 
 export interface UnlockedBriefCard {
@@ -95,9 +101,19 @@ export function lockBriefCard(opts: {
   regionName: string
   country: string
   result: Pick<EngineResult, 'headline_ko'> &
-    Partial<Pick<EngineResult, 'headline_fallback' | 'headlines' | 'missed_by_others' | 'baseline_risks'>> | null
+    Partial<
+      Pick<EngineResult, 'headline_fallback' | 'headlines' | 'missed_by_others' | 'baseline_risks' | 'novelty_counts'>
+    > | null
   stage?: number
 }): LockedBriefCard {
+  const tierCounts =
+    opts.result && (opts.result.headlines || opts.result.missed_by_others || opts.result.baseline_risks)
+      ? {
+          headlines: opts.result.headlines?.length ?? 0,
+          missed: opts.result.missed_by_others?.length ?? 0,
+          baseline: opts.result.baseline_risks?.length ?? 0,
+        }
+      : undefined
   return {
     runId: opts.runId,
     regionId: opts.regionId,
@@ -108,6 +124,18 @@ export function lockBriefCard(opts: {
     headline_ko: opts.result?.headline_ko?.trim() || '브리핑',
     stage: opts.stage ?? cardStageFromResult(opts.result),
     headline_fallback: opts.result?.headline_fallback,
+    novelty: opts.result?.novelty_counts
+      ? { only_us: opts.result.novelty_counts.only_us, also_seen_elsewhere: opts.result.novelty_counts.also_seen_elsewhere }
+      : undefined,
+    tierCounts,
+    teaser: opts.result?.headlines?.find((row) => (row.what_to_do ?? []).length > 0)?.what_to_do?.[0],
+    hazards: opts.result
+      ? [
+          ...new Set(
+            [...(opts.result.headlines ?? []), ...(opts.result.missed_by_others ?? [])].flatMap((row) => row.hazards ?? []),
+          ),
+        ]
+      : undefined,
   }
 }
 
