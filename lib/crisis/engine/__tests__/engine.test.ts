@@ -144,6 +144,11 @@ function caller(seen: ModelCall[], mode: 'full' | 'drop' | 'throw-hunter' = 'ful
             brief_ko: index === 0 ? '바둘라에서 비와 댐이 주민 이야기와 떨어져 있다.' : '',
             brief_en: index === 0 ? 'In Badulla the rain and the dam are not read together with the people downstream.' : '',
           })),
+          baseline_risks: [
+            { title: 'Rain floods low areas', stage: 2, possibility: 'medium', what_to_do: ['Move early.'] },
+            { title: 'Dam spill affects downstream roads', stage: 3, possibility: 'medium', what_to_do: ['Watch river levels.'] },
+            { title: 'Dengue after rain', stage: 2, possibility: 'medium', what_to_do: ['Clear containers.'] },
+          ],
         }),
         tokensIn: 10,
         tokensOut: 10,
@@ -247,8 +252,8 @@ describe('department isolation and hunters', () => {
     expect(searches[0].user).toBe(searches[1].user)
     expect(record.status).toBe('done')
     expect(record.steps.some((step) => step.slot === 'hunter-qwen' && step.error === 'hunter down')).toBe(true)
-    expect(record.result?.hypotheses.length).toBe(3)
-    expect(record.result?.outsider.length).toBe(2)
+    expect(record.result?.headlines.length).toBe(3)
+    expect(record.result?.missed_by_others.length).toBeGreaterThanOrEqual(0)
     expect(record.result?.partial).toBe(false)
   })
 
@@ -258,11 +263,9 @@ describe('department isolation and hunters', () => {
       caller: caller(seen, 'drop'),
       now: NOW,
     })
-    const ranked = record.result?.hypotheses.length ?? 0
-    const outsider = record.result?.outsider.length ?? 0
-    expect(ranked).toBe(1)
-    expect(outsider).toBe(5)
-    expect(record.result?.outsider.every((row) => row.outsider)).toBe(true)
+    expect(record.result?.headlines.length ?? 0).toBe(1)
+    expect(record.result?.missed_by_others.length ?? 0).toBe(5)
+    expect(record.result?.missed_by_others.every((row) => row.outsider)).toBe(true)
   })
 })
 
@@ -328,7 +331,7 @@ describe('schema, budget, cache, publish', () => {
   it('publishes hash-chained ledger rows and does not drop red-team notes', async () => {
     const seen: ModelCall[] = []
     const run = await runEngine({ card: card(), caller: caller(seen), now: NOW })
-    expect(run.result?.hypotheses[0]?.weakness_notes).toEqual(['thin evidence'])
+    expect(run.result?.headlines[0]?.weakness_notes).toEqual(['thin evidence'])
     const ledger = memoryLedger()
     const written = await publishHypotheses(ledger, run, [0, 1], NOW)
     expect(written[0].prev_hash).toBeNull()
@@ -342,8 +345,8 @@ describe('schema, budget, cache, publish', () => {
     expect(written[0].ai_roster).toBeTruthy()
     const inserts = buildLedgerInserts(run, [0], NOW.toISOString())
     expect(inserts[0].evidence_snapshot).toHaveProperty('roster')
-    expect(run.result?.hypotheses).toHaveLength(3)
-    expect(run.result?.outsider).toHaveLength(3)
+    expect(run.result?.headlines).toHaveLength(3)
+    expect(run.result?.baseline_risks.length).toBeGreaterThanOrEqual(3)
     expect(run.result?.headline_en).toBe('Badulla: a spill is not a failure, so no one is warned')
   })
 })

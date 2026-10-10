@@ -81,6 +81,19 @@ function noveltyMatchSchema() {
       date: z.string().nullable(),
       scope: z.enum(['region', 'country']),
       hazard: z.string(),
+      matched_span: z.string(),
+    })
+    .strict()
+}
+
+export function backgroundCoverageSchema() {
+  return z
+    .object({
+      source: z.enum(['reliefweb', 'gdacs', 'metaculus', 'mainstream']),
+      title: z.string(),
+      url: z.string(),
+      hazard: z.string(),
+      matched_span: z.string(),
     })
     .strict()
 }
@@ -88,10 +101,10 @@ function noveltyMatchSchema() {
 const baselineRiskSchema = z
   .object({
     title: z.string().min(1),
-    reason: z.string(),
-    proposed_by: z.array(z.string()),
-    novelty: z.enum(['only_us', 'also_seen_elsewhere']),
-    novelty_match: noveltyMatchSchema().nullable(),
+    stage: z.number().int().min(1).max(5),
+    possibility: z.enum(['low', 'medium', 'high']),
+    what_to_do: z.array(z.string().min(1)).min(1),
+    reason: z.string().optional(),
   })
   .strict()
 
@@ -99,12 +112,13 @@ export type BaselineRisk = z.infer<typeof baselineRiskSchema>
 
 export const engineResultSchema = z
   .object({
-    hypotheses: z.array(hypothesisSchema),
-    outsider: z.array(hypothesisSchema),
+    headlines: z.array(hypothesisSchema),
+    missed_by_others: z.array(hypothesisSchema),
     summary_ko: z.string().min(1),
     summary_en: z.string().min(1),
     headline_ko: z.string().min(1),
     headline_en: z.string().min(1),
+    headline_fallback: z.boolean().optional(),
     map_focus: z
       .object({
         lat: z.number(),
@@ -113,7 +127,8 @@ export const engineResultSchema = z
       })
       .strict(),
     partial: z.boolean(),
-    baseline_risks: z.array(baselineRiskSchema).optional(),
+    baseline_risks: z.array(baselineRiskSchema).min(3).max(5),
+    background_coverage: z.array(backgroundCoverageSchema()).optional(),
     coverage: z.record(z.string(), z.number()).optional(),
     novelty_counts: z.object({ only_us: z.number(), also_seen_elsewhere: z.number() }).strict().optional(),
     rejected: z.array(z.object({ model: z.string(), title: z.string(), reasons: z.array(z.string()) }).strict()).optional(),

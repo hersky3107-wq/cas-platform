@@ -168,15 +168,28 @@ describe('coverage and novelty', () => {
 
   it('is only_us when nothing covers the hazard, else also_seen_elsewhere with the best match', () => {
     const coverage = [
-      item({ source: 'mainstream', url: 'https://reuters.com/a', hazards: ['flood'], region_match: true }),
-      item({ source: 'reliefweb', url: 'https://reliefweb.int/b', hazards: ['flood'], region_match: true }),
+      item({ source: 'mainstream', title: 'Badulla flood warning', url: 'https://reuters.com/a', hazards: ['flood'], region_match: true }),
+      item({ source: 'reliefweb', title: 'Ulhitiya Dam spill affects Badulla', url: 'https://reliefweb.int/b', hazards: ['flood', 'dam'], region_match: true }),
       item({ source: 'metaculus', url: 'https://metaculus.com/c', hazards: ['dengue', 'disease'] }),
     ]
-    expect(noveltyFor(['unrest'], coverage)).toEqual({ novelty: 'only_us', match: null, matches: 0 })
-    const flood = noveltyFor(['dam', 'flood'], coverage)
+    const ctx = (hazards: string[], entities: string[] = ['Ulhitiya Dam']) => ({
+      card: card(),
+      entities,
+      hazards: hazards as import('../../config/hazard-taxonomy').Hazard[],
+      title: 'test',
+    })
+    expect(noveltyFor(ctx(['unrest']), coverage)).toMatchObject({ novelty: 'only_us', match: null, matches: 0 })
+    const flood = noveltyFor(ctx(['dam', 'flood']), coverage)
     expect(flood.novelty).toBe('also_seen_elsewhere')
-    expect(flood.match).toMatchObject({ source: 'reliefweb', url: 'https://reliefweb.int/b', scope: 'region', hazard: 'flood' })
-    expect(noveltyFor(['cholera', 'disease'], coverage).novelty).toBe('only_us')
+    expect(flood.match).toMatchObject({ source: 'reliefweb', url: 'https://reliefweb.int/b', scope: 'region', matched_span: expect.any(String) })
+    expect(['dam', 'flood']).toContain(flood.match?.hazard)
+    expect(noveltyFor(ctx(['cholera', 'disease']), coverage).novelty).toBe('only_us')
+    const dengueOnly = [
+      item({ source: 'reliefweb', title: 'Sri Lanka national dengue status', url: 'https://reliefweb.int/dengue', hazards: ['dengue', 'disease'], region_match: false }),
+    ]
+    const dengueHyp = noveltyFor(ctx(['dengue'], ['Badulla hospital']), dengueOnly)
+    expect(dengueHyp.novelty).toBe('only_us')
+    expect(dengueHyp.background.length).toBe(1)
   })
 })
 
@@ -231,22 +244,27 @@ describe('non-obviousness', () => {
             brief_en: '',
             brief_ko: '',
           })),
+          baseline_risks: [
+            { title: 'Heavy rain floods low areas', stage: 2, possibility: 'medium', what_to_do: ['Move early.'] },
+            { title: 'Landslides on hill roads', stage: 2, possibility: 'medium', what_to_do: ['Avoid slopes.'] },
+            { title: 'Dengue after rain', stage: 2, possibility: 'medium', what_to_do: ['Clear standing water.'] },
+          ],
         })
       },
     }
     const record = await runEngine({ card: card(), caller: fake, now: NOW, coverage: [] })
     const result = record.result!
     expect(result.rejected?.some((entry) => entry.reasons[0] === 'over the 2 per hunter limit')).toBe(true)
-    expect(result.hypotheses.length).toBeLessThanOrEqual(3)
-    expect(result.baseline_risks?.every((entry) => entry.reason === 'on the obvious list without a twist')).toBe(true)
-    expect(result.baseline_risks?.some((entry) => entry.title.startsWith('Landslide'))).toBe(true)
-    expect([...result.hypotheses, ...result.outsider].some((entry) => entry.title.startsWith('Landslide'))).toBe(false)
+    expect(result.headlines.length).toBeLessThanOrEqual(3)
+    expect(result.baseline_risks.length).toBeGreaterThanOrEqual(3)
+    expect(result.baseline_risks.some((entry) => entry.title.includes('Landslide'))).toBe(true)
+    expect([...result.headlines, ...result.missed_by_others].some((entry) => entry.title.startsWith('Landslide'))).toBe(false)
     expect(result.headline_en).toBe('Badulla: tunnel seepage reaches the wells')
     expect(result.novelty_counts).toEqual({ only_us: expect.any(Number), also_seen_elsewhere: 0 })
-    const all = result.hypotheses.length + result.outsider.length + (result.baseline_risks?.length ?? 0)
+    const all = result.headlines.length + result.missed_by_others.length + result.baseline_risks.length
     expect(all).toBeGreaterThan(0)
-    expect(result.hypotheses[0].early_indicators?.length).toBeGreaterThan(0)
-    expect(result.hypotheses[0].falsifier).toBeTruthy()
+    expect(result.headlines[0]?.early_indicators?.length).toBeGreaterThan(0)
+    expect(result.headlines[0]?.falsifier).toBeTruthy()
     expect(result.headline_ko).toBe('바둘라: 터널 누수가 우물로')
   })
 

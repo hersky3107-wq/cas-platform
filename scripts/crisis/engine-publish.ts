@@ -27,7 +27,7 @@ async function main(): Promise<void> {
   const { loadRun, insertHypothesis, markPublished } = await import('../../lib/crisis/engine/store')
   const run = await loadRun(supabaseAdmin, runId)
   if (!run) throw new Error(`no engine run ${runId}`)
-  const all = [...(run.result?.hypotheses ?? []), ...(run.result?.outsider ?? [])]
+  const all = [...(run.result?.headlines ?? []), ...(run.result?.missed_by_others ?? [])]
   all.forEach((hypothesis, index) => {
     console.log(`${index}\tstage=${hypothesis.stage}\toutsider=${hypothesis.outsider}\t${hypothesis.title}`)
   })

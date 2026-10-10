@@ -62,7 +62,7 @@ export function hypothesisBody(hypothesis: Hypothesis): string {
 export function buildLedgerInserts(run: EngineRunRecord, indices: number[], createdAt: string): LedgerInsert[] {
   if (!run.result) throw new Error('run has no result to publish')
   if (run.status !== 'done' || run.dryRun) throw new Error('only a finished live run can be published')
-  const all = [...run.result.hypotheses, ...run.result.outsider]
+  const all = [...run.result.headlines, ...run.result.missed_by_others]
   return indices.map((index) => {
     const hypothesis = all[index]
     if (!hypothesis) throw new Error(`hypothesis index ${index} is not on this run`)

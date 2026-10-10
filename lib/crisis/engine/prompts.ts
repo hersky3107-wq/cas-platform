@@ -245,7 +245,9 @@ export function judgeSystem(): string {
     'Only for the 3 groups with the highest non_obviousness write headline_ko and headline_en (a news line or a short, at most 16 words) and brief_ko and brief_en (at most 2 sentences). Leave them "" for every other group.',
     'headline_ko and brief_ko are always Korean (한국어, Hangul), whatever the local language. headline_en and brief_en are English.',
     'what_to_do is plain language, at most 4 lines: local language and English. official_links only from the hypotheses, the card, or the search items.',
-    'Return JSON: {"groups":[{"ids":["h0","h3"],"title":"","why_humans_miss":"","what_to_do":[""],"official_links":[{"label":"","url":""}],"non_obviousness":0.7,"on_obvious_list":false,"twist":"","reported_as_news":"","headline_ko":"","headline_en":"","brief_ko":"","brief_en":""}]}',
+    'Return JSON: {"groups":[...],"baseline_risks":[{"title":"","stage":2,"possibility":"medium","what_to_do":[""],"reason":""}]}',
+    'baseline_risks must list 3 to 5 well-known standard risks for this region (rain, dam, landslide, dengue, etc.), each with stage 1-5, possibility, and what_to_do pairs (local language + English).',
+    'groups JSON shape: {"ids":["h0","h3"],"title":"","why_humans_miss":"","what_to_do":[""],"official_links":[{"label":"","url":""}],"non_obviousness":0.7,"on_obvious_list":false,"twist":"","reported_as_news":"","headline_ko":"","headline_en":"","brief_ko":"","brief_en":""}',
   ].join('\n')
 }
 

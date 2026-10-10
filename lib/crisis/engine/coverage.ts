@@ -1,7 +1,11 @@
 import { hazardsFromGdacsType, hazardsOf, sameHazard, type Hazard } from '../config/hazard-taxonomy'
 import { ISO2_TO_ISO3, normalizeName } from '../ingest/iso'
+import { entityWords } from './hunter-rules'
+import type { Draft } from './hunter-rules'
 import type { EngineCard } from './schema'
 import type { SearchItem } from './search-items'
+
+const DISEASES = new Set<Hazard>(['cholera', 'dengue', 'malaria', 'leptospirosis', 'mpox', 'measles'])
 
 export const COVERAGE_DAYS = 30
 export const COVERAGE_SOURCES = ['reliefweb', 'gdacs', 'metaculus', 'mainstream'] as const
@@ -24,6 +28,23 @@ export interface NoveltyMatch {
   date: string | null
   scope: 'region' | 'country'
   hazard: Hazard
+  matched_span: string
+}
+
+export interface BackgroundCoverageItem {
+  source: CoverageSource
+  title: string
+  url: string
+  hazard: Hazard
+  matched_span: string
+}
+
+export interface NoveltyContext {
+  card: Pick<EngineCard, 'name' | 'country'>
+  entities: string[]
+  mechanism?: string
+  title?: string
+  hazards: Hazard[]
 }
 
 /** Global wires and agencies, plus national outlets for the countries we test on. */
@@ -179,30 +200,99 @@ export function coverageCounts(items: CoverageItem[]): Record<CoverageSource, nu
   return counts
 }
 
+function specificSharedHazard(hypothesis: Hazard[], item: CoverageItem): Hazard | null {
+  const text = item.title
+  const itemHazards = [...new Set([...item.hazards, ...hazardsOf(text)])]
+  const shared = sameHazard(hypothesis, itemHazards)
+  if (!shared) return null
+  const hypSpecific = hypothesis.filter((hazard) => DISEASES.has(hazard))
+  if (hypSpecific.length) {
+    const named = hypSpecific.find((hazard) => itemHazards.includes(hazard) || hazardsOf(text).includes(hazard))
+    return named ?? null
+  }
+  if (shared === 'disease') {
+    const itemSpecific = itemHazards.filter((hazard) => DISEASES.has(hazard))
+    if (itemSpecific.length) return null
+  }
+  const mechanism = hypothesis.includes('dam') && itemHazards.includes('dam') ? 'dam' : shared
+  if (mechanism === 'dam' || shared === 'dam') {
+    if (!/\b(dam|reservoir|spill|spillway|sluice|barrage|embankment)\b/i.test(text)) return null
+  }
+  return shared
+}
+
+function anchoredToHypothesis(text: string, card: Pick<EngineCard, 'name' | 'country'>, draft: Pick<Draft, 'entities'>): boolean {
+  if (regionMentioned(text, card)) return true
+  const norm = ` ${normalizeName(text)} `
+  const words = entityWords({ entities: draft.entities }, card)
+  for (const word of words) {
+    if (word.length >= 4 && norm.includes(` ${word} `)) return true
+  }
+  const facility = /\b(hospital|district|road|bridge|reservoir|spillway|general hospital)\b/i
+  if (facility.test(text) && draft.entities.some((entity) => normalizeName(entity).split(' ').some((part) => part.length >= 4 && norm.includes(` ${part} `)))) {
+    return true
+  }
+  return false
+}
+
+export function matchedSpan(text: string, card: Pick<EngineCard, 'name'>, hazard: Hazard, draft: Pick<Draft, 'entities'>): string {
+  const raw = text.trim()
+  const region = normalizeName(card.name)
+  if (region.length >= 3 && raw.toLowerCase().includes(region)) {
+    const index = raw.toLowerCase().indexOf(region)
+    return raw.slice(Math.max(0, index - 20), Math.min(raw.length, index + region.length + 40)).trim()
+  }
+  for (const entity of draft.entities) {
+    const phrase = entity.trim()
+    if (phrase.length >= 4 && raw.toLowerCase().includes(phrase.toLowerCase())) {
+      const index = raw.toLowerCase().indexOf(phrase.toLowerCase())
+      return raw.slice(Math.max(0, index - 15), Math.min(raw.length, index + phrase.length + 35)).trim()
+    }
+  }
+  const hazardLabel = hazard.replace(/_/g, ' ')
+  if (raw.toLowerCase().includes(hazardLabel)) return raw.slice(0, 120)
+  return raw.slice(0, 120)
+}
+
 /**
- * only_us needs no ReliefWeb, GDACS, Metaculus, or mainstream item on the same hazard for this
- * region or country in the last 30 days. Otherwise also_seen_elsewhere with the best match:
- * region before country, then ReliefWeb, GDACS, Metaculus, mainstream, then newest.
+ * also_seen_elsewhere only when coverage names the same specific hazard (not a broad country disease
+ * bulletin) and names the region or a hypothesis entity. Other overlaps go to background_coverage.
  */
 export function noveltyFor(
-  hazards: Hazard[],
+  context: NoveltyContext,
   items: CoverageItem[],
-): { novelty: 'only_us' | 'also_seen_elsewhere'; match: NoveltyMatch | null; matches: number } {
+): {
+  novelty: 'only_us' | 'also_seen_elsewhere'
+  match: NoveltyMatch | null
+  matches: number
+  background: BackgroundCoverageItem[]
+} {
+  const draft = { entities: context.entities, hazards: context.hazards, title: context.title ?? '' }
   const hits: Array<{ item: CoverageItem; hazard: Hazard }> = []
+  const background: BackgroundCoverageItem[] = []
   for (const item of items) {
-    const hazard = sameHazard(hazards, item.hazards)
-    if (hazard) hits.push({ item, hazard })
+    const hazard = specificSharedHazard(context.hazards, item)
+    if (!hazard) continue
+    const text = item.title
+    const span = matchedSpan(text, context.card, hazard, draft)
+    if (!anchoredToHypothesis(text, context.card, draft)) {
+      background.push({ source: item.source, title: item.title, url: item.url, hazard, matched_span: span })
+      continue
+    }
+    hits.push({ item, hazard })
   }
-  if (!hits.length) return { novelty: 'only_us', match: null, matches: 0 }
+  if (!hits.length) return { novelty: 'only_us', match: null, matches: 0, background }
   hits.sort((a, b) =>
     Number(b.item.region_match) - Number(a.item.region_match) ||
     SOURCE_PRIORITY[a.item.source] - SOURCE_PRIORITY[b.item.source] ||
     (b.item.date ?? '').localeCompare(a.item.date ?? ''),
   )
   const best = hits[0]
+  const span = matchedSpan(best.item.title, context.card, best.hazard, draft)
   return {
     novelty: 'also_seen_elsewhere',
     matches: hits.length,
+    background,
     match: {
       source: best.item.source,
       title: best.item.title,
@@ -210,6 +300,7 @@ export function noveltyFor(
       date: best.item.date,
       scope: best.item.region_match ? 'region' : 'country',
       hazard: best.hazard,
+      matched_span: span,
     },
   }
 }

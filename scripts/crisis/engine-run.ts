@@ -8,6 +8,7 @@
  */
 import { existsSync } from 'node:fs'
 import path from 'node:path'
+import { DEFAULT_COST_CAP_USD } from '../../lib/crisis/engine/prices'
 import { estimateRegionRunUsd } from '../../lib/crisis/engine/roster'
 import { runEngine, type EngineCache, type EngineRunRecord } from '../../lib/crisis/engine/run'
 import { HORIZONS, type EngineCard, type Horizon, type Hypothesis } from '../../lib/crisis/engine/schema'
@@ -88,6 +89,8 @@ function printRecord(record: EngineRunRecord, dryRun: boolean): void {
   const counts = result.coverage ?? {}
   console.log(`coverage reliefweb=${counts.reliefweb ?? 0} gdacs=${counts.gdacs ?? 0} metaculus=${counts.metaculus ?? 0} mainstream=${counts.mainstream ?? 0} (last 30 days, this country)`)
   console.log(`novelty only_us=${result.novelty_counts?.only_us ?? 0} also_seen_elsewhere=${result.novelty_counts?.also_seen_elsewhere ?? 0} (every group, before ranking)`)
+  console.log(`background_coverage=${result.background_coverage?.length ?? 0}`)
+  if (result.headline_fallback) console.log('headline_fallback=true')
   console.log(`obvious_list=${JSON.stringify(result.obvious ?? [])}`)
   for (const row of result.rejected ?? []) console.log(`rejected model=${row.model} title=${row.title} reasons=${row.reasons.join('; ')}`)
   console.log(`headline_ko=${result.headline_ko}`)
@@ -106,11 +109,18 @@ function printRecord(record: EngineRunRecord, dryRun: boolean): void {
     console.log(`  why_humans_miss=${row.why_humans_miss}`)
     console.log(`  what_to_do=${JSON.stringify(row.what_to_do)}`)
   }
-  result.hypotheses.forEach((row, index) => print(`hypothesis[${index}]`, row))
-  result.outsider.forEach((row, index) => print(`outsider[${index}]`, row))
-  console.log(`baseline_risks=${result.baseline_risks?.length ?? 0}`)
-  for (const row of result.baseline_risks ?? []) {
-    console.log(`baseline title=${row.title} proposed_by=${row.proposed_by.length} novelty=${row.novelty}${row.novelty_match ? ` ${row.novelty_match.url}` : ''} reason=${row.reason}`)
+  console.log('--- tier headlines ---')
+  result.headlines.forEach((row, index) => print(`headline[${index}]`, row))
+  console.log('--- tier missed_by_others ---')
+  result.missed_by_others.forEach((row, index) => print(`missed[${index}]`, row))
+  console.log('--- tier baseline_risks ---')
+  console.log(`baseline_risks=${result.baseline_risks.length}`)
+  for (const row of result.baseline_risks) {
+    console.log(`baseline title=${row.title} stage=${row.stage} possibility=${row.possibility} reason=${row.reason ?? ''}`)
+    console.log(`  what_to_do=${JSON.stringify(row.what_to_do)}`)
+  }
+  for (const row of result.background_coverage ?? []) {
+    console.log(`background ${row.source}/${row.hazard} span=${JSON.stringify(row.matched_span)} ${row.url}`)
   }
 }
 
@@ -130,7 +140,10 @@ async function main(): Promise<void> {
   if (!existsSync(envPath)) throw new Error('Copy cas-platform/.env.local into cas-platform-crisis first')
   const { supabaseAdmin } = await import('../../lib/supabase/server')
   const { runLayer1Score } = await import('../../lib/crisis/score/job')
-  console.log(`typical_list_price_usd=${estimateRegionRunUsd().toFixed(4)} cap_usd=1.50 (list-price estimate, not a live quote)`)
+  const capArg = arg('cap-usd')
+  const costCapUsd = capArg != null ? Number(capArg) : DEFAULT_COST_CAP_USD
+  if (!Number.isFinite(costCapUsd) || costCapUsd <= 0) throw new Error('--cap-usd must be a positive number')
+  console.log(`typical_list_price_usd=${estimateRegionRunUsd().toFixed(4)} cap_usd=${costCapUsd.toFixed(2)} (list-price estimate, not a live quote)`)
   const scored = await runLayer1Score(supabaseAdmin, { dryRun: true, write: false, log: () => {} })
   const picked = pickRegions(scored.rows, region, top)
   console.log(`mode=${top ? 'top' : 'region'} count=${picked.length} horizon=${horizon}`)
@@ -171,6 +184,7 @@ async function main(): Promise<void> {
       cache,
       force: wants('--force'),
       coverage,
+      costCapUsd,
     })
     printRecord(record, dryRun)
     if (record.id) console.log(`run_id=${record.id}`)

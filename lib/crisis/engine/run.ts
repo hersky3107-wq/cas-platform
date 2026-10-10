@@ -19,7 +19,8 @@ import {
 } from './prompts'
 import { sameHazard } from '../config/hazard-taxonomy'
 import { normalizeName } from '../ingest/iso'
-import { coverageCounts, mainstreamFromSearch, noveltyFor, withinDays, type CoverageItem } from './coverage'
+import { mergeBaselineRisks, type AnalystFinding } from './baseline-fill'
+import { coverageCounts, mainstreamFromSearch, noveltyFor, withinDays, type BackgroundCoverageItem, type CoverageItem } from './coverage'
 import { checkHunterRow, clusterDrafts, entityCorpus, entityWords, HUNTER_MAX_HYPOTHESES, obviousList, type Draft, type ObviousEntry } from './hunter-rules'
 import { extractJson, logParseFailure, RETRY_JSON_HINT } from './parse'
 import { DEFAULT_COST_CAP_USD, estimateTokens, listPriceCost, outputBudget, ROLE_TIMEOUT_MS, TOKEN_CAPS, TYPICAL_OUTPUT_TOKENS } from './prices'
@@ -177,6 +178,8 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   let tokensOut = 0
   let partial = false
   const notes: string[] = []
+  const analystFindings: AnalystFinding[] = []
+  let judgeBaselineRows: unknown = null
 
   const callSlot = async (
     slot: RosterSlot,
@@ -352,6 +355,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     const record = asRecord(called?.parsed)
     const note = typeof record?.notes === 'string' ? record.notes : ''
     if (note) notes.push(`${department}: ${note}`)
+    for (const signal of stringList(record?.signals)) analystFindings.push({ department, signal })
   }
 
   const writer = slotsFor(roster, 'query_writer')[0]
@@ -472,6 +476,7 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       })))),
     )
     const record = asRecord(called?.parsed)
+    if (record?.baseline_risks != null) judgeBaselineRows = record.baseline_risks
     if (record && Array.isArray(record.groups)) grouped = applyJudgeGroups(drafts, record.groups)
   } else if (partial && drafts.length === 0) {
     summaries.headline_en = `${opts.card.name}: run stopped under the cost cap`
@@ -488,30 +493,34 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
     ...coverage.map((item) => item.url),
     ...drafts.flatMap((draft) => [...draft.evidence.flatMap((item) => (item.url ? [item.url] : [])), ...draft.official_links.map((link) => link.url)]),
   ])
+  const backgroundByUrl = new Map<string, BackgroundCoverageItem>()
   const scored = grouped.map((row) => {
     const verdict = obviousnessOf(row, opts.card, obvious, coverage, now, knownUrls)
-    const hypothesis = toHypothesis(row.draft, row.outsider, opts.card.horizon, coverage, verdict.non, row.judge?.twist ?? '')
-    return { row, verdict, hypothesis }
+    const built = toHypothesis(row.draft, row.outsider, opts.card, coverage, verdict.non, row.judge?.twist ?? '')
+    for (const entry of built.background) backgroundByUrl.set(entry.url, entry)
+    return { row, verdict, hypothesis: built.hypothesis }
   })
-  const baseline = scored.filter((item) => item.verdict.non === 0)
   const liveRows = scored.filter((item) => item.verdict.non > 0)
-  const ranked = liveRows
+  const rankScore = (item: (typeof scored)[number]) => item.verdict.non * item.hypothesis.stage
+  const headlinePool = liveRows
     .filter((item) => !item.row.outsider)
-    .sort((a, b) =>
-      b.verdict.non * b.hypothesis.stage - a.verdict.non * a.hypothesis.stage ||
-      b.hypothesis.proposed_by.length - a.hypothesis.proposed_by.length,
-    )
-  const hypotheses = ranked.slice(0, 3).map((item) => ({ ...item.hypothesis, outsider: false }))
-  const outsider = [...ranked.slice(3), ...liveRows.filter((item) => item.row.outsider)].map((item) => ({ ...item.hypothesis, outsider: true }))
-  const baselineRisks: BaselineRisk[] = baseline.map((item) => ({
-    title: item.hypothesis.title,
-    reason: item.verdict.reason,
-    proposed_by: item.hypothesis.proposed_by,
-    novelty: item.hypothesis.novelty,
-    novelty_match: item.hypothesis.novelty_match ?? null,
-  }))
+    .sort((a, b) => rankScore(b) - rankScore(a) || b.hypothesis.proposed_by.length - a.hypothesis.proposed_by.length)
+  let headline_fallback = false
+  let headlineRows = headlinePool.filter((item) => item.hypothesis.stage >= 3)
+  if (headlineRows.length === 0 && headlinePool.length > 0) {
+    headline_fallback = true
+    headlineRows = [...headlinePool].sort((a, b) => b.hypothesis.stage - a.hypothesis.stage || rankScore(b) - rankScore(a))
+  }
+  headlineRows = headlineRows.slice(0, 3)
+  const headlineIds = new Set(headlineRows.flatMap((item) => item.row.sourceIds))
+  const headlines = headlineRows.map((item) => ({ ...item.hypothesis, outsider: false }))
+  const missed_by_others = liveRows
+    .filter((item) => !item.row.sourceIds.some((id) => headlineIds.has(id)))
+    .filter((item) => item.hypothesis.novelty === 'only_us' || item.row.outsider)
+    .map((item) => ({ ...item.hypothesis, outsider: item.row.outsider }))
+  const baselineRisks: BaselineRisk[] = mergeBaselineRisks(judgeBaselineRows, opts.card, analystFindings)
 
-  const lead = [...liveRows].sort((a, b) => b.verdict.non - a.verdict.non || b.hypothesis.stage - a.hypothesis.stage)[0]
+  const lead = headlineRows[0]
   if (lead) {
     const judged = lead.row.judge
     const title = lead.hypothesis.title
@@ -521,11 +530,11 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
       summary_en: stringOr(judged?.brief_en, `${title}. ${lead.hypothesis.why_humans_miss}`),
       summary_ko: stringOr(hangulOnly(judged?.brief_ko), stringOr(hangulOnly(judged?.headline_ko), `${opts.card.name}: ${title}`)),
     }
-  } else if (baseline.length) {
-    summaries.headline_en = `${opts.card.name}: only baseline risks this run`
-    summaries.summary_en = `Every possibility for ${opts.card.name} this run was on the obvious list or already reported.`
-    summaries.summary_ko = `${opts.card.name}: 이번 실행의 가능성은 모두 이미 알려진 기본 위험이었다.`
-    summaries.headline_ko = `${opts.card.name}: 기본 위험만 확인`
+  } else if (baselineRisks.length) {
+    summaries.headline_en = `${opts.card.name}: standard regional risks`
+    summaries.summary_en = baselineRisks[0].title
+    summaries.summary_ko = `${opts.card.name}: ${baselineRisks[0].title}`
+    summaries.headline_ko = `${opts.card.name}: 표준 지역 위험`
   }
   const everyGroup = scored.map((item) => item.hypothesis)
   const noveltyCounts = {
@@ -538,12 +547,14 @@ export async function runEngine(opts: RunEngineOptions): Promise<EngineRunRecord
   let error: string | null = null
   if (!opts.dryRun) {
     const candidate: EngineResult = {
-      hypotheses,
-      outsider,
+      headlines,
+      missed_by_others,
       ...summaries,
+      headline_fallback: headline_fallback || undefined,
       map_focus: { lat: opts.card.lat, lon: opts.card.lon, zoom: opts.card.level === 0 ? 5 : 7 },
       partial,
       baseline_risks: baselineRisks,
+      background_coverage: backgroundByUrl.size ? [...backgroundByUrl.values()] : undefined,
       coverage: coverageCounts(coverage),
       novelty_counts: noveltyCounts,
       rejected,
@@ -752,11 +763,11 @@ function mergeDrafts(rows: Draft[], override: Record<string, unknown>): Draft {
 function toHypothesis(
   draft: Draft,
   outsider: boolean,
-  horizon: Horizon,
+  card: EngineCard,
   coverage: CoverageItem[],
   nonObviousness: number,
   twist: string,
-): Hypothesis {
+): { hypothesis: Hypothesis; background: BackgroundCoverageItem[] } {
   const departments = new Set<string>([...draft.departments, ...departmentsTouched(draft)])
   const structure = structureOf({
     hunters: draft.proposed_by.length,
@@ -764,11 +775,14 @@ function toHypothesis(
     weakness: draft.weakness,
     evidence: draft.evidence.length,
   })
-  const novelty = noveltyFor(draft.hazards, coverage)
+  const novelty = noveltyFor(
+    { card, entities: draft.entities, mechanism: draft.mechanism, title: draft.title, hazards: draft.hazards },
+    coverage,
+  )
   const hypothesis: Hypothesis = {
     title: draft.title,
     chain: draft.chain,
-    horizon,
+    horizon: card.horizon,
     possibility: structure.possibility,
     why_humans_miss: draft.why_humans_miss,
     evidence: draft.evidence,
@@ -791,5 +805,5 @@ function toHypothesis(
     twist: twist || undefined,
     novelty_match: novelty.match,
   }
-  return hypothesisSchema.parse(hypothesis)
+  return { hypothesis: hypothesisSchema.parse(hypothesis), background: novelty.background }
 }
