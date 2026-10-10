@@ -419,11 +419,11 @@ describe('wiki title filter', () => {
 
 describe('score write flag', () => {
   it('stays off unless the env value is 1, true, or yes', () => {
-    expect(scoreWriteEnabled({})).toBe(false)
-    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: '' })).toBe(false)
-    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: '0' })).toBe(false)
-    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: '1' })).toBe(true)
-    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: 'yes' })).toBe(true)
+    expect(scoreWriteEnabled({} as unknown as NodeJS.ProcessEnv)).toBe(false)
+    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: '' } as unknown as NodeJS.ProcessEnv)).toBe(false)
+    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: '0' } as unknown as NodeJS.ProcessEnv)).toBe(false)
+    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: '1' } as unknown as NodeJS.ProcessEnv)).toBe(true)
+    expect(scoreWriteEnabled({ CRISIS_SCORE_WRITE_ENABLED: 'yes' } as unknown as NodeJS.ProcessEnv)).toBe(true)
   })
 })
 

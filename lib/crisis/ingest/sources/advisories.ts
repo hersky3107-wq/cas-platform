@@ -101,7 +101,7 @@ const STATE_NAME_ISO3: Record<string, string> = {
   kosovo: 'XKX', lesotho: 'LSO', liechtenstein: 'LIE', macau: 'MAC', maldives: 'MDV',
   malta: 'MLT', 'marshall islands': 'MHL', martinique: 'MTQ', mauritius: 'MUS',
   montserrat: 'MSR', nauru: 'NRU', 'new caledonia': 'NCL', 'new zealand': 'NZL',
-  palau: 'PLW', 'republic of congo': 'COG', 'republic of the congo': 'COG',
+  palau: 'PLW', 'republic of congo': 'COG',
   'saba and sint eustatius': 'BES', 'saint barthelemy': 'BLM', 'st barthelemy': 'BLM',
   'saint kitts and nevis': 'KNA', 'saint lucia': 'LCA',
   'saint vincent and the grenadines': 'VCT', samoa: 'WSM', seychelles: 'SYC',

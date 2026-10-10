@@ -160,7 +160,7 @@ function caller(seen: ModelCall[], mode: 'full' | 'drop' | 'throw-hunter' = 'ful
 
 describe('roster', () => {
   it('resolves distinct brands from the registries', () => {
-    const roster = resolveRoster({})
+    const roster = resolveRoster({} as unknown as NodeJS.ProcessEnv)
     const analysts = roster.slots.filter((slot) => slot.role === 'dept_analyst')
     const hunters = roster.slots.filter((slot) => slot.role === 'hunter')
     expect(new Set(analysts.map((slot) => slot.brand)).size).toBe(analysts.length)
@@ -188,7 +188,7 @@ describe('roster', () => {
     expect(hunters.some((slot) => slot.model === 'z-ai/glm-5.3')).toBe(true)
     expect(roster.slots.find((slot) => slot.slot === 'red_team')?.model).toBe('cohere/command-a')
     expect(roster.judgeModel).toBe('claude-opus-5-5')
-    expect(resolveRoster({ CRISIS_ENGINE_JUDGE_MODEL: 'claude-opus-5-5-test' }).judgeModel).toBe('claude-opus-5-5-test')
+    expect(resolveRoster({ CRISIS_ENGINE_JUDGE_MODEL: 'claude-opus-5-5-test' } as unknown as NodeJS.ProcessEnv).judgeModel).toBe('claude-opus-5-5-test')
     const estimate = estimateRegionRunUsd(roster)
     expect(estimate).toBeGreaterThan(0.05)
     expect(estimate).toBeLessThan(1.5)

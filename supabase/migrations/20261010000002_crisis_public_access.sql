@@ -1,4 +1,4 @@
--- CrisisWatch public access: user RLS on the engine queue, plus unlock receipts.
+-- CrisisWatch public access: user RLS on the engine queue, plus unlock and refund receipts.
 --
 -- DO NOT apply via supabase db push. Paste into the Supabase SQL Editor.
 -- Rollback and the ledger insert are in docs/crisis/APPLY_PUBLIC.md.
@@ -29,12 +29,13 @@ create table if not exists public.crisis_unlocks (
   kind text not null,
   run_id uuid references public.crisis_engine_runs (id) on delete cascade,
   region_id bigint references public.crisis_regions (id) on delete set null,
+  request_id uuid references public.crisis_engine_requests (id) on delete cascade,
   created_at timestamptz not null default now(),
-  constraint crisis_unlocks_kind_chk check (kind in ('brief', 'deep'))
+  constraint crisis_unlocks_kind_chk check (kind in ('brief', 'deep', 'deep_refund'))
 );
 
 comment on table public.crisis_unlocks is
-  'Per-user paid unlock receipts. First view charges; later views of the same card replay from cache. Service role writes.';
+  'Per-user paid unlock and refund receipts. First view charges; later views replay from cache; failures record deep_refund. Service role writes.';
 
 create unique index if not exists crisis_unlocks_brief_unique
   on public.crisis_unlocks (user_id, run_id)
@@ -43,6 +44,10 @@ create unique index if not exists crisis_unlocks_brief_unique
 create unique index if not exists crisis_unlocks_deep_unique
   on public.crisis_unlocks (user_id, region_id)
   where kind = 'deep' and region_id is not null;
+
+create unique index if not exists crisis_unlocks_refund_unique
+  on public.crisis_unlocks (request_id)
+  where kind = 'deep_refund' and request_id is not null;
 
 alter table public.crisis_unlocks enable row level security;
 

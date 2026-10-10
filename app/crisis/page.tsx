@@ -43,16 +43,86 @@ export default function CrisisMapPage() {
       }
       setReady(true)
       try {
-        const res = await authenticatedFetch('/api/crisis/map')
-        const body = (await res.json().catch(() => null)) as { day?: string; regions?: MapRegion[]; error?: string }
-        if (!res.ok) throw new Error(body?.error ?? '지도를 불러오지 못했습니다')
+        const [mapRes, deepCheckRes] = await Promise.all([
+          authenticatedFetch('/api/crisis/map'),
+          authenticatedFetch('/api/crisis/deep'),
+        ])
+        const body = (await mapRes.json().catch(() => null)) as { day?: string; regions?: MapRegion[]; error?: string }
+        if (!mapRes.ok) throw new Error(body?.error ?? '지도를 불러오지 못했습니다')
         setDay(body.day ?? null)
         setRegions(body.regions ?? [])
+
+        const deepCheck = (await deepCheckRes.json().catch(() => null)) as {
+          activeRegionId?: number | null
+          message?: string | null
+        }
+        if (deepCheck?.activeRegionId) {
+          setSelectedId(deepCheck.activeRegionId)
+        }
+        if (deepCheck?.message) {
+          setDeepMsg(deepCheck.message)
+        }
       } catch (e: unknown) {
         setError(e instanceof Error ? e.message : '지도를 불러오지 못했습니다')
       }
     })()
   }, [])
+
+  useEffect(() => {
+    if (!selectedId) {
+      setDeepMsg(null)
+      return
+    }
+    let cancelled = false
+    void (async () => {
+      try {
+        const res = await authenticatedFetch(`/api/crisis/deep?regionId=${selectedId}`)
+        const body = (await res.json().catch(() => null)) as {
+          status?: string
+          message?: string
+          error?: string
+          cached?: boolean
+        }
+        if (cancelled) return
+        if (body?.status === 'failed' || body?.message) {
+          setDeepMsg(body.message ?? '분석 실패, 크레딧 환불됨')
+        } else if (body?.status === 'ready') {
+          setDeepMsg(body.cached ? '캐시된 브리핑을 열었습니다.' : '분석이 준비되었습니다.')
+        } else {
+          setDeepMsg(null)
+        }
+      } catch {
+        if (!cancelled) setDeepMsg(null)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [selectedId])
+
+  useEffect(() => {
+    if (deepMsg !== '분석 중, 최대 15분' || !selectedId) return
+    const timer = setInterval(() => {
+      void (async () => {
+        try {
+          const res = await authenticatedFetch(`/api/crisis/deep?regionId=${selectedId}`)
+          const body = (await res.json().catch(() => null)) as {
+            status?: string
+            message?: string
+            cached?: boolean
+          }
+          if (body?.status === 'failed') {
+            setDeepMsg('분석 실패, 크레딧 환불됨')
+          } else if (body?.status === 'ready') {
+            setDeepMsg(body.cached ? '캐시된 브리핑을 열었습니다.' : '분석이 준비되었습니다.')
+          }
+        } catch {
+          // ignore polling error
+        }
+      })()
+    }, 10_000)
+    return () => clearInterval(timer)
+  }, [deepMsg, selectedId])
 
   const selected = useMemo(() => regions.find((row) => row.regionId === selectedId) ?? null, [regions, selectedId])
 
@@ -69,8 +139,10 @@ export default function CrisisMapPage() {
         cached?: boolean
       }
       if (res.status === 402) throw new Error('크레딧이 부족합니다')
+      if (res.status === 429) throw new Error(body?.error ?? '요청 한도를 초과했습니다')
       if (!res.ok) throw new Error(body?.error ?? '요청에 실패했습니다')
-      if (body.status === 'pending') setDeepMsg(body.message ?? '분석 중, 최대 15분')
+      if (body.status === 'failed') setDeepMsg('분석 실패, 크레딧 환불됨')
+      else if (body.status === 'pending') setDeepMsg(body.message ?? '분석 중, 최대 15분')
       else if (body.status === 'ready') setDeepMsg(body.cached ? '캐시된 브리핑을 열었습니다.' : '분석이 준비되었습니다.')
       else setDeepMsg(body.message ?? '요청되었습니다.')
     } catch (e: unknown) {

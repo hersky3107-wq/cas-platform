@@ -94,6 +94,11 @@ async function tick(): Promise<void> {
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error)
     await finishRequest(supabaseAdmin, claimed.id, { status: 'failed', error: message })
+    if (claimed.requested_by) {
+      const { refundUserRequest } = await import('../../lib/crisis/public/refund')
+      const outcome = await refundUserRequest(supabaseAdmin, claimed.id, claimed.requested_by, claimed.region_id)
+      console.log(JSON.stringify({ at: new Date().toISOString(), request: claimed.id, refunded: outcome.refunded, reason: outcome.reason }))
+    }
     console.error(JSON.stringify({ at: new Date().toISOString(), request: claimed.id, status: 'failed', error: message }))
   }
 }

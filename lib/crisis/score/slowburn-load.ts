@@ -93,7 +93,7 @@ async function pageAll(
       if (/does not exist|schema cache/i.test(error.message)) return { rows: [], missing: true }
       throw new Error(`${table}: ${error.message}`)
     }
-    const chunk = (data ?? []) as Array<Record<string, unknown>>
+    const chunk = (data ?? []) as unknown as Array<Record<string, unknown>>
     rows.push(...chunk)
     if (chunk.length < page) break
   }

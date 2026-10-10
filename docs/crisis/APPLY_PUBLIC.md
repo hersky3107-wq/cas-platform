@@ -2,7 +2,7 @@
 
 Paste `supabase/migrations/20261010000002_crisis_public_access.sql` into the Supabase SQL editor after 20261010000001. Do **not** use supabase db push. Do **not** apply this file from the agent.
 
-This lets a logged-in user insert and read their own `crisis_engine_requests` rows (scope `region` only) and adds `crisis_unlocks` for paid briefing / deep-analysis receipts. It does not change the append-only proof ledger.
+This lets a logged-in user insert and read their own `crisis_engine_requests` rows (scope `region` only) and adds `crisis_unlocks` for paid briefing / deep-analysis unlocks and idempotent `deep_refund` receipts. It does not change the append-only proof ledger.
 
 ## Ledger
 
