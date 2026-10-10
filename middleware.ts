@@ -104,6 +104,8 @@ export async function middleware(request: NextRequest) {
     (request.nextUrl.pathname.startsWith('/modes/') ||
       request.nextUrl.pathname === '/league' ||
       request.nextUrl.pathname.startsWith('/league/') ||
+      request.nextUrl.pathname === '/crisis' ||
+      request.nextUrl.pathname.startsWith('/crisis/') ||
       request.nextUrl.pathname.startsWith('/settings'))
   ) {
     const loginUrl = new URL('/auth', request.url)
