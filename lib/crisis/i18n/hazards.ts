@@ -29,6 +29,13 @@ export type HazardUiSlice = {
   heatForecastLine: (wetBulbC: number, days: number, anomalyC: number | null) => string
   coldForecastLine: (tempC: number, days: number, anomalyC: number | null) => string
   droughtForecastLine: (rainRatio: number | null, factors: string[]) => string
+  internetCauseLine: (cause: string) => string
+  advisoryReasonLine: (level: number, reasons: string[]) => string
+  terrorRiskLine: () => string
+  waterborneLine: () => string
+  outbreakLine: (disease: string) => string
+  spaceWeatherLine: (g: number) => string
+  slowBurnRiseLine: (pct: number) => string
 }
 
 const GROUP_KO: Record<HazardGroupKey, string> = {
@@ -395,6 +402,52 @@ function buildSlice(locale: 'ko' | 'en'): HazardUiSlice {
         return factor
       })
       return locale === 'ko' ? `가뭄 전망 · ${bits.join(' + ')}` : `Drought outlook · ${bits.join(' + ')}`
+    },
+    internetCauseLine: (cause) => {
+      if (locale === 'ko') {
+        if (cause === 'government_directed') return '인터넷 차단 · 정부 지시'
+        if (cause === 'exam') return '인터넷 차단 · 시험 기간'
+        if (cause === 'unknown') return '인터넷 차단 · 원인 불명'
+        return '인터넷 차단'
+      }
+      if (cause === 'government_directed') return 'Internet shutdown · government directed'
+      if (cause === 'exam') return 'Internet shutdown · exam period'
+      if (cause === 'unknown') return 'Internet shutdown · cause unknown'
+      return 'Internet shutdown'
+    },
+    advisoryReasonLine: (level, reasons) => {
+      const labels: Record<string, string> = locale === 'ko'
+        ? {
+            terrorism: '테러',
+            armed_conflict: '무력 충돌',
+            kidnapping: '납치',
+            unrest: '소요',
+            crime: '범죄',
+            health: '보건',
+            natural_disaster: '자연재해',
+            wrongful_detention: '부당 구금',
+          }
+        : {
+            terrorism: 'terrorism',
+            armed_conflict: 'armed conflict',
+            kidnapping: 'kidnapping',
+            unrest: 'unrest',
+            crime: 'crime',
+            health: 'health',
+            natural_disaster: 'natural disaster',
+            wrongful_detention: 'wrongful detention',
+          }
+      const bits = reasons.map((reason) => labels[reason] ?? reason)
+      const head = locale === 'ko' ? `여행경보 ${level}단계` : `Travel advisory level ${level}`
+      return bits.length ? `${head} · ${bits.join(', ')}` : head
+    },
+    terrorRiskLine: () => (locale === 'ko' ? '테러 위험 상승' : 'Terror risk rising'),
+    waterborneLine: () => (locale === 'ko' ? '수인성 감염병 위험 · 1~3주 뒤' : 'Waterborne disease risk · in 1–3 weeks'),
+    outbreakLine: (disease) => (locale === 'ko' ? `질병 발생 · ${disease}` : `Outbreak · ${disease}`),
+    spaceWeatherLine: (g) => (locale === 'ko' ? `지자기 폭풍 G${g} 예보 · 24~72시간 뒤` : `Geomagnetic storm G${g} forecast · in 24–72 hours`),
+    slowBurnRiseLine: (pct) => {
+      const signed = pct > 0 ? `+${pct}` : String(pct)
+      return locale === 'ko' ? `분쟁 보도 4주 연속 증가 ${signed}%` : `Conflict coverage up ${signed}% for 4 straight weeks`
     },
   }
 }

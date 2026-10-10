@@ -44,6 +44,18 @@ import { haversineKm } from './math'
 import { applyEarthquakePrecursor, applyVolcanoPrecursor } from '../precursors/apply'
 import { assessDrought, assessHeatCold, type ForecastDay } from '../climate/assess'
 import {
+  advisoryReasonWeight,
+  classifyOutage,
+  landslideComponent,
+  locustComponent,
+  outbreakComponent,
+  parseAdvisoryReasons,
+  spaceWeatherComponent,
+  terrorComponent,
+  ucdpConfirms,
+  waterborneComponent,
+} from './more-hazards'
+import {
   bValueDrop,
   dedupeQuakes,
   flagNear,
@@ -67,13 +79,14 @@ export interface ScoreJobResult {
 
 export async function runLayer1Score(
   client: SupabaseClient,
-  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void; precursors?: boolean; climate?: boolean },
+  opts: { dryRun: boolean; write?: boolean; touchSchedule?: boolean; now?: Date; log?: (message: string) => void; precursors?: boolean; climate?: boolean; moreHazards?: boolean },
 ): Promise<ScoreJobResult> {
   const now = opts.now ?? new Date()
   const log = opts.log ?? ((message: string) => console.log(message))
   const snap = await loadScoreSnapshot(client, now)
   const precursorsOn = opts.precursors !== false
   const climateOn = opts.climate !== false
+  const moreOn = opts.moreHazards !== false
   const quakePoints: QuakePoint[] = dedupeQuakes(
     snap.quakes.map((row) => ({
       lat: row.lat,
@@ -133,6 +146,10 @@ export async function runLayer1Score(
     if (naturalTitles[0]) naturalTitleByRegion.set(region.id, naturalTitles[0])
 
     let internet = internetComponent(input.internet, internetRaw(input.internetSources))
+    if (moreOn && internet.value > 0) {
+      const classified = classifyOutage(input.outageHints, region.iso3)
+      internet = { ...internet, value: internet.value * classified.weight, raw: { ...internet.raw, cause: classified.cause } }
+    }
     if (region.level === 1 && internet.value > 0 && !input.regionSpecificInternet) {
       internet = {
         ...internet,
@@ -141,7 +158,15 @@ export async function runLayer1Score(
       }
     }
 
+    const advisoryReasons = moreOn ? parseAdvisoryReasons(input.advisoryText) : []
     let advisory = advisoryComponent({ changed: input.advisoryChange, diverge: input.advisoryDiverge })
+    if (moreOn && advisory.value > 0) {
+      advisory = {
+        ...advisory,
+        value: advisory.value * advisoryReasonWeight(advisoryReasons),
+        raw: { ...advisory.raw, level: input.advisoryLevel, reasons: advisoryReasons },
+      }
+    }
     if (region.level === 1 && advisory.value > 0 && !input.regionSpecificAdvisory) {
       advisory = {
         ...advisory,
@@ -196,13 +221,35 @@ export async function runLayer1Score(
         )
       : volcanoBase
 
-    let components = [
-      observedRainAdjust(rainComponent(input.precip), input.observedRain),
-      riverComponent({
-        discharge: input.discharge,
-        ratioTo30d: input.ratioTo30d,
-        historyDays: input.glofasDays,
+    const rain = observedRainAdjust(rainComponent(input.precip), input.observedRain)
+    const river = riverComponent({
+      discharge: input.discharge,
+      ratioTo30d: input.ratioTo30d,
+      historyDays: input.glofasDays,
+    })
+    let conflict = conflictComponent({
+      conflictCount: input.conflictCount,
+      mean30d: input.conflictMean,
+      historyDays: input.conflictDays,
+      absCut,
+      geo: conflictGeoQuality({
+        level: region.level,
+        lat: region.lat,
+        lon: region.lon,
+        countryLat: region.iso3 ? countryCentroid.get(region.iso3)?.lat : null,
+        countryLon: region.iso3 ? countryCentroid.get(region.iso3)?.lon : null,
       }),
+    })
+    if (moreOn && conflict.value > 0) {
+      const confirmed = ucdpConfirms(region, snap.extra.ucdp)
+      conflict = confirmed
+        ? { ...conflict, raw: { ...conflict.raw, ucdp: 'confirmed' } }
+        : { ...conflict, value: conflict.value * 0.5, raw: { ...conflict.raw, ucdp: 'gdelt_only' } }
+    }
+    const disease = region.iso3 ? snap.extra.outbreaks.get(region.iso3) ?? null : null
+    let components = [
+      rain,
+      river,
       cycloneComponent(region.lat, region.lon, now, snap.cyclones),
       quake,
       gdacsComponent(region.lat, region.lon, region.id, region.iso3, now, snap.gdacs),
@@ -214,19 +261,7 @@ export async function runLayer1Score(
         top1Cut: frpCut,
         watchlist: watchlistIso3(region.iso3),
       }),
-      conflictComponent({
-        conflictCount: input.conflictCount,
-        mean30d: input.conflictMean,
-        historyDays: input.conflictDays,
-        absCut,
-        geo: conflictGeoQuality({
-          level: region.level,
-          lat: region.lat,
-          lon: region.lon,
-          countryLat: region.iso3 ? countryCentroid.get(region.iso3)?.lat : null,
-          countryLon: region.iso3 ? countryCentroid.get(region.iso3)?.lon : null,
-        }),
-      }),
+      conflict,
       silenceComponent({
         series: input.gdeltSeries,
         now,
@@ -234,6 +269,30 @@ export async function runLayer1Score(
       internet,
       advisory,
       foodComponent(input.ipc),
+      ...(moreOn
+        ? [
+            terrorComponent({
+              level: region.level,
+              threatToday: input.threatToday,
+              threatMean: input.threatMean,
+              threatDays: input.threatDays,
+              advisoryTerror: advisoryReasons.includes('terrorism'),
+            }),
+            outbreakComponent(disease ? [disease] : []),
+            waterborneComponent({
+              rain: rain.value,
+              river: river.value,
+              camp: snap.camps.some((camp) => camp.region_id === region.id),
+              vulnerability: input.informVulnerability,
+            }),
+            spaceWeatherComponent(snap.extra.geomagneticG, region.lat, input.urbanPop),
+            landslideComponent(
+              snap.extra.landslideRegions.has(region.id) || (region.iso3 != null && snap.extra.landslideCountries.has(region.iso3)),
+              input.urbanPop,
+            ),
+            locustComponent(region.iso3 ? snap.extra.locust.get(region.iso3) ?? null : null),
+          ]
+        : []),
     ]
     const humanFired = components.some((row) =>
       COMPONENT_FAMILY[row.key] === 'human' && row.value > 0 && row.key !== 'health_attention' && row.key !== 'slow_burn',
@@ -310,6 +369,9 @@ export async function runLayer1Score(
     if (vector) context.push(vector)
     const oilLine = isConflictWatchlistIso3(region.iso3) || isOilDependentIso3(region.iso3) ? oilContextLine(snap.oil) : null
     if (oilLine) context.push(oilLine)
+    if (moreOn && snap.extra.geomagneticG != null && snap.extra.geomagneticG >= 3) {
+      context.push(`geomagnetic G${snap.extra.geomagneticG} forecast (NOAA SWPC)`)
+    }
     const extra: FragilityItem[] = snap.plants
       .filter((plant) => plant.region_id === region.id && (plant.kind === 'chemical_plant' || plant.kind === 'port'))
       .slice(0, 3)

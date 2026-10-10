@@ -71,6 +71,21 @@ export function expectedWindowForComponent(
   if (component.key === 'quake' && typeof raw.mag === 'number' && raw.mag >= QUAKE.magSoft) {
     return { type: 'relative_hours', min: 24, max: 72 }
   }
+  if (component.key === 'landslide' || component.key === 'space_weather') {
+    return { type: 'relative_hours', min: 24, max: 72 }
+  }
+  if (component.key === 'waterborne') {
+    return { type: 'relative_days', min: 7, max: 21 }
+  }
+  if (component.key === 'outbreak') {
+    return { type: 'relative_days', min: 7, max: 14 }
+  }
+  if (component.key === 'locust') {
+    return { type: 'relative_days', min: 14, max: 42 }
+  }
+  if (component.key === 'terror') {
+    return { type: 'relative_days', min: 3, max: 7 }
+  }
   if (component.key === 'heat' || component.key === 'cold') {
     const min = typeof raw.lead_min === 'number' ? raw.lead_min : null
     const max = typeof raw.lead_max === 'number' ? raw.lead_max : null

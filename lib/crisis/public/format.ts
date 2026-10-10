@@ -51,6 +51,12 @@ export type TriggerFact = {
   windChillC?: number
   droughtFactors?: string[]
   rainRatio?: number | null
+  outageCause?: string
+  advisoryLevel?: number
+  advisoryReasons?: string[]
+  disease?: string
+  geomagneticG?: number
+  risePct?: number
 }
 
 export function keyTriggerFact(facts: TriggerFact[]): TriggerFact | null {

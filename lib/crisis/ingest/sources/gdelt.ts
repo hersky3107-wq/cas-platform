@@ -73,6 +73,7 @@ export const GDELT_COL = {
   SQLDATE: 1,
   Actor1CountryCode: 7,
   Actor2CountryCode: 17,
+  EventCode: 26,
   EventRootCode: 28,
   QuadClass: 29,
   GoldsteinScale: 30,
@@ -106,6 +107,7 @@ export function parseGdeltLastupdate(text: string): string | null {
 
 export interface GdeltEventRow {
   root: string | null
+  code: string | null
   goldstein: number | null
   tone: number | null
   sources: number
@@ -154,6 +156,7 @@ export function parseGdeltExportTsv(text: string): GdeltEventRow[] {
     const lonIndex = v2 ? GDELT_COL.ActionGeo_Long : GDELT_V1_GEO.Long
     if (cols.length <= lonIndex) continue
     const root = (cols[GDELT_COL.EventRootCode] ?? '').trim() || null
+    const code = v2 ? (cols[GDELT_COL.EventCode] ?? '').trim() || null : null
     const goldstein = finiteNumber(cols[GDELT_COL.GoldsteinScale])
     const sources = finiteNumber(cols[GDELT_COL.NumSources]) ?? 0
     const mentions = finiteNumber(cols[GDELT_COL.NumMentions]) ?? 0
@@ -167,7 +170,7 @@ export function parseGdeltExportTsv(text: string): GdeltEventRow[] {
     const actor2 = gdeltActorToIso3(cols[GDELT_COL.Actor2CountryCode])
     const sqlDate = (cols[GDELT_COL.SQLDATE] ?? '').trim()
     const day = /^\d{8}$/.test(sqlDate) ? `${sqlDate.slice(0, 4)}-${sqlDate.slice(4, 6)}-${sqlDate.slice(6, 8)}` : null
-    out.push({ root, goldstein, tone, sources, lat, lon, fips, day, quad, mentions, actor1, actor2 })
+    out.push({ root, code, goldstein, tone, sources, lat, lon, fips, day, quad, mentions, actor1, actor2 })
   }
   return out
 }
@@ -181,6 +184,8 @@ export interface GdeltAgg {
   assault: number
   fight: number
   mass_violence: number
+  threat: number
+  bomb: number
   goldstein_sum: number
   tone_sum: number
   num_sources: number
@@ -196,6 +201,8 @@ export function emptyGdeltAgg(regionId: number, day: string): GdeltAgg {
     assault: 0,
     fight: 0,
     mass_violence: 0,
+    threat: 0,
+    bomb: 0,
     goldstein_sum: 0,
     tone_sum: 0,
     num_sources: 0,
@@ -256,6 +263,8 @@ export function addGdeltEvent(agg: GdeltAgg, row: GdeltEventRow): void {
   else if (row.root === GDELT_CAMEO.assault) agg.assault += 1
   else if (row.root === GDELT_CAMEO.fight) agg.fight += 1
   else if (row.root === GDELT_CAMEO.mass_violence) agg.mass_violence += 1
+  if (row.code?.startsWith('13')) agg.threat += 1
+  if (row.code?.startsWith('183')) agg.bomb += 1
 }
 
 export function gdeltAggToDaily(agg: GdeltAgg, mean30d: number | null): NormalizedDaily {
@@ -271,6 +280,8 @@ export function gdeltAggToDaily(agg: GdeltAgg, mean30d: number | null): Normaliz
       assault: agg.assault,
       fight: agg.fight,
       mass_violence: agg.mass_violence,
+      threat: agg.threat,
+      bomb: agg.bomb,
       avg_goldstein: agg.goldstein_sum / n,
       avg_tone: agg.tone_sum / n,
       num_sources: agg.num_sources,
@@ -293,6 +304,8 @@ export function mergeGdeltStats(
   merged.assault = (finiteNumber(rec.assault) ?? 0) + next.assault
   merged.fight = (finiteNumber(rec.fight) ?? 0) + next.fight
   merged.mass_violence = (finiteNumber(rec.mass_violence) ?? 0) + next.mass_violence
+  merged.threat = (finiteNumber(rec.threat) ?? 0) + next.threat
+  merged.bomb = (finiteNumber(rec.bomb) ?? 0) + next.bomb
   merged.goldstein_sum = (finiteNumber(rec.goldstein_sum) ?? 0) + next.goldstein_sum
   merged.tone_sum = (finiteNumber(rec.tone_sum) ?? 0) + next.tone_sum
   merged.num_sources = (finiteNumber(rec.num_sources) ?? 0) + next.num_sources

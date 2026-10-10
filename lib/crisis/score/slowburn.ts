@@ -142,6 +142,27 @@ const CORE: Array<{ key: keyof DailyVolume; direction: 'up' | 'down'; minSlope: 
   { key: 'cameo_share', direction: 'up', minSlope: SLOW_BURN.shareSlope, dow: true },
 ]
 
+/** Four calendar weeks of conflict-share, each higher than the one before. Percent is last week versus the first. */
+export function fourWeekConflictRise(rows: DailyVolume[], endDay: string): number | null {
+  const window = lastWindow(rows, endDay, 28)
+  if (window.length < 21) return null
+  const end = Date.parse(`${endDay}T00:00:00Z`)
+  const sums = [0, 0, 0, 0]
+  const counts = [0, 0, 0, 0]
+  for (const row of window) {
+    const age = Math.floor((end - Date.parse(`${row.day}T00:00:00Z`)) / 86_400_000)
+    if (age < 0 || age > 27) continue
+    const week = 3 - Math.floor(age / 7)
+    sums[week] += row.conflict_share
+    counts[week] += 1
+  }
+  if (counts.some((count) => count === 0)) return null
+  const means = sums.map((sum, index) => sum / counts[index])
+  for (let i = 1; i < means.length; i += 1) if (!(means[i] > means[i - 1])) return null
+  if (means[0] <= 0) return null
+  return Math.round(((means[3] - means[0]) / means[0]) * 100)
+}
+
 export function lastWindow(rows: DailyVolume[], endDay: string, days: number): DailyVolume[] {
   const end = Date.parse(`${endDay}T00:00:00Z`)
   const start = end - (days - 1) * 86_400_000

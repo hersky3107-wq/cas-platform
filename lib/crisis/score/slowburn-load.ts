@@ -3,6 +3,7 @@ import { WIKI_HUMAN_CONCEPTS } from './wiki-roles'
 import {
   concentratedRegions,
   conflictSpread,
+  fourWeekConflictRise,
   hasNewActorCounted,
   scoreVolume,
   slowBurnValue,
@@ -293,6 +294,7 @@ export async function loadSlowBurn(
         key: row.key,
         slope: Number(row.slope.toFixed(4)),
       })),
+      rise_pct: fourWeekConflictRise(rows, endDay),
     }
     const hit: SlowBurnHit = { value, kind, detail }
     countryRanks.push({

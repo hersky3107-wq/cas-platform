@@ -223,6 +223,12 @@ export type FreeTriggerFact = {
   windChillC?: number
   droughtFactors?: string[]
   rainRatio?: number | null
+  outageCause?: string
+  advisoryLevel?: number
+  advisoryReasons?: string[]
+  disease?: string
+  geomagneticG?: number
+  risePct?: number
 }
 
 export function freeLayerFromDetail(detail: unknown): {
@@ -323,6 +329,15 @@ export function freeLayerFromDetail(detail: unknown): {
         const names = raw.factors.filter((item): item is string => typeof item === 'string')
         if (names.length) fact.droughtFactors = names
       }
+      if (typeof raw.cause === 'string') fact.outageCause = raw.cause
+      if (typeof raw.level === 'number') fact.advisoryLevel = raw.level
+      if (Array.isArray(raw.reasons)) {
+        const reasons = raw.reasons.filter((item): item is string => typeof item === 'string')
+        if (reasons.length) fact.advisoryReasons = reasons
+      }
+      if (typeof raw.disease === 'string') fact.disease = raw.disease
+      if (typeof raw.g === 'number') fact.geomagneticG = raw.g
+      if (typeof raw.rise_pct === 'number') fact.risePct = raw.rise_pct
       triggerFacts.push(fact)
     }
   }

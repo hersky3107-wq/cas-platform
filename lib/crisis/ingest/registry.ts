@@ -8,6 +8,10 @@ import { fewsnetSource } from './sources/fewsnet'
 import { firmsSource } from './sources/firms'
 import { gdacsSource } from './sources/gdacs'
 import { gdeltEventsSource } from './sources/gdelt'
+import { lhasaSource, locustSource, promedSource } from './sources/hazard-skips'
+import { swpcSource } from './sources/swpc'
+import { ucdpSource } from './sources/ucdp'
+import { whoDonSource } from './sources/who-don'
 import { glofasSource } from './sources/glofas'
 import { gdoCdiSource, gnssNglSource, gvpWeeklySource, so2DailySource } from './sources/precursor-skips'
 import { gvpHoloceneSource } from './sources/gvp-holocene'
@@ -62,6 +66,12 @@ export const CRISIS_SOURCES: CrisisSource[] = [
   iodaSource,
   cloudflareRadarSource,
   gdeltEventsSource,
+  ucdpSource,
+  whoDonSource,
+  promedSource,
+  locustSource,
+  lhasaSource,
+  swpcSource,
   wikiTopSource,
   advisoriesSource,
   reliefwebSource,

@@ -1,4 +1,5 @@
 import { advisoryPairDiverges } from '../../score/advisory'
+import { parseAdvisoryReasons } from '../../score/more-hazards'
 import { buildDedupeKey } from '../dedupe'
 import { asArray, asRecord, finiteNumber, isoTime, politeFetch } from '../fetch'
 import { toIso3 } from '../iso'
@@ -190,11 +191,13 @@ export function normalizeStateRss(
       continue
     }
     seen += 1
+    const description = extractXmlTag(item, 'description') ?? ''
+    const reasons = parseAdvisoryReasons(`${title} ${description}`)
     const row: ParsedAdvisory = {
       country_iso3: iso3,
       source: 'us_state',
       level: mapped.level,
-      level_text: mapped.text,
+      level_text: `${mapped.text} ${description} ${reasons.join(' ')}`.replace(/\s+/g, ' ').trim().slice(0, 500),
       updated_at: isoTime(extractXmlTag(item, 'pubDate') ?? extractXmlTag(item, 'lastBuildDate')) ?? fetchedAt,
       title,
     }
@@ -219,12 +222,14 @@ export function normalizeFcdoCountry(payload: unknown, fetchedAt: string): Parse
   const iso3 = toIso3(iso2) ?? (slug ? nameToIso3(slug.replace(/-/g, ' ')) : null)
   if (!iso3) return null
   const statuses = asArray(details?.alert_status).filter((item): item is string => typeof item === 'string')
-  const mapped = mapFcdoLevel(statuses, typeof rec.description === 'string' ? rec.description : null)
+  const description = typeof rec.description === 'string' ? rec.description : ''
+  const mapped = mapFcdoLevel(statuses, description)
+  const reasons = parseAdvisoryReasons(`${description} ${JSON.stringify(details ?? {})}`)
   return {
     country_iso3: iso3,
     source: 'uk_fcdo',
     level: mapped.level,
-    level_text: mapped.text,
+    level_text: `${mapped.text} ${reasons.join(' ')}`.trim().slice(0, 240),
     updated_at: isoTime(rec.updated_at ?? rec.public_updated_at ?? details?.reviewed_at) ?? fetchedAt,
     title: typeof rec.title === 'string' ? rec.title : slug,
   }

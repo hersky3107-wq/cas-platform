@@ -127,6 +127,13 @@ function triggerFactLine(fact: TriggerFact, t: CrisisUiPack): string {
   if (fact.key === 'drought' && fact.droughtFactors && fact.droughtFactors.length > 0) {
     return t.droughtForecastLine(fact.rainRatio ?? null, fact.droughtFactors)
   }
+  if (fact.key === 'internet' && fact.outageCause) return t.internetCauseLine(fact.outageCause)
+  if (fact.key === 'advisory' && fact.advisoryLevel != null) return t.advisoryReasonLine(fact.advisoryLevel, fact.advisoryReasons ?? [])
+  if (fact.key === 'terror') return t.terrorRiskLine()
+  if (fact.key === 'waterborne') return t.waterborneLine()
+  if (fact.key === 'outbreak' && fact.disease) return t.outbreakLine(fact.disease)
+  if (fact.key === 'space_weather' && fact.geomagneticG != null) return t.spaceWeatherLine(fact.geomagneticG)
+  if (fact.key === 'slow_burn' && fact.risePct != null) return t.slowBurnRiseLine(fact.risePct)
   if (fact.expectedWindow) {
     const line = t.triggerChipLine(fact.key, fact.expectedWindow)
     if (fact.key === 'quake' && fact.oaf) return `${line} · ${t.aftershockWeekLine(fact.oaf.m5, fact.oaf.m6, fact.oaf.m7)}`

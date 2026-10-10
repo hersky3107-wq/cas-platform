@@ -19,6 +19,7 @@ import { isHealthWikiConcept } from '../config/wiki-health'
 import { wikiTitleRole } from './wiki-roles'
 import { loadPrecursors, type PrecursorBundle } from './precursor-load'
 import { loadClimate } from './climate-load'
+import { loadExtraHazards, type ExtraHazards } from './extra-load'
 import type { ClimateNormals } from '../climate/stats'
 import type { EventPoint } from '../events/link'
 import { politeFetch } from '../ingest/fetch'
@@ -74,6 +75,12 @@ export interface RegionInputs {
   wikiTitle: string | null
   advisoryChange: boolean
   advisoryDiverge: boolean
+  advisoryLevel: number | null
+  advisoryText: string
+  outageHints: string[]
+  threatToday: number
+  threatMean: number | null
+  threatDays: number
   regionSpecificInternet: boolean
   regionSpecificAdvisory: boolean
 }
@@ -105,6 +112,7 @@ export interface ScoreSnapshot {
   rainDays: Map<number, string[]>
   precursors: PrecursorBundle
   climate: Map<number, ClimateNormals>
+  extra: ExtraHazards
 }
 
 export interface OilQuote {
@@ -182,6 +190,12 @@ function emptyInputs(): RegionInputs {
     wikiTitle: null,
     advisoryChange: false,
     advisoryDiverge: false,
+    advisoryLevel: null,
+    advisoryText: '',
+    outageHints: [],
+    threatToday: 0,
+    threatMean: null,
+    threatDays: 0,
     regionSpecificInternet: false,
     regionSpecificAdvisory: false,
   }
@@ -278,7 +292,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     (q) => q.gte('day', since63).in('source', ['firms', 'gdelt']),
   )
   const firmsToday = new Map<number, number>()
-  const gdeltHist = new Map<number, { conflict: number[]; total: number[]; series: Array<{ day: string; total: number; cameo: number }> }>()
+  const gdeltHist = new Map<number, { conflict: number[]; total: number[]; series: Array<{ day: string; total: number; cameo: number }>; threat: Array<{ day: string; n: number }> }>()
   for (const row of daily) {
     const stats = asRecord(row.stats) ?? {}
     const id = Number(row.region_id)
@@ -303,12 +317,14 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
       cur.frpCount = finite(stats.count) ?? 0
     }
     if (row.source === 'gdelt') {
-      const hist = gdeltHist.get(id) ?? { conflict: [], total: [], series: [] }
+      const hist = gdeltHist.get(id) ?? { conflict: [], total: [], series: [], threat: [] }
       const conflict = (finite(stats.assault) ?? 0) + (finite(stats.fight) ?? 0) + (finite(stats.mass_violence) ?? 0)
       const total = finite(stats.total_events) ?? 0
+      const threat = (finite(stats.threat) ?? 0) + (finite(stats.bomb) ?? 0)
       const dayKey = String(row.day).slice(0, 10)
       hist.conflict.push(conflict)
       hist.total.push(total)
+      hist.threat.push({ day: dayKey, n: threat })
       hist.series.push({ day: dayKey, total, cameo: conflict })
       gdeltHist.set(id, hist)
       if (conflict > 0) {
@@ -338,6 +354,11 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     cur.gdeltDays = hist.total.length
     cur.gdeltSeries = hist.series.sort((a, b) => a.day.localeCompare(b.day))
     if (hist.conflict.length) cur.conflictMean = hist.conflict.reduce((a, b) => a + b, 0) / hist.conflict.length
+    const priorThreat = hist.threat.filter((row) => row.day < day)
+    const todayThreat = hist.threat.find((row) => row.day === day)
+    cur.threatToday = todayThreat?.n ?? 0
+    cur.threatDays = priorThreat.length
+    cur.threatMean = priorThreat.length ? priorThreat.reduce((sum, row) => sum + row.n, 0) / priorThreat.length : null
     if (cur.totalMean == null && hist.total.length) {
       cur.totalMean = hist.total.reduce((a, b) => a + b, 0) / hist.total.length
     }
@@ -552,9 +573,11 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
         if (row.region_id != null && byId.get(Number(row.region_id))?.level === 1) {
           put(Number(row.region_id)).regionSpecificInternet = true
         }
+        const hint = [raw.outage_cause, raw.description, row.title].filter((part) => typeof part === 'string').join(' ')
         inheritCountry(row.country_iso3, (cur) => {
           cur.internet = true
           if (!cur.internetSources.includes(row.source)) cur.internetSources.push(row.source)
+          if (hint) cur.outageHints.push(hint)
         })
       }
     } else if (row.signal_type === 'wiki_new_top' && (row.event_time ?? '') >= sinceWiki) {
@@ -635,10 +658,10 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     try { saveWikiYearCache(yearCache) } catch { /* cache is optional */ }
   }
 
-  const advisoryRows = await pageSelect<{ country_iso3: string; source: string; level: number | null; updated_at: string | null }>(
+  const advisoryRows = await pageSelect<{ country_iso3: string; source: string; level: number | null; level_text: string | null; updated_at: string | null }>(
     client,
     'crisis_advisory_state',
-    'country_iso3, source, level, updated_at',
+    'country_iso3, source, level, level_text, updated_at',
     (q) => q.in('source', ['us_state', 'uk_fcdo']),
   )
   const historyRows = await pageSelect<{ country_iso3: string; source: string; changed_at: string }>(
@@ -659,6 +682,12 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     if (row.source === 'us_state') bag.us = finite(row.level)
     if (row.source === 'uk_fcdo') bag.uk = finite(row.level)
     pair.set(row.country_iso3, bag)
+    const level = finite(row.level)
+    const text = typeof row.level_text === 'string' ? row.level_text : ''
+    inheritCountry(row.country_iso3, (cur) => {
+      if (level != null) cur.advisoryLevel = Math.max(cur.advisoryLevel ?? 0, level)
+      if (text && !cur.advisoryText.includes(text)) cur.advisoryText = `${cur.advisoryText} ${text}`.trim()
+    })
   }
   const advisoryDiverge: string[] = []
   let advisoryBoth = 0
@@ -767,6 +796,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
   const oil = await loadOil(client, now)
   const precursors = await loadPrecursors(client, now)
   const climate = await loadClimate(client)
+  const extra = await loadExtraHazards(client, now)
 
   return {
     day,
@@ -795,6 +825,7 @@ export async function loadScoreSnapshot(client: SupabaseClient, now: Date): Prom
     rainDays: await loadRainDays(client, now),
     precursors,
     climate,
+    extra,
   }
 }
 
